@@ -1,0 +1,147 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Condition {
+  NEW
+  SECOND
+}
+
+model Camera {
+  id               String                  @id @default(uuid())
+  name             String
+  price            Float
+  condition        Condition               @default(NEW)
+  stock            Int
+  description      String                  @default("") @db.Text
+  inclusions       String                  @default("") @db.Text
+  category_id      String
+  promo            Boolean                 @default(false)
+  best_selling     Boolean                 @default(false)
+  created_at       DateTime                @default(now())
+  category         Category                @relation(fields: [category_id], references: [id])
+  is_deleted       Boolean                 @default(false)
+  images           CameraImage[]
+  marketplaceLinks CameraMarketplaceLink[]
+  order_items      OrderItem[]
+}
+
+model CameraImage {
+  id         String   @id @default(uuid())
+  camera_id  String
+  image_url  String   @db.Text
+  is_primary Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  camera Camera @relation(fields: [camera_id], references: [id], onDelete: Cascade)
+
+  @@index([camera_id])
+}
+
+model Category {
+  id         String   @id @default(uuid())
+  name       String   @unique
+  created_at DateTime @default(now())
+  cameras    Camera[]
+}
+
+model Marketplace {
+  id           String                  @id @default(uuid())
+  logo_url     String
+  name         String                  @unique
+  is_active    Boolean                 @default(true)
+  camera_links CameraMarketplaceLink[]
+}
+
+model CameraMarketplaceLink {
+  id             String @id @default(uuid())
+  camera_id      String
+  marketplace_id String
+  product_url    String @db.Text
+
+  camera      Camera      @relation(fields: [camera_id], references: [id], onDelete: Cascade)
+  marketplace Marketplace @relation(fields: [marketplace_id], references: [id], onDelete: Cascade)
+
+  @@unique([camera_id, marketplace_id])
+}
+
+model Store {
+  id                  String  @id @default(uuid())
+  logo_url            String
+  name                String
+  instagram           String?
+  whatsapp            String?
+  tiktok              String?
+  facebook            String?
+  address             String?
+  main_banner_url     String?
+  terms_and_condition String  @db.Text
+}
+
+model Banner {
+  id         String   @id @default(uuid())
+  banner_url String
+  created_at DateTime @default(now())
+}
+
+model Order {
+  id            String      @id @default(uuid())
+  customer_name String // Nama pembeli
+  total_amount  String // Total harga
+  created_at    DateTime    @default(now())
+  address       String      @db.Text
+  whatsapp      String
+  instagram     String?
+  order_items   OrderItem[]
+  invoice       Invoice?
+}
+
+model OrderItem {
+  id           String @id @default(uuid())
+  order_id     String
+  camera_id    String
+  quantity     Int    @default(1)
+  camera_name  String
+  camera_price String
+  order        Order  @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  camera       Camera @relation(fields: [camera_id], references: [id], onDelete: Restrict) // sebelumnya Cascade
+
+  @@index([order_id])
+  @@index([camera_id])
+}
+
+model Invoice {
+  id                 String   @id @default(uuid())
+  no_invoice         String   @unique
+  store_name         String
+  store_address      String?  @db.Text
+  whatsapp_store     String?
+  instagram_store    String?
+  created_at         DateTime @default(now())
+  payment_method     String?
+  ship               String?
+  customer_name      String
+  customer_address   String   @db.Text
+  customer_whatsapp  String
+  customer_instagram String?
+  total_amount       String
+  order_id           String   @unique
+  store_discount     String?
+  customer_discount  String?
+  is_final           Boolean  @default(false)
+  order              Order    @relation(fields: [order_id], references: [id], onDelete: Cascade)
+
+  @@index([created_at])
+}
+
+model User {
+  id          String  @id @default(uuid())
+  supabase_id String  @unique
+  name        String
+  email       String  @unique
+  logo_url    String?
+}
