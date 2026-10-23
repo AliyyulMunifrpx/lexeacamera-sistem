@@ -4,7 +4,7 @@ Mengubah password akun pengguna yang sedang login. Pengguna wajib memasukkan pas
 
 ## 📌 Informasi Endpoint
 
-- **URL Path:** `/users/register`
+- **URL Path:** `/users/current/password`
 - **Method:** `PATCH`
 - **Content-Type:** `application/json`
 - **Authentication:** Required
