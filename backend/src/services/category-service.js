@@ -64,34 +64,41 @@ const updateCategory = async function (request) {
 const deleteCategory = async function (request) {
   const req = validate(deleteCategoryValidation, request);
 
-  const category = await prisma.category.findUnique({
-    where: { id: req.id },
-    select: {
-      id: true,
-      _count: {
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const category = await tx.category.findUnique({
+        where: { id: req.id },
         select: {
-          cameras: {
-            where: { is_deleted: false },
+          id: true,
+          _count: {
+            select: { cameras: { where: { is_deleted: false } } },
           },
         },
-      },
-    },
-  });
+      });
 
-  // 1. Cek apakah kategori ditemukan
-  if (!category) {
-    throw new ResponseError(404, "CATEGORY_NOT_FOUND");
+      if (!category) {
+        throw new ResponseError(404, "CATEGORY_NOT_FOUND");
+      }
+
+      if (category._count.cameras > 0) {
+        throw new ResponseError(400, "CATEGORY_STILL_IN_USE");
+      }
+
+      // Kamera yang sudah soft delete dilepas dari kategori ini
+      await tx.camera.updateMany({
+        where: { category_id: req.id, is_deleted: true },
+        data: { category_id: null },
+      });
+
+      return await tx.category.delete({ where: { id: req.id } });
+    });
+  } catch (error) {
+    // Jaring pengaman: ada kamera aktif yang baru masuk saat proses berjalan
+    if (error.code === "P2003") {
+      throw new ResponseError(400, "CATEGORY_STILL_IN_USE");
+    }
+    throw error;
   }
-
-  // 2. Cek apakah masih ada kamera aktif yang pakai kategori ini
-  if (category._count.cameras > 0) {
-    throw new ResponseError(400, "CATEGORY_STILL_IN_USE");
-  }
-
-  // 3. Hapus kategori (Hard delete atau Soft delete disesuaikan)
-  return await prisma.category.delete({
-    where: { id: req.id },
-  });
 };
 export default {
   create,
