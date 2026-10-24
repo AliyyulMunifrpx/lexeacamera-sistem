@@ -5,6 +5,7 @@ import {
   updateCurrentName,
   updateCurrentEmail,
   updateCurrentPassword,
+  logoutCurrentUser,
 } from "./api.js";
 
 export function useGetCurrentUser() {
@@ -41,5 +42,11 @@ export function useUpdateCurrentPassword() {
   return useMutation({
     mutationKey: ["current-user", "update-password"],
     mutationFn: updateCurrentPassword,
+  });
+}
+export function useLogoutCurrentUser() {
+  return useMutation({
+    mutationKey: ["current-user", "logout"],
+    mutationFn: logoutCurrentUser,
   });
 }

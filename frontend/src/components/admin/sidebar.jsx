@@ -16,6 +16,7 @@ import {
   FiMenu,
   FiX,
   FiChevronDown,
+  FiLogOut,
 } from "react-icons/fi";
 import {
   MdLocalGroceryStore,
@@ -26,7 +27,11 @@ import { FaStore } from "react-icons/fa";
 import { useGetStore } from "../../app/features/store/hooks.js";
 import Image from "next/image.js";
 import { useGetCurrentUser } from "../../app/features/users/hooks.js";
-
+import { useRouter } from "next/navigation.js";
+import { useQueryClient } from "@tanstack/react-query";
+import { useLogoutCurrentUser } from "../../app/features/users/hooks.js";
+import { normalizeApiError } from "../../lib/api/errors.js";
+import notify from "../../lib/notify.js";
 const navigation = [
   { label: "Dashboard", href: "/admin", icon: FiHome },
   { label: "Kamera", href: "/admin/cameras", icon: FiCamera },
@@ -78,14 +83,35 @@ function SidebarLink({ item, active, onClick }) {
     </Link>
   );
 }
-
 function ProfileMenu({ onClose }) {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const logoutMutation = useLogoutCurrentUser();
+
   const items = [{ label: "Akun saya", href: "/admin/account", icon: FiUser }];
+
+  async function handleLogout() {
+    try {
+      await logoutMutation.mutateAsync();
+
+      // Hapus cache privat, termasuk data profil user dan toko.
+      queryClient.clear();
+
+      onClose();
+      router.replace("/auth/login");
+      router.refresh();
+
+      notify.success("Berhasil keluar dari akun.");
+    } catch (error) {
+      const apiError = normalizeApiError(error);
+      notify.error(apiError.message);
+    }
+  }
 
   return (
     <div
       id="admin-profile-menu"
-      className="absolute bottom-full left-1/2 -translate-x-1/2 z-20 mb-2 w-[85%] overflow-hidden rounded-2xl border border-second/30 bg-second p-2 shadow-xl shadow-second/10"
+      className="absolute bottom-full left-1/2 z-20 mb-2 w-[85%] -translate-x-1/2 overflow-hidden rounded-2xl border border-second/30 bg-second p-2 shadow-xl shadow-second/10"
     >
       <div className="border-b border-second/10 px-4 py-2">
         <p className="text-xs font-medium text-primary/40">Akun</p>
@@ -110,11 +136,12 @@ function ProfileMenu({ onClose }) {
 
         <button
           type="button"
-          onClick={onClose}
-          className="flex w-full items-center gap-4 rounded-xl px-4 py-2.5 text-left text-sm font-medium text-primary transition-colors bg-second2 hover:bg-second2/80 cursor-pointer"
+          onClick={handleLogout}
+          disabled={logoutMutation.isPending}
+          className="flex w-full cursor-pointer items-center gap-4 rounded-xl bg-second2 px-4 py-2.5 text-left text-sm font-medium text-primary transition-colors hover:bg-second2/80 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <FiX size={18} />
-          <span>Keluar</span>
+          <FiLogOut size={18} />
+          <span>{logoutMutation.isPending ? "Keluar..." : "Keluar"}</span>
         </button>
       </div>
     </div>

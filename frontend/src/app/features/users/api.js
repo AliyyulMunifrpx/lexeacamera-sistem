@@ -26,3 +26,7 @@ export async function updateCurrentPassword({
 
   return response.data.data ?? response.data;
 }
+export async function logoutCurrentUser() {
+  const response = await api.post("/users/current/logout");
+  return response.data;
+}
