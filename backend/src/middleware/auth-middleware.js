@@ -1,4 +1,4 @@
-import { supabase } from "../application/supabase.js";
+import { supabase, supabaseAuth } from "../application/supabase.js";
 import { prisma } from "../lib/database.js";
 
 const maskToken = (token) => {
@@ -60,7 +60,7 @@ export const authMiddleware = async (req, res, next) => {
       console.log("🔄 Initiating token refresh session...");
 
       const { data: refreshData, error: refreshError } =
-        await supabase.auth.refreshSession({
+        await supabaseAuth.auth.refreshSession({
           refresh_token: refreshToken,
         });
 
