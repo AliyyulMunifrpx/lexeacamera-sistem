@@ -3,12 +3,14 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { useLogin } from "../../../features/auth/hooks.js";
 import { normalizeApiError } from "../../../../lib/api/errors.js";
 import notify from "../../../../lib/notify.js";
 
 export default function LoginPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const login = useLogin();
 
   const [email, setEmail] = useState("");
@@ -22,9 +24,12 @@ export default function LoginPage() {
         email: email.trim(),
         password,
       });
-      router.push("/admin");
+
+      // Buang cache lama (termasuk error "current user" sebelum login).
+      queryClient.clear();
 
       notify.success("Login berhasil");
+      router.replace("/admin");
     } catch (err) {
       const apiError = normalizeApiError(err);
       notify.error(apiError.message);
@@ -35,7 +40,6 @@ export default function LoginPage() {
           `/auth/verify-email?email=${encodeURIComponent(email.trim())}`,
         );
       }
-      router.push("/admin");
     }
   }
 

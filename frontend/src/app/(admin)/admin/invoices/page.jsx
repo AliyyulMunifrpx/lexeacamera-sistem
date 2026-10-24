@@ -246,7 +246,7 @@ export default function InvoicesPage() {
 
         {invoices.length > 0 ? (
           <div
-            className={`space-y-4 transition-opacity duration-200 grid grid-cols-3 gap-4 ${
+            className={`space-y-4 transition-opacity duration-200 grid grid-cols-1 md:grid-cols-3 gap-4 ${
               isFetching ? "opacity-40" : "opacity-100"
             }`}
           >

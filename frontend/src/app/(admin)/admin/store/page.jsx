@@ -204,7 +204,7 @@ export default function StorePage() {
         </section>
 
         <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-2">
-          <section className="min-w-0 rounded-2xl border border-second/10 p-4 sm:p-6">
+          <section className="min-w-0 rounded-2xl border border-second/10 p-4 sm:p-6 h-full">
             <div className="flex items-center gap-2">
               <FiMessageCircle size={16} className="shrink-0 text-second" />
               <h2 className="text-lg font-bold text-second">
