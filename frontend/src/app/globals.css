@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+/* 1. Definisi Variabel CSS Native */
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  --primary: #ffffff;
+  --second: #000000;
+  --second2: #dc2626;
+  --second3: #2563eb;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+    --primary: #ffffff;
+    --second: #000000;
+    --second2: #dc2626;
+    --second3: #2563eb;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-second: var(--second);
+  --color-second2: var(--second2);
+  --color-second3: var(--second3);
+
+  /* Gradient */
+  --background-image-grad: linear-gradient(
+    to top right,
+    #bd2d00 0%,
+    #f6692c 100%
+  );
+}
+
+/* 3. Base Styles */
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
