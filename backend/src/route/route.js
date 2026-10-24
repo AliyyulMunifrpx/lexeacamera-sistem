@@ -12,6 +12,7 @@ import marketplaceController from "../controller/marketplace-controller.js";
 import bannerController from "../controller/banner-controller.js";
 import storeController from "../controller/store-controller.js";
 import invoiceController from "../controller/invoice-controller.js";
+import dashboardController from "../controller/dashboard-controller.js";
 
 const privateRouter = express.Router();
 privateRouter.get("/users/current", userController.get);
@@ -70,4 +71,5 @@ privateRouter.get("/invoices", invoiceController.getAllInvoice);
 privateRouter.get("/invoices/:id", invoiceController.getInvoice);
 privateRouter.patch("/invoices/:id", invoiceController.updateInvoice);
 privateRouter.delete("/invoices/:id", invoiceController.deleteInvoice);
+privateRouter.get("/dashboard", dashboardController.getDashboard);
 export default privateRouter;
