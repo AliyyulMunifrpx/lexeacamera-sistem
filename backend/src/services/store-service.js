@@ -20,6 +20,7 @@ const STORE_SELECT = {
   whatsapp: true,
   tiktok: true,
   facebook: true,
+  map_url: true,
   address: true,
   main_banner_url: true,
   terms_and_condition: true,
@@ -35,6 +36,7 @@ const OPTIONAL_TEXT_FIELDS = [
   "whatsapp",
   "tiktok",
   "facebook",
+  "map_url",
   "address",
 ];
 
@@ -187,6 +189,7 @@ const createStore = async (request) => {
             whatsapp: emptyToNull(req.whatsapp),
             tiktok: emptyToNull(req.tiktok),
             facebook: emptyToNull(req.facebook),
+            map_url: emptyToNull(req.map_url),
             address: emptyToNull(req.address),
           },
           select: STORE_SELECT,

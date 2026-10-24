@@ -20,6 +20,7 @@ const STORE_SELECT = {
   whatsapp: true,
   tiktok: true,
   facebook: true,
+  map_url: true,
   address: true,
   main_banner_url: true,
   terms_and_condition: true,

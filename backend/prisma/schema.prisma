@@ -78,6 +78,7 @@ model Store {
   tiktok              String?
   facebook            String?
   address             String?
+  map_url             String?
   main_banner_url     String?
   terms_and_condition String  @db.Text
 }
