@@ -34,6 +34,7 @@ const TEXT_FIELDS = [
   "tiktok",
   "facebook",
   "address",
+  "map_url",
 ];
 
 const INPUT_CLASS =
@@ -46,6 +47,7 @@ const INITIAL_VALUES = {
   tiktok: "",
   facebook: "",
   address: "",
+  map_url: "",
 };
 function getStoreValues(store) {
   return {
@@ -56,6 +58,7 @@ function getStoreValues(store) {
     tiktok: store.tiktok ?? "",
     facebook: store.facebook ?? "",
     address: store.address ?? "",
+    map_url: store.map_url ?? "",
   };
 }
 
@@ -691,6 +694,31 @@ export default function EditStorePage() {
 
             <p className="mt-1 text-right text-xs text-second/50">
               {values.address.length}/255
+            </p>
+          </div>
+
+          <div>
+            <label
+              htmlFor="store-map-url"
+              className="mb-2 block text-sm font-medium"
+            >
+              Link Google Maps
+            </label>
+
+            <input
+              id="store-map-url"
+              name="map_url"
+              type="url"
+              value={values.map_url}
+              onChange={handleChange}
+              maxLength={500}
+              disabled={isSaving}
+              placeholder="https://maps.app.goo.gl/..."
+              className={INPUT_CLASS}
+            />
+
+            <p className="mt-1 text-right text-xs text-second/50">
+              {values.map_url.length}/500
             </p>
           </div>
         </section>

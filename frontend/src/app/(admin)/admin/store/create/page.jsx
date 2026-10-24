@@ -34,6 +34,7 @@ const INITIAL_VALUES = {
   tiktok: "",
   facebook: "",
   address: "",
+  map_url: "",
 };
 
 const INPUT_CLASS =
@@ -326,6 +327,7 @@ export default function CreateStorePage() {
       "tiktok",
       "facebook",
       "address",
+      "map_url",
     ]) {
       const value = values[field].trim();
 
@@ -584,6 +586,31 @@ export default function CreateStorePage() {
 
             <p className="mt-1 text-right text-xs text-second/50">
               {values.address.length}/255
+            </p>
+          </div>
+
+          <div>
+            <label
+              htmlFor="store-map-url"
+              className="mb-2 block text-sm font-medium"
+            >
+              Link Google Maps
+            </label>
+
+            <input
+              id="store-map-url"
+              name="map_url"
+              type="url"
+              value={values.map_url}
+              onChange={handleChange}
+              maxLength={500}
+              disabled={createMutation.isPending}
+              placeholder="https://maps.app.goo.gl/..."
+              className={INPUT_CLASS}
+            />
+
+            <p className="mt-1 text-right text-xs text-second/50">
+              {values.map_url.length}/500
             </p>
           </div>
         </section>

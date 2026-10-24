@@ -6,6 +6,7 @@ import Image from "next/image.js";
 import {
   FiAlertCircle,
   FiEdit,
+  FiExternalLink,
   FiFacebook,
   FiFileText,
   FiImage,
@@ -24,6 +25,13 @@ import { useGetStore } from "../../../features/store/hooks.js";
 
 const FOCUS_RING =
   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-second";
+
+function isEmbeddableMapUrl(url) {
+  return (
+    typeof url === "string" &&
+    url.startsWith("https://www.google.com/maps/embed")
+  );
+}
 
 export default function StorePage() {
   const query = useGetStore();
@@ -239,6 +247,37 @@ export default function StorePage() {
             <p className="mt-4 whitespace-pre-wrap break-words text-sm leading-7 text-second">
               {store.address || "Alamat belum diisi"}
             </p>
+
+            <div className="mt-4 border-t border-second/10 pt-4">
+              <p className="text-xs text-second/60">Lokasi di peta</p>
+
+              {isEmbeddableMapUrl(store.map_url) ? (
+                <div className="mt-2 aspect-video w-full overflow-hidden rounded-2xl border border-second/10 bg-second/5">
+                  <iframe
+                    src={store.map_url}
+                    title={`Peta lokasi ${store.name}`}
+                    loading="lazy"
+                    allowFullScreen
+                    referrerPolicy="no-referrer-when-downgrade"
+                    className="h-full w-full border-0"
+                  />
+                </div>
+              ) : store.map_url ? (
+                <a
+                  href={store.map_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`mt-2 inline-flex max-w-full items-center gap-2 rounded-full border border-second/30 px-4 py-2 text-sm font-semibold text-second transition-colors hover:bg-second/5 ${FOCUS_RING}`}
+                >
+                  <FiExternalLink size={16} className="shrink-0" />
+                  <span className="truncate">Buka di Google Maps</span>
+                </a>
+              ) : (
+                <p className="mt-2 text-sm font-semibold text-second/40">
+                  Link peta belum diisi
+                </p>
+              )}
+            </div>
           </section>
 
           <section className="min-w-0 rounded-2xl border border-second/10 p-4 sm:p-6 md:col-span-2">
