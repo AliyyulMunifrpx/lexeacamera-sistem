@@ -11,8 +11,9 @@ import CamerasHomePage from "../components/public/home/cameras-page.jsx";
 const TABS = [
   { key: "toko", label: "Toko" },
   { key: "produk", label: "Produk" },
-  { key: "kategori", label: "Kategori" },
   { key: "kontak", label: "Kontak" },
+
+  { key: "S&K", label: "S&K" },
 ];
 
 const PRODUCT_TAB_INDEX = 1;

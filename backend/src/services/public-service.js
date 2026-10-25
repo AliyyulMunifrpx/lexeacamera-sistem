@@ -201,7 +201,11 @@ const getPublicHome = async (query = {}) => {
           take: HOME_MAX_CATEGORIES,
         }),
         prisma.camera.findMany({
-          where: ACTIVE,
+          where: {
+            ...ACTIVE,
+            promo: false, // 🎯 Filter bukan promo
+            best_selling: false, // 🎯 Filter bukan best selling
+          },
           select: CARD_SELECT,
           orderBy: ORDER_BY.newest,
           take: HOME_GENERAL_SIZE,

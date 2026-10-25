@@ -3,7 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { FiLoader, FiSearch, FiX } from "react-icons/fi";
 
-import { useGetCameras } from "../../../app/features/public/hooks.js";
+import {
+  useGetCameras,
+  useGetHome,
+} from "../../../app/features/public/hooks.js";
 import { useGetCategories } from "../../../app/features/categories/hooks.js";
 import { normalizeApiError } from "../../../lib/api/errors.js";
 import notify from "../../../lib/notify.js";
@@ -58,8 +61,9 @@ export default function CamerasHomePage({ searchRequest }) {
   const [priceRange, setPriceRange] = useState({ min: "", max: "" });
   const [page, setPage] = useState(1);
 
-  const { data: categories = [] } = useGetCategories();
+  const { data: store } = useGetHome();
 
+  const categories = store?.categories || [];
   const {
     data,
     isLoading,
@@ -188,28 +192,6 @@ export default function CamerasHomePage({ searchRequest }) {
 
   return (
     <div ref={topRef} className="w-full scroll-mt-16 space-y-4">
-      {/* Kondisi */}
-      <div className="flex gap-2">
-        {CONDITIONS.map((item) => {
-          const isActive = condition === item.value;
-
-          return (
-            <button
-              key={item.value}
-              type="button"
-              onClick={() => changeCondition(item.value)}
-              className={`rounded-full border px-4 py-1.5 text-xs font-semibold transition-colors ${
-                isActive
-                  ? "border-second bg-second text-primary"
-                  : "border-second/20 text-second hover:bg-second/5"
-              }`}
-            >
-              {item.label}
-            </button>
-          );
-        })}
-      </div>
-
       {/* Kategori + urutan */}
       <div className="grid grid-cols-2 gap-2">
         <select
@@ -281,18 +263,33 @@ export default function CamerasHomePage({ searchRequest }) {
 
       {/* Ringkasan hasil */}
       <div className="flex items-center justify-between text-xs text-second/60">
-        <p className="flex items-center gap-2">
-          {isFetching && !isLoading && (
-            <FiLoader className="animate-spin" size={13} />
-          )}
-          {paging ? `${paging.total} kamera ditemukan` : "\u00A0"}
-        </p>
+        {/* Kondisi */}
+        <div className="flex gap-2">
+          {CONDITIONS.map((item) => {
+            const isActive = condition === item.value;
+
+            return (
+              <button
+                key={item.value}
+                type="button"
+                onClick={() => changeCondition(item.value)}
+                className={`rounded-full border px-4 py-1.5 text-xs font-semibold transition-colors ${
+                  isActive
+                    ? "border-second bg-second text-primary"
+                    : "border-second/20 text-second hover:bg-second/5"
+                }`}
+              >
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
 
         {hasActiveFilters && (
           <button
             type="button"
             onClick={resetFilters}
-            className="font-semibold text-second underline"
+            className="font-semibold text-primary bg-second2 px-4 py-1.5 rounded-full hover:bg-second2/80"
           >
             Reset filter
           </button>
