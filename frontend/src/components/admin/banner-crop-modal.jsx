@@ -3,34 +3,35 @@
 import { useCallback, useState } from "react";
 import Cropper from "react-easy-crop";
 import { FiX, FiZoomIn, FiAlertCircle } from "react-icons/fi";
-
-async function cropImageTo16x9(file, cropArea) {
+async function cropImageTo3x1(file, cropArea) {
   const bitmap = await createImageBitmap(file);
 
   try {
-    // Pertahankan rasio 16:9 dari area hasil crop.
+    // 💡 Ubah target rasio ke 3:1
     let sourceWidth = cropArea.width;
-    let sourceHeight = (sourceWidth * 9) / 16;
+    let sourceHeight = sourceWidth / 3; // Karena 3:1 (tinggi = lebar / 3)
 
     if (sourceHeight > cropArea.height) {
       sourceHeight = cropArea.height;
-      sourceWidth = (sourceHeight * 16) / 9;
+      sourceWidth = sourceHeight * 3;
     }
 
     const sourceX = cropArea.x + (cropArea.width - sourceWidth) / 2;
-
     const sourceY = cropArea.y + (cropArea.height - sourceHeight) / 2;
 
-    // Dimensi output selalu kelipatan 16 × 9 dan tidak di-upscale.
-    const scale = Math.floor(Math.min(sourceWidth / 16, sourceHeight / 9));
+    // Dimensi output diset ke kelipatan 3000 × 1000 (atau proporsi 3:1)
+    const scale = Math.floor(Math.min(sourceWidth / 3000, sourceHeight / 1000));
 
-    if (scale < 1) {
-      throw new Error("Resolusi gambar terlalu kecil untuk di-crop.");
-    }
+    // Kalau gambarnya kekecilan, minimal scale 1 atau pakai pembagi dasar misal / 3 dan / 1
+    const baseScale = Math.max(
+      1,
+      Math.floor(Math.min(sourceWidth / 3, sourceHeight / 1)),
+    );
 
     const canvas = document.createElement("canvas");
-    canvas.width = scale * 16;
-    canvas.height = scale * 9;
+    // Target ukuran final yang rapi untuk 3:1 (misal 3000 x 1000 atau skala proporsionalnya)
+    canvas.width = baseScale * 3;
+    canvas.height = baseScale * 1;
 
     const context = canvas.getContext("2d");
 
@@ -102,7 +103,7 @@ export default function BannerCropModal({
     setError("");
 
     try {
-      const croppedFile = await cropImageTo16x9(sourceFile, cropArea);
+      const croppedFile = await cropImageTo3x1(sourceFile, cropArea);
 
       onConfirm(croppedFile);
     } catch (error) {
@@ -136,7 +137,7 @@ export default function BannerCropModal({
             </h2>
 
             <p className="mt-1 text-xs text-second/60">
-              Geser gambar dan atur zoom. Rasio hasil selalu 16:9.
+              Geser gambar dan atur zoom. Rasio hasil selalu 3:1.
             </p>
           </div>
 
@@ -156,7 +157,7 @@ export default function BannerCropModal({
             image={imageSrc}
             crop={crop}
             zoom={zoom}
-            aspect={16 / 9}
+            aspect={3 / 1}
             minZoom={1}
             maxZoom={3}
             onCropChange={setCrop}

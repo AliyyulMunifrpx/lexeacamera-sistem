@@ -71,13 +71,13 @@ function ImageField({
         {required && <span className="ml-1">*</span>}
       </label>
 
-      <div className="flex aspect-[16/9] items-center justify-center overflow-hidden rounded-xl border border-second/20 bg-second/5 p-3">
+      <div className="flex aspect-[3/1] items-center justify-center overflow-hidden rounded-xl border border-second/20 bg-second/5 p-3">
         {preview ? (
           <Image
             src={preview}
             alt={`Pratinjau ${label.toLowerCase()}`}
-            width={1920}
-            height={1080}
+            width={3000}
+            height={1000}
             unoptimized
             className="h-full w-full object-contain"
           />

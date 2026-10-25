@@ -127,7 +127,7 @@ function ImageField({
   disabled,
   isLogo = false,
 }) {
-  const aspectClass = isLogo ? "aspect-square" : "aspect-[16/9]";
+  const aspectClass = isLogo ? "aspect-square" : "aspect-[3/1]";
 
   return (
     <div className="min-w-0">
@@ -140,7 +140,7 @@ function ImageField({
           <Image
             src={preview}
             alt={`Pratinjau ${label.toLowerCase()}`}
-            width={isLogo ? 512 : 1920}
+            width={isLogo ? 512 : 3000}
             height={isLogo ? 512 : 1080}
             unoptimized
             className="h-full w-full object-contain"
@@ -149,8 +149,8 @@ function ImageField({
           <Image
             src={currentImage}
             alt={label}
-            width={isLogo ? 512 : 1920}
-            height={isLogo ? 512 : 1080}
+            width={isLogo ? 512 : 3000}
+            height={isLogo ? 512 : 1000}
             unoptimized
             className="h-full w-full object-contain"
           />

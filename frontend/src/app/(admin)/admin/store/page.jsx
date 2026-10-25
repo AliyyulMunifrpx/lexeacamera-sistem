@@ -165,14 +165,14 @@ export default function StorePage() {
         }`}
       >
         <section className="flex flex-col items-center">
-          <div className="aspect-video w-full overflow-hidden rounded-2xl border border border-second/30 bg-grad">
+          <div className="aspect-[3/1] w-full overflow-hidden rounded-2xl">
             {store.main_banner_url ? (
               <Image
                 src={store.main_banner_url}
                 alt="Banner utama toko"
-                width={1920}
-                height={1080}
-                className="h-full w-full object-cover"
+                width={3000}
+                height={1000}
+                className="object-cover"
               />
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-2 text-primary/70">
@@ -184,7 +184,7 @@ export default function StorePage() {
             )}
           </div>
 
-          <div className="relative -mt-8 flex size-32 shrink-0 items-center justify-center overflow-hidden rounded-full border-4 border-primary bg-primary text-second ring-1 ring-second/10">
+          <div className="relative -mt-12 flex size-32 shrink-0 items-center justify-center overflow-hidden rounded-full border-4 border-primary bg-primary text-second ring-1 ring-second/10">
             {store.logo_url ? (
               <Image
                 src={store.logo_url}

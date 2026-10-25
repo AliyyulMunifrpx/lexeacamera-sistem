@@ -41,8 +41,8 @@ const assertBucket = () => {
 const processBanner = async (file) => {
   try {
     return await processImage(file.buffer, {
-      width: 1600,
-      height: 1600,
+      width: 1500,
+      height: 2250,
       quality: 85,
       fit: "inside",
     });
