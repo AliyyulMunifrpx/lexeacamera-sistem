@@ -560,7 +560,7 @@ export default function CreateCameraPage() {
           )}
         </section>
 
-        <div className="flex flex-col-reverse gap-3 border-t border-second/10 pt-5 sm:flex-row sm:justify-end">
+        <div className="flex flex-col-reverse gap-3 border-t border border-second/30 pt-5 sm:flex-row sm:justify-end">
           <button
             type="button"
             onClick={() => router.back()}

@@ -258,28 +258,28 @@ export default function CategoriesPage() {
         }`}
       >
         {categories.length > 0 ? (
-          <div className="overflow-hidden rounded-2xl border border-second/10">
+          <div className="overflow-hidden rounded-2xl border border border-second/30">
             <div className="overflow-x-auto">
               <table className="min-w-full text-left">
-                <thead className="bg-second/5">
+                <thead className="bg-grad">
                   <tr>
                     <th
                       scope="col"
-                      className="px-4 py-4 text-sm font-semibold text-second/60"
+                      className="px-4 py-4 text-sm font-semibold text-primary"
                     >
                       Nama kategori
                     </th>
 
                     <th
                       scope="col"
-                      className="whitespace-nowrap px-4 py-4 text-sm font-semibold text-second/60"
+                      className="whitespace-nowrap px-4 py-4 text-sm font-semibold text-primary"
                     >
                       Dibuat
                     </th>
 
                     <th
                       scope="col"
-                      className="px-4 py-4 text-right text-sm font-semibold text-second/60"
+                      className="px-4 py-4 text-right text-sm font-semibold text-primary"
                     >
                       Aksi
                     </th>
@@ -287,14 +287,14 @@ export default function CategoriesPage() {
                 </thead>
 
                 <tbody className="divide-y divide-second/10">
-                  {categories.map((category) => (
+                  {categories.map((category, i) => (
                     <tr
                       key={category.id}
-                      className="transition-colors hover:bg-second/5"
+                      className={`transition-colors hover:bg-second/25 ${i % 2 === 0 ? "bg-second/15" : ""}`}
                     >
                       <td className="px-4 py-4">
                         <div className="flex min-w-0 items-center gap-4">
-                          <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-second/5 text-second">
+                          <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-grad text-primary">
                             <FiTag size={16} />
                           </div>
 
@@ -328,7 +328,7 @@ export default function CategoriesPage() {
                               categoryToDelete?.id === category.id
                             }
                             aria-label={`Hapus kategori ${category.name}`}
-                            className={`inline-flex h-10 items-center justify-center gap-2 rounded-full border border-second/30 px-4 text-xs font-semibold text-second transition-colors hover:bg-second/5 disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`}
+                            className={`inline-flex h-10 items-center justify-center gap-2 rounded-full bg-second2 px-4 text-xs font-semibold text-primary transition-colors hover:bg-second2/80 disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`}
                           >
                             <FiTrash2 size={16} />
                             Hapus

@@ -111,9 +111,9 @@ function ProfileMenu({ onClose }) {
   return (
     <div
       id="admin-profile-menu"
-      className="absolute bottom-full left-1/2 z-20 mb-2 w-[85%] -translate-x-1/2 overflow-hidden rounded-2xl border border-second/30 bg-second p-2 shadow-xl shadow-second/10"
+      className="absolute bottom-full left-1/2 z-20 mb-2 w-[85%] -translate-x-1/2 overflow-hidden rounded-2xl  bg-second p-2 shadow-xl shadow-second/10"
     >
-      <div className="border-b border-second/10 px-4 py-2">
+      <div className="  px-4 py-2">
         <p className="text-xs font-medium text-primary/40">Akun</p>
       </div>
 
@@ -155,17 +155,17 @@ function Sidebar({ mobileOpen, onClose }) {
   const { data: currentUser, isLoading: isUserLoading } = useGetCurrentUser();
   return (
     <aside
-      className={`fixed inset-y-0 left-0 z-50 flex h-dvh w-64 flex-col border-r border-second/10 bg-grad transition-transform duration-300 ease-in-out lg:sticky lg:top-0 lg:translate-x-0 ${
+      className={`fixed inset-y-0 left-0 z-50 flex h-dvh w-64 flex-col   bg-grad transition-transform duration-300 ease-in-out lg:sticky lg:top-0 lg:translate-x-0 ${
         mobileOpen ? "translate-x-0" : "-translate-x-full"
       }`}
     >
-      <div className="flex h-16 shrink-0 items-center justify-between border-b border-second/10 px-4">
+      <div className="flex h-16 shrink-0 items-center justify-between   px-4">
         <Link
           href="/admin"
           onClick={onClose}
           className="flex items-center gap-2"
         >
-          <div className="flex size-8 items-center justify-center rounded-lg text-primary">
+          <div className="flex size-8 items-center justify-center rounded-full overflow-hidden text-primary">
             {store ? (
               <Image
                 src={store.logo_url}
@@ -218,7 +218,7 @@ function Sidebar({ mobileOpen, onClose }) {
         </nav>
       </div>
 
-      <div className="relative shrink-0 border-t border-second/10 p-4">
+      <div className="relative shrink-0 p-4">
         {profileOpen && <ProfileMenu onClose={() => setProfileOpen(false)} />}
 
         <button
@@ -288,7 +288,7 @@ export default function AdminShell({ children }) {
         <Sidebar mobileOpen={mobileOpen} onClose={closeMobileSidebar} />
 
         <div className="flex min-h-dvh min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-4 border-b border-second/10 px-4 text-second bg-primary sm:px-8">
+          <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-4   px-4 text-second bg-primary sm:px-8">
             <button
               type="button"
               aria-label="Buka menu navigasi"

@@ -254,7 +254,7 @@ export default function InvoicesPage() {
               <Link key={invoice.id} href={`/admin/invoices/${invoice.id}`}>
                 <article
                   key={invoice.id}
-                  className="rounded-2xl border border-second/10 p-4 transition-colors hover:border-second/30 sm:p-6"
+                  className="rounded-2xl border border-second/30 p-4 transition-colors hover:border-second/50 sm:p-6"
                 >
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
@@ -270,7 +270,7 @@ export default function InvoicesPage() {
                     <span
                       className={`inline-flex w-fit shrink-0 items-center rounded-full px-4 py-1 text-xs font-semibold ${
                         invoice.is_final
-                          ? "bg-second text-primary"
+                          ? "bg-grad text-primary"
                           : "border border-second/30 text-second/60"
                       }`}
                     >
@@ -278,9 +278,9 @@ export default function InvoicesPage() {
                     </span>
                   </div>
 
-                  <div className="mt-4 grid grid-cols-1 gap-4 border-t border-second/10 pt-4 sm:grid-cols-2">
+                  <div className="mt-4 grid grid-cols-1 gap-4 border-t border-second/30 pt-4 sm:grid-cols-2">
                     <div className="flex min-w-0 items-start gap-4">
-                      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-second/5 text-second">
+                      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-grad text-primary">
                         <FiUser size={16} />
                       </div>
 
@@ -300,7 +300,7 @@ export default function InvoicesPage() {
                     </div>
 
                     <div className="flex min-w-0 items-start gap-4">
-                      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-second/5 text-second">
+                      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-grad text-primary">
                         <FiPackage size={16} />
                       </div>
 
@@ -314,7 +314,7 @@ export default function InvoicesPage() {
                     </div>
 
                     <div className="flex min-w-0 items-start gap-4">
-                      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-second/5 text-second">
+                      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-grad text-primary">
                         <FiCreditCard size={16} />
                       </div>
 
@@ -330,7 +330,7 @@ export default function InvoicesPage() {
                     </div>
 
                     <div className="flex min-w-0 items-start gap-4">
-                      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-second/5 text-second">
+                      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-grad text-primary">
                         <FiTruck size={16} />
                       </div>
 
@@ -344,7 +344,7 @@ export default function InvoicesPage() {
                     </div>
                   </div>
 
-                  <div className="mt-4 grid grid-cols-1 gap-4 rounded-2xl bg-grad p-4 sm:grid-cols-2">
+                  <div className="mt-4 grid grid-cols-1 gap-4 rounded-2xl bg-second p-4 sm:grid-cols-2">
                     <div>
                       <p className="text-xs text-primary/60">
                         Subtotal sebelum diskon
@@ -427,7 +427,7 @@ export default function InvoicesPage() {
       </div>
 
       {totalInvoices > 0 && (
-        <div className="flex flex-col gap-4 border-t border-second/10 pt-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-4 border-t border-second/30 pt-5 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-second/60">
             Halaman {safePage} dari {totalPages}
           </p>

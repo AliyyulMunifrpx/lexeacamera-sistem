@@ -32,7 +32,7 @@ export default function MarketplaceCard({
     <article className="group flex h-full flex-col overflow-hidden rounded-2xl border border-second/30 bg-primary p-4 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-second/25 hover:shadow-md">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-4">
-          <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-second/30 bg-white p-2 shadow-inner transition-transform group-hover:scale-105">
+          <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-xl shadow-inner transition-transform group-hover:scale-105">
             {marketplace.logo_url ? (
               <Image
                 src={marketplace.logo_url}

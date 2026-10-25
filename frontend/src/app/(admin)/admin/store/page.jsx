@@ -165,7 +165,7 @@ export default function StorePage() {
         }`}
       >
         <section className="flex flex-col items-center">
-          <div className="aspect-video w-full overflow-hidden rounded-2xl border border-second/10 bg-grad">
+          <div className="aspect-video w-full overflow-hidden rounded-2xl border border border-second/30 bg-grad">
             {store.main_banner_url ? (
               <Image
                 src={store.main_banner_url}
@@ -184,7 +184,7 @@ export default function StorePage() {
             )}
           </div>
 
-          <div className="relative -mt-8 flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-full border-4 border-primary bg-primary text-second ring-1 ring-second/10">
+          <div className="relative -mt-8 flex size-32 shrink-0 items-center justify-center overflow-hidden rounded-full border-4 border-primary bg-primary text-second ring-1 ring-second/10">
             {store.logo_url ? (
               <Image
                 src={store.logo_url}
@@ -204,7 +204,7 @@ export default function StorePage() {
         </section>
 
         <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-2">
-          <section className="min-w-0 rounded-2xl border border-second/10 p-4 sm:p-6 h-full">
+          <section className="min-w-0 rounded-2xl border border border-second/30 p-4 sm:p-6 h-full">
             <div className="flex items-center gap-2">
               <FiMessageCircle size={16} className="shrink-0 text-second" />
               <h2 className="text-lg font-bold text-second">
@@ -218,7 +218,7 @@ export default function StorePage() {
                   key={label}
                   className="flex min-w-0 items-center gap-4 py-4"
                 >
-                  <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-second/5 text-second">
+                  <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-grad text-primary">
                     <Icon size={16} />
                   </div>
 
@@ -238,7 +238,7 @@ export default function StorePage() {
             </ul>
           </section>
 
-          <section className="h-full min-w-0 rounded-2xl border border-second/10 p-4 sm:p-6">
+          <section className="h-full min-w-0 rounded-2xl border border border-second/30 p-4 sm:p-6">
             <div className="flex items-center gap-2">
               <FiMapPin size={16} className="shrink-0 text-second" />
               <h2 className="text-lg font-bold text-second">Alamat toko</h2>
@@ -248,11 +248,11 @@ export default function StorePage() {
               {store.address || "Alamat belum diisi"}
             </p>
 
-            <div className="mt-4 border-t border-second/10 pt-4">
+            <div className="mt-4 pt-4">
               <p className="text-xs text-second/60">Lokasi di peta</p>
 
               {isEmbeddableMapUrl(store.map_url) ? (
-                <div className="mt-2 aspect-video w-full overflow-hidden rounded-2xl border border-second/10 bg-second/5">
+                <div className="mt-2 aspect-video w-full overflow-hidden rounded-2xl ">
                   <iframe
                     src={store.map_url}
                     title={`Peta lokasi ${store.name}`}
@@ -280,7 +280,7 @@ export default function StorePage() {
             </div>
           </section>
 
-          <section className="min-w-0 rounded-2xl border border-second/10 p-4 sm:p-6 md:col-span-2">
+          <section className="min-w-0 rounded-2xl border border border-second/30 p-4 sm:p-6 md:col-span-2">
             <div className="flex items-center gap-2">
               <FiFileText size={16} className="shrink-0 text-second" />
               <h2 className="text-lg font-bold text-second">

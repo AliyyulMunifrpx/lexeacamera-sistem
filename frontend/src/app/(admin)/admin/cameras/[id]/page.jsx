@@ -243,13 +243,20 @@ export default function CameraDetailPage() {
                     }`}
                   >
                     {image.image_url ? (
-                      <Image
-                        width={500}
-                        height={500}
-                        src={image.image_url}
-                        alt={`${camera.name} ${index + 1}`}
-                        className="h-full w-full object-cover"
-                      />
+                      <div className="relative h-full w-full">
+                        {image.is_primary && (
+                          <p className="absolute inset-0 z-20 bg-grad h-fit text-primary">
+                            Utama
+                          </p>
+                        )}
+
+                        <Image
+                          fill
+                          src={image.image_url}
+                          alt={`${camera.name} ${index + 1}`}
+                          className="z-10 h-full w-full object-cover"
+                        />
+                      </div>
                     ) : (
                       <FiCamera className="text-second/30" size={22} />
                     )}
@@ -279,7 +286,7 @@ export default function CameraDetailPage() {
 
           <div className="grid grid-cols-2 gap-5 border-y border-second/30 py-5">
             <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-xl bg-second/5 text-second">
+              <div className="flex size-10 items-center justify-center rounded-full bg-grad text-primary">
                 <FiPackage size={20} />
               </div>
 
@@ -292,7 +299,7 @@ export default function CameraDetailPage() {
             </div>
 
             <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-xl bg-second/5 text-second">
+              <div className="flex size-10 items-center justify-center rounded-full bg-grad text-primary">
                 <FiTag size={20} />
               </div>
 
@@ -309,8 +316,6 @@ export default function CameraDetailPage() {
             <DetailItem label="Kategori">
               {camera.category?.name ?? camera.category_id}
             </DetailItem>
-
-            <DetailItem label="ID kamera">{camera.id}</DetailItem>
 
             <DetailItem label="Tanggal ditambahkan">
               {camera.created_at
@@ -340,25 +345,24 @@ export default function CameraDetailPage() {
           {marketplaces.length > 0 && (
             <div className="space-y-3 border-t border-second/30 pt-5">
               <h3 className="font-semibold text-second">Marketplace</h3>
-
-              {marketplaces.map((item, index) => (
-                <a
-                  key={item.id ?? item.marketplace_id ?? index}
-                  href={item.product_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-between gap-3 rounded-xl border border-second/30 p-4 text-sm text-second transition-colors hover:bg-second/[0.03]"
-                >
-                  <span className="break-all">
-                    {item.marketplace?.name ?? item.product_url}
-                  </span>
-
-                  <FiExternalLink
-                    size={17}
-                    className="shrink-0 text-second/50"
-                  />
-                </a>
-              ))}
+              <div className="flex gap-4">
+                {marketplaces.map((item, index) => (
+                  <Link
+                    key={item.id ?? item.marketplace_id ?? index}
+                    href={item.product_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between gap-3 rounded-xl  p-4 text-sm text-second transition-colors hover:bg-second/[0.03]"
+                  >
+                    <Image
+                      alt={`${item.marketplace.name} logo`}
+                      src={item.marketplace.logo_url}
+                      width={50}
+                      height={50}
+                    ></Image>
+                  </Link>
+                ))}
+              </div>
             </div>
           )}
 

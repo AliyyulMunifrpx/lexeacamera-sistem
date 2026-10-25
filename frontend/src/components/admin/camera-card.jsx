@@ -14,7 +14,10 @@ export default function CameraCard({ camera }) {
   const image = camera.images?.[0];
   console.log(image);
   return (
-    <Link href={`/admin/cameras/${camera.id}`} className="group overflow-hidden rounded-2xl border border-second/30 bg-primary transition duration-200 hover:-translate-y-1 hover:border-second/50 hover:shadow-lg hover:shadow-second/5">
+    <Link
+      href={`/admin/cameras/${camera.id}`}
+      className="group overflow-hidden rounded-2xl border border-second/30 bg-primary transition duration-200 hover:-translate-y-1 hover:border-second/50 hover:shadow-lg hover:shadow-second/5"
+    >
       <div className="relative aspect-[4/3] overflow-hidden bg-second/5">
         {image ? (
           <Image
@@ -51,7 +54,7 @@ export default function CameraCard({ camera }) {
           </p>
         </div>
 
-        <div className="flex items-center justify-between border-t border-second/10 pt-3">
+        <div className="flex items-center justify-between border-t border border-second/30 pt-3">
           <div className="flex items-center gap-2 text-sm text-second/60">
             <FiPackage size={16} />
             <span>Stok tersedia</span>

@@ -29,7 +29,7 @@ export default function DeleteMarketplaceModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="delete-marketplace-title"
-        className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-2xl border border-second/10 bg-primary p-6 shadow-2xl"
+        className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-2xl border border border-second/30 bg-primary p-6 shadow-2xl"
       >
         <div className="flex items-start justify-between gap-4">
           <div
@@ -94,7 +94,7 @@ export default function DeleteMarketplaceModal({
                   key={camera.id}
                   href={`/admin/cameras/${camera.id}`}
                   onClick={onClose}
-                  className="flex items-center justify-between gap-3 rounded-xl border border-second/10 p-3 transition-colors hover:bg-second/[0.03]"
+                  className="flex items-center justify-between gap-3 rounded-xl border border border-second/30 p-3 transition-colors hover:bg-second/[0.03]"
                 >
                   <span className="min-w-0 break-words text-sm font-medium text-second">
                     {camera.name}

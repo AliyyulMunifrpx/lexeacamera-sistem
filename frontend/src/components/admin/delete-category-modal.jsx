@@ -26,7 +26,7 @@ export default function DeleteCategoryModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="delete-category-title"
-        className="w-full max-w-md rounded-2xl border border-second/10 bg-primary p-6 shadow-xl"
+        className="w-full max-w-md rounded-2xl border border border-second/30 bg-primary p-6 shadow-xl"
       >
         <div className="flex items-start justify-between gap-4">
           <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-second/5 text-second">

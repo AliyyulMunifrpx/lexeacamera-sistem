@@ -36,8 +36,13 @@ export function useUpdateMarketplace() {
     mutationKey: ["marketplaces", "update"],
     mutationFn: ({ id, formData }) => updateMarketplace(id, formData),
     onSuccess: async () => {
+      // 💡 Perbaikan: Gunakan array di dalam queryKey untuk invalidate banyak sekaligus,
+      // atau panggil invalidateQueries dua kali terpisah.
       await queryClient.invalidateQueries({
         queryKey: ["marketplaces"],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["camera"],
       });
     },
   });

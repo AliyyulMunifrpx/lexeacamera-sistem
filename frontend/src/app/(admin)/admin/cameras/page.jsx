@@ -29,7 +29,7 @@ function formatNumber(number = 0) {
 function SummaryCard({ label, value, icon: Icon }) {
   return (
     <div className="flex items-center gap-4 rounded-2xl bg-grad p-5">
-      <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-primary text-second">
+      <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-primary text-second">
         <Icon size={22} />
       </div>
       <div>
@@ -374,7 +374,7 @@ export default function CamerasPage() {
       </div>
 
       {totalCameras > 0 && (
-        <div className="flex flex-col gap-4 border-t border-second/10 pt-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-4 border-t border border-second/30 pt-5 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-second/60">
             Halaman {safePage} dari {totalPages}
           </p>

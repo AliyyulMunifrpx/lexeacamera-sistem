@@ -148,7 +148,7 @@ export default function QRCodePage() {
         </div>
       </div>
 
-      <div className="no-print flex items-start gap-4 rounded-2xl border border-second/10 bg-second/5 p-4">
+      <div className="no-print flex items-start gap-4 rounded-2xl border border border-second/30 bg-second/5 p-4">
         <FiCamera size={20} className="mt-0.5 shrink-0 text-second" />
 
         <div>
@@ -283,16 +283,6 @@ export default function QRCodePage() {
             </div>
           </div>
         </section>
-      </div>
-
-      <div className="no-print flex items-start gap-4 text-sm leading-6 text-second/60">
-        <FiExternalLink size={16} className="mt-1 shrink-0" />
-
-        <p>
-          QR code menggunakan domain yang sedang dibuka. Sebelum mencetak untuk
-          pengunjung, pastikan halaman ini dibuka melalui domain produksi, bukan
-          localhost.
-        </p>
       </div>
     </div>
   );

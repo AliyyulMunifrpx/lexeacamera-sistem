@@ -216,7 +216,7 @@ function CameraRow({ camera, showStock = false }) {
             </Tag>
           )}
 
-          {camera.best_selling && <Tag>Best seller</Tag>}
+          {camera.best_selling && <Tag tone="grad">Best seller</Tag>}
           {camera.promo && <Tag tone="grad">Promo</Tag>}
         </div>
       </Link>

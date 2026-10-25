@@ -146,7 +146,7 @@ export default function MarketplacesPage() {
             type="button"
             onClick={() => refetch()}
             disabled={isFetching}
-            className="mt-5 inline-flex items-center gap-2 rounded-full bg-second px-5 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-second/80 disabled:cursor-not-allowed disabled:opacity-50"
+            className="mt-5 inline-flex items-center gap-2 rounded-full bg-second px-5 py-3 text-sm font-semibold text-primary transition-colors hover:bg-second/80 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <FiRefreshCw
               size={16}
@@ -196,7 +196,7 @@ export default function MarketplacesPage() {
             id="marketplace-status"
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value)}
-            className="min-w-36 rounded-full border border-second/30 bg-primary px-4 py-2 text-sm text-second outline-none transition-colors focus:border-second"
+            className="min-w-36 rounded-full border border-second/30 bg-primary px-4 py-3 text-sm text-second outline-none transition-colors focus:border-second"
           >
             <option value="all">Semua</option>
             <option value="active">Aktif</option>
@@ -210,7 +210,7 @@ export default function MarketplacesPage() {
               onClick={() => refetch()}
               disabled={isFetching}
               aria-label="Perbarui data dashboard"
-              className={`inline-flex px-4 py-2 items-center gap-2 rounded-full border border-second/30 px-4 text-sm font-semibold text-second transition-colors hover:bg-second/5 disabled:opacity-60 ${FOCUS_RING}`}
+              className={`inline-flex px-4 py-3 items-center gap-2 rounded-full border border-second/30 px-4 text-sm font-semibold text-second transition-colors hover:bg-second/5 disabled:opacity-60 ${FOCUS_RING}`}
             >
               <FiRefreshCw
                 size={16}
@@ -222,7 +222,7 @@ export default function MarketplacesPage() {
               type="button"
               href={"/admin/marketplaces/create"}
               disabled={isPending}
-              className="inline-flex items-center justify-center gap-2 rounded-full bg-second px-4 w-full md:w-fit py-2 text-sm font-semibold text-primary transition-colors hover:bg-second/80 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-2 rounded-full bg-second px-4 w-full md:w-fit py-3 text-sm font-semibold text-primary transition-colors hover:bg-second/80 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isPending ? (
                 <FiLoader className="animate-spin" size={18} />
@@ -296,7 +296,7 @@ export default function MarketplacesPage() {
               <button
                 type="button"
                 onClick={() => setStatusFilter("all")}
-                className="mt-4 rounded-full bg-second px-5 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-second/80"
+                className="mt-4 rounded-full bg-second px-5 py-3 text-sm font-semibold text-primary transition-colors hover:bg-second/80"
               >
                 Tampilkan semua
               </button>
@@ -305,7 +305,7 @@ export default function MarketplacesPage() {
             {statusFilter === "all" && (
               <Link
                 href="/admin/marketplaces/create"
-                className="mt-4 inline-flex items-center gap-2 rounded-full bg-second px-5 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-second/80"
+                className="mt-4 inline-flex items-center gap-2 rounded-full bg-second px-5 py-3 text-sm font-semibold text-primary transition-colors hover:bg-second/80"
               >
                 <FiPlus size={16} />
                 Tambah Toko Online

@@ -257,7 +257,7 @@ export default function BannersPage() {
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 border-t border-second/10 pt-4">
+                  <div className="grid grid-cols-2 gap-3 border-t border border-second/30 pt-4">
                     <button
                       type="button"
                       onClick={() => handleEdit(banner)}
