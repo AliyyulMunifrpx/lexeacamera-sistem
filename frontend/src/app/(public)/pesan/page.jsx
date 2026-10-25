@@ -374,7 +374,7 @@ function OrderReceipt({ order }) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-md space-y-4 p-4 pb-8">
+    <div className="mx-auto h-[100dvh] w-full max-w-md space-y-4 p-4 pb-8">
       <div className="flex flex-col items-center gap-2 pt-8 text-center">
         <div className="flex size-12 items-center justify-center rounded-full bg-second text-primary">
           <FiCheck size={24} />

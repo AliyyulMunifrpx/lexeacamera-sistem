@@ -2,7 +2,7 @@ import rateLimit from "express-rate-limit";
 
 // skip: dimatikan saat test supaya ratusan request test nggak kena batas
 export const createOrderLimiter = ({
-  limit = 10,
+  limit = 3,
   windowMs = 15 * 60 * 1000,
   skip = () => process.env.NODE_ENV === "test",
 } = {}) =>
