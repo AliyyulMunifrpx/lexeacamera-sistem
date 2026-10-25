@@ -3,11 +3,17 @@ import { prisma } from "../lib/database.js";
 import {
   getAllPublicCameraValidation,
   getPublicCameraValidation,
+  getPublicHomeValidation,
   getPublicStoreValidation,
 } from "../validation/public-validation.js";
 import { validate } from "../validation/validation.js";
+import bannerService from "./banner-service.js";
 
 const PER_PAGE = 20;
+
+// Jumlah item di beranda
+const HOME_GENERAL_SIZE = 12;
+const HOME_FEATURED_SIZE = 4;
 
 // Kamera yang di-soft-delete nggak pernah terlihat publik
 const ACTIVE = { is_deleted: false };
@@ -78,6 +84,12 @@ const ORDER_BY = {
   price_desc: [{ price: "desc" }, { created_at: "desc" }, { id: "asc" }],
 };
 
+// Foto utama jadi satu field `image_url` supaya frontend nggak perlu menggali array
+const toCard = ({ images, ...camera }) => ({
+  ...camera,
+  image_url: images[0]?.image_url ?? null,
+});
+
 const getPublicStore = async (query = {}) => {
   validate(getPublicStoreValidation, query);
 
@@ -132,10 +144,7 @@ const getAllPublicCamera = async (query) => {
   ]);
 
   return {
-    data: cameras.map(({ images, ...camera }) => ({
-      ...camera,
-      image_url: images[0]?.image_url ?? null,
-    })),
+    data: cameras.map(toCard),
     paging: {
       page: req.page,
       per_page: PER_PAGE,
@@ -170,4 +179,53 @@ const getPublicCamera = async (request) => {
   };
 };
 
-export default { getPublicStore, getAllPublicCamera, getPublicCamera };
+// Semua data beranda dalam satu request. Toko, kamera umum, promo, dan best
+// seller dibaca dalam satu transaksi; banner memakai query banner yang sama
+// dengan GET /banners supaya urutan dan batasnya selalu sama.
+const getPublicHome = async (query = {}) => {
+  validate(getPublicHomeValidation, query);
+
+  const [[store, general, promo, bestSelling], banners] = await Promise.all([
+    prisma.$transaction([
+      prisma.store.findFirst({ select: STORE_SELECT, orderBy: { id: "asc" } }),
+      prisma.camera.findMany({
+        where: ACTIVE,
+        select: CARD_SELECT,
+        orderBy: ORDER_BY.newest,
+        take: HOME_GENERAL_SIZE,
+      }),
+      prisma.camera.findMany({
+        where: { ...ACTIVE, promo: true },
+        select: CARD_SELECT,
+        orderBy: ORDER_BY.newest,
+        take: HOME_FEATURED_SIZE,
+      }),
+      prisma.camera.findMany({
+        where: { ...ACTIVE, best_selling: true },
+        select: CARD_SELECT,
+        orderBy: ORDER_BY.newest,
+        take: HOME_FEATURED_SIZE,
+      }),
+    ]),
+    bannerService.getAllBanner(),
+  ]);
+
+  if (!store) {
+    throw new ResponseError(404, "STORE_NOT_FOUND");
+  }
+
+  return {
+    store,
+    banners,
+    cameras: general.map(toCard),
+    promo_cameras: promo.map(toCard),
+    best_selling_cameras: bestSelling.map(toCard),
+  };
+};
+
+export default {
+  getPublicStore,
+  getAllPublicCamera,
+  getPublicCamera,
+  getPublicHome,
+};

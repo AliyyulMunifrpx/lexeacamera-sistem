@@ -13,7 +13,15 @@ publicRouter.post("/users/login", userController.login);
 publicRouter.get("/banners", bannerController.getAllBanner);
 publicRouter.post("/orders", orderLimiter, orderController.createOrder);
 publicRouter.get("/public/store", publicLimiter, publicController.getStore);
-publicRouter.get("/public/cameras", publicLimiter, publicController.getAllCamera);
-publicRouter.get("/public/cameras/:id", publicLimiter, publicController.getAllCamera);
-
+publicRouter.get(
+  "/public/cameras",
+  publicLimiter,
+  publicController.getAllCamera,
+);
+publicRouter.get(
+  "/public/cameras/:id",
+  publicLimiter,
+  publicController.getCamera,
+);
+publicRouter.get("/public/home", publicLimiter, publicController.getHome);
 export default publicRouter;

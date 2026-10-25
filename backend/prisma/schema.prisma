@@ -84,9 +84,11 @@ model Store {
 }
 
 model Banner {
-  id         String   @id @default(uuid())
-  banner_url String
-  created_at DateTime @default(now())
+  id             String   @id @default(uuid())
+  banner_url     String
+  created_at     DateTime @default(now())
+  is_promo       Boolean  @default(false)
+  is_best_seller Boolean  @default(false)
 }
 
 model Order {

@@ -10,6 +10,18 @@ const getStore = async (req, res, next) => {
   }
 };
 
+const getHome = async (req, res, next) => {
+  try {
+    const result = await publicService.getPublicHome(req.query);
+
+    // Endpoint paling sering dibuka dan jarang berubah, cache singkat meringankan server
+    res.set("Cache-Control", "public, max-age=60");
+    res.status(200).json({ data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const getAllCamera = async (req, res, next) => {
   try {
     const result = await publicService.getAllPublicCamera(req.query);
@@ -30,4 +42,4 @@ const getCamera = async (req, res, next) => {
   }
 };
 
-export default { getStore, getAllCamera, getCamera };
+export default { getStore, getHome, getAllCamera, getCamera };

@@ -2,7 +2,10 @@ import bannerService from "../services/banner-service.js";
 
 const createBanner = async (req, res, next) => {
   try {
-    const result = await bannerService.createBanner({ file: req.file });
+    const result = await bannerService.createBanner({
+      body: req.body ?? {},
+      file: req.file,
+    });
 
     res.status(201).json({ data: result });
   } catch (error) {
@@ -36,6 +39,7 @@ const updateBanner = async (req, res, next) => {
   try {
     const result = await bannerService.updateBanner({
       id: req.params.id,
+      body: req.body ?? {},
       file: req.file,
     });
 

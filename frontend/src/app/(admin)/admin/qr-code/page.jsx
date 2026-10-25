@@ -21,7 +21,6 @@ export default function QRCodePage() {
   const [publicUrl, setPublicUrl] = useState("");
 
   const { data: store, isFetching, refetch } = useGetStore();
-
   useEffect(() => {
     setPublicUrl(`${window.location.origin}/`);
   }, []);
@@ -213,7 +212,7 @@ export default function QRCodePage() {
                   src={store?.logo_url}
                   width={50}
                   height={50}
-                  alt={`${store.name} logo`}
+                  alt={`${store?.name} logo`}
                 />{" "}
               </div>
 

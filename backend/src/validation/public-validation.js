@@ -3,6 +3,9 @@ import Joi from "joi";
 // Store tidak menerima parameter: query apa pun ditolak dengan 400
 export const getPublicStoreValidation = Joi.object({});
 
+// Beranda tidak menerima parameter: query apa pun ditolak dengan 400
+export const getPublicHomeValidation = Joi.object({});
+
 export const getPublicCameraValidation = Joi.object({
   id: Joi.string().uuid().required(),
 });

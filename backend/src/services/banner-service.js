@@ -5,6 +5,7 @@ import { ResponseError } from "../error/response-error.js";
 import { prisma } from "../lib/database.js";
 import { processImage } from "../utils/process-image.js";
 import {
+  createBannerValidation,
   deleteBannerValidation,
   getBannerValidation,
   updateBannerValidation,
@@ -20,7 +21,16 @@ const BANNER_SELECT = {
   id: true,
   banner_url: true,
   created_at: true,
+  is_promo: true,
+  is_best_seller: true,
 };
+
+// Aturan flag (dijaga juga oleh database: dua partial unique index dan satu CHECK):
+// - paling banyak satu banner dengan is_promo = true
+// - paling banyak satu banner dengan is_best_seller = true
+// - satu banner nggak boleh dua-duanya true
+// Menjadikan banner ini promo / best seller otomatis mencabut flag dari banner
+// yang sebelumnya memegangnya (take-over), dalam satu transaksi.
 
 const assertBucket = () => {
   if (!BUCKET) {
@@ -122,8 +132,37 @@ const getStoragePath = (bannerId, bannerUrl) => {
     : null;
 };
 
+const assertFlagsNotBoth = (isPromo, isBestSeller) => {
+  if (isPromo === true && isBestSeller === true) {
+    throw new ResponseError(400, "BANNER_FLAG_CONFLICT");
+  }
+};
+
+// Semua perubahan flag diserialisasi lewat satu kunci (khusus PostgreSQL),
+// diambil SEBELUM kunci baris. Tanpa ini, dua admin yang menjadikan dua banner
+// berbeda sebagai promo bersamaan bisa saling menunggu (deadlock).
+const lockFlags = (tx) =>
+  tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('banner_flags'))`;
+
+// Cabut flag dari banner lain. Dipanggil sebelum banner ini diubah, supaya
+// unique index nggak pernah terlanggar di tengah transaksi.
+const takeOverFlags = async (tx, bannerId, { isPromo, isBestSeller }) => {
+  if (isPromo === true) {
+    await tx.banner.updateMany({
+      where: { is_promo: true, id: { not: bannerId } },
+      data: { is_promo: false },
+    });
+  }
+  if (isBestSeller === true) {
+    await tx.banner.updateMany({
+      where: { is_best_seller: true, id: { not: bannerId } },
+      data: { is_best_seller: false },
+    });
+  }
+};
+
 const createBanner = async (request) => {
-  const { file } = request;
+  const { body = {}, file } = request;
 
   assertBucket();
 
@@ -131,18 +170,47 @@ const createBanner = async (request) => {
     throw new ResponseError(400, "BANNER_IMAGE_REQUIRED");
   }
 
+  const req = validate(createBannerValidation, { ...body });
+  assertFlagsNotBoth(req.is_promo, req.is_best_seller);
+
   const buffer = await processBanner(file); // gagal di sini = belum ada yang ter-upload
   const id = crypto.randomUUID();
   const banner = await storeBanner(id, buffer);
 
   try {
-    return await prisma.banner.create({
-      data: { id, banner_url: banner.url },
-      select: BANNER_SELECT,
-    });
+    return await prisma.$transaction(
+      async (tx) => {
+        const takesFlag = req.is_promo === true || req.is_best_seller === true;
+
+        if (takesFlag) {
+          await lockFlags(tx);
+          await takeOverFlags(tx, id, {
+            isPromo: req.is_promo,
+            isBestSeller: req.is_best_seller,
+          });
+        }
+
+        return await tx.banner.create({
+          data: {
+            id,
+            banner_url: banner.url,
+            is_promo: req.is_promo ?? false,
+            is_best_seller: req.is_best_seller ?? false,
+          },
+          select: BANNER_SELECT,
+        });
+      },
+      { timeout: 15000 },
+    );
   } catch (error) {
     // Gagal simpan: file yang baru ter-upload nggak boleh tersisa
     await removeFiles([banner.path]);
+
+    // Pengaman terakhir: index database menolak flag ganda
+    if (error.code === "P2002") {
+      throw new ResponseError(409, "BANNER_FLAG_TAKEN");
+    }
+
     throw error;
   }
 };
@@ -171,64 +239,110 @@ const getBanner = async (request) => {
   return banner;
 };
 
-// Banner cuma punya satu gambar, jadi update = ganti gambar
+// Update = ganti gambar dan/atau ubah flag. Minimal salah satu harus dikirim.
+// Flag yang nggak dikirim nggak berubah.
 const updateBanner = async (request) => {
-  const { file } = request;
+  const { body = {}, file } = request;
 
-  const req = validate(updateBannerValidation, { id: request.id });
+  const req = validate(updateBannerValidation, { ...body, id: request.id });
 
   assertBucket();
 
-  if (!file) {
-    throw new ResponseError(400, "BANNER_IMAGE_REQUIRED");
+  const hasFlags =
+    req.is_promo !== undefined || req.is_best_seller !== undefined;
+
+  if (!file && !hasFlags) {
+    throw new ResponseError(400, "NOTHING_TO_UPDATE");
   }
 
-  // Cek awal supaya request yang pasti gagal nggak sempat upload
+  assertFlagsNotBoth(req.is_promo, req.is_best_seller);
+
+  // Cek awal supaya request yang pasti gagal nggak sempat upload.
+  // Ini hanya tebakan awal; keputusan akhir diambil di dalam transaksi.
   const existing = await prisma.banner.findUnique({
     where: { id: req.id },
-    select: { id: true },
+    select: { id: true, is_promo: true, is_best_seller: true },
   });
   if (!existing) {
     throw new ResponseError(404, "BANNER_NOT_FOUND");
   }
 
-  const buffer = await processBanner(file); // gagal di sini = belum ada yang ter-upload
-  const banner = await storeBanner(req.id, buffer);
+  assertFlagsNotBoth(
+    req.is_promo ?? existing.is_promo,
+    req.is_best_seller ?? existing.is_best_seller,
+  );
+
+  let banner; // hanya ada kalau gambar diganti
+  if (file) {
+    const buffer = await processBanner(file); // gagal di sini = belum ada yang ter-upload
+    banner = await storeBanner(req.id, buffer);
+  }
 
   let outcome;
   try {
     outcome = await prisma.$transaction(
       async (tx) => {
-        // Kunci baris (khusus PostgreSQL). Ganti gambar bersamaan jadi antre,
-        // dan URL lama dibaca setelah kunci, jadi nggak ada file yang terlewat.
+        // Kunci flag dulu, baru kunci baris (urutan ini mencegah deadlock)
+        if (hasFlags) await lockFlags(tx);
+
+        // Kunci baris (khusus PostgreSQL). Edit bersamaan jadi antre, dan nilai
+        // lama dibaca setelah kunci, jadi nggak ada file atau flag yang terlewat.
         const locked = await tx.$queryRaw`
-          SELECT banner_url FROM "Banner" WHERE id = ${req.id} FOR NO KEY UPDATE
+          SELECT banner_url, is_promo, is_best_seller FROM "Banner" WHERE id = ${req.id} FOR NO KEY UPDATE
         `;
 
         if (locked.length === 0) {
           throw new ResponseError(404, "BANNER_NOT_FOUND");
         }
 
+        const current = locked[0];
+
+        // Keputusan akhir: hasil gabungan nilai baru dan nilai sekarang
+        assertFlagsNotBoth(
+          req.is_promo ?? current.is_promo,
+          req.is_best_seller ?? current.is_best_seller,
+        );
+
+        const data = {};
+        if (banner) data.banner_url = banner.url;
+        if (req.is_promo !== undefined) data.is_promo = req.is_promo;
+        if (req.is_best_seller !== undefined) {
+          data.is_best_seller = req.is_best_seller;
+        }
+
+        await takeOverFlags(tx, req.id, {
+          isPromo: req.is_promo,
+          isBestSeller: req.is_best_seller,
+        });
+
         const updated = await tx.banner.update({
           where: { id: req.id },
-          data: { banner_url: banner.url },
+          data,
           select: BANNER_SELECT,
         });
 
-        return { banner: updated, oldBannerUrl: locked[0].banner_url };
+        return { banner: updated, oldBannerUrl: current.banner_url };
       },
       { timeout: 15000 },
     );
   } catch (error) {
     // Gagal: file yang baru ter-upload nggak boleh tersisa
-    await removeFiles([banner.path]);
+    if (banner) await removeFiles([banner.path]);
+
+    // Pengaman terakhir: index database menolak flag ganda
+    if (error.code === "P2002") {
+      throw new ResponseError(409, "BANNER_FLAG_TAKEN");
+    }
+
     throw error;
   }
 
   // --- Sudah commit. Jangan pindahkan ke dalam try di atas: error di sini
   // --- akan memicu penghapusan file baru yang sekarang sudah dipakai DB.
-  const oldPath = getStoragePath(req.id, outcome.oldBannerUrl);
-  if (oldPath) await removeFiles([oldPath]);
+  if (banner) {
+    const oldPath = getStoragePath(req.id, outcome.oldBannerUrl);
+    if (oldPath) await removeFiles([oldPath]);
+  }
 
   return outcome.banner;
 };
