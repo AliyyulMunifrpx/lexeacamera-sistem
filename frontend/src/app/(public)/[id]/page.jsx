@@ -304,7 +304,7 @@ function CameraDetailContent() {
 
   if (cameraQuery.isError || !camera) {
     return (
-      <div className="mx-auto flex min-h-[60dvh] w-full max-w-md flex-col items-center justify-center gap-4 p-4 text-center">
+      <div className="mx-auto flex min-h-[100dvh] w-full max-w-md flex-col items-center justify-center gap-4 p-4 text-center">
         <h1 className="font-semibold text-second">Kamera tidak ditemukan</h1>
         <p className="text-sm text-second/60">
           Produk ini mungkin sudah dihapus atau terjadi gangguan koneksi.
