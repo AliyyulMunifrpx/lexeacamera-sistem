@@ -321,7 +321,7 @@ function AddProductSheet({ addedIds, itemCount, onAdd, onClose }) {
               type="button"
               onClick={() => setPage((previous) => Math.max(1, previous - 1))}
               disabled={page <= 1 || camerasQuery.isPlaceholderData}
-              className="flex h-8 items-center rounded-full border border-second/15 px-4 font-semibold text-second disabled:opacity-40"
+              className="flex h-8 items-center rounded-full  px-4 font-semibold text-second disabled:opacity-40"
             >
               Sebelumnya
             </button>
@@ -340,7 +340,7 @@ function AddProductSheet({ addedIds, itemCount, onAdd, onClose }) {
               disabled={
                 page >= paging.total_pages || camerasQuery.isPlaceholderData
               }
-              className="flex h-8 items-center rounded-full border border-second/15 px-4 font-semibold text-second disabled:opacity-40"
+              className="flex h-8 items-center rounded-full  px-4 font-semibold text-second disabled:opacity-40"
             >
               Berikutnya
             </button>
@@ -402,7 +402,7 @@ function OrderReceipt({ order }) {
             <button
               type="button"
               onClick={copyInvoice}
-              className="flex h-8 shrink-0 items-center rounded-full border border-second/15 px-4 text-sm font-semibold text-second transition-colors hover:bg-second/5"
+              className="flex h-8 shrink-0 items-center rounded-full  px-4 text-sm font-semibold text-second transition-colors hover:bg-second/5"
             >
               {copied ? "Tersalin" : "Salin"}
             </button>
@@ -642,7 +642,7 @@ function OrderPageContent() {
         <div className="flex gap-2">
           <Link
             href="/"
-            className="flex h-8 items-center rounded-full border border-second/15 px-4 text-sm font-semibold text-second"
+            className="flex h-8 items-center rounded-full  px-4 text-sm font-semibold text-second"
           >
             Ke beranda
           </Link>
@@ -678,7 +678,7 @@ function OrderPageContent() {
       <h1 className="text-base font-bold text-second">Form pemesanan</h1>
 
       {/* Daftar produk yang dipesan */}
-      <section className="space-y-4 rounded-md border border-second/30 p-4">
+      <section className="space-y-4 rounded-md">
         <div className="flex items-center justify-between gap-4">
           <h2 className="font-semibold text-second">
             Produk ({items.length}/{MAX_ITEMS})
@@ -688,7 +688,7 @@ function OrderPageContent() {
             type="button"
             onClick={() => setSheetOpen(true)}
             disabled={isSubmitting || !canAddMore}
-            className="flex h-8 items-center gap-2 rounded-full border border-second/15 px-4 text-sm font-semibold text-second transition-colors hover:bg-second/5 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-8 items-center gap-2 rounded-full  px-4 text-sm font-semibold bg-second text-primary transition-colors hover:bg-second/5 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <FiPlus size={14} />
             Tambah produk
@@ -765,7 +765,7 @@ function OrderPageContent() {
                           isSubmitting || isOutOfStock || item.quantity <= 1
                         }
                         aria-label="Kurangi jumlah"
-                        className="flex size-8 items-center justify-center rounded-full border border-second/15 text-second transition-colors hover:bg-second/5 disabled:opacity-40"
+                        className="flex size-8 items-center justify-center rounded-full  text-second transition-colors hover:bg-second/5 disabled:opacity-40"
                       >
                         <FiMinus size={16} />
                       </button>
@@ -784,7 +784,7 @@ function OrderPageContent() {
                           isSubmitting || isOutOfStock || item.quantity >= max
                         }
                         aria-label="Tambah jumlah"
-                        className="flex size-8 items-center justify-center rounded-full border border-second/15 text-second transition-colors hover:bg-second/5 disabled:opacity-40"
+                        className="flex size-8 items-center justify-center rounded-full  text-second transition-colors hover:bg-second/5 disabled:opacity-40"
                       >
                         <FiPlus size={16} />
                       </button>
