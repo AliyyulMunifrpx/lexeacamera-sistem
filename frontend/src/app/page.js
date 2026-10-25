@@ -7,6 +7,21 @@ import Link from "next/link.js";
 import { normalizeApiError } from "../lib/api/errors.js";
 import notify from "../lib/notify.js";
 
+const priceFormatter = new Intl.NumberFormat("id-ID", {
+  maximumFractionDigits: 0,
+});
+
+// Contoh: 12000000 -> "12.000.000"
+function formatPrice(value) {
+  const number = Number(value);
+
+  if (value === null || value === undefined || Number.isNaN(number)) {
+    return "0";
+  }
+
+  return priceFormatter.format(number);
+}
+
 export default function Home() {
   const { data, isLoading, isError, error } = useGetHome();
 
@@ -50,7 +65,7 @@ export default function Home() {
           )}
         </div>
 
-        <div className="absolute w-[80%] top-2 left-1/2 -translate-x-1/2 rounded-lg backdrop-blur-xs flex gap-2 bg-second/30 items-center px-2 py-1">
+        <div className="absolute w-[80%] top-2 left-1/2 -translate-x-1/2 rounded-lg backdrop-blur-xs flex gap-2 bg-second/30 items-center px-2 py-2">
           <CiSearch />
           <input
             type="text"
@@ -78,7 +93,7 @@ export default function Home() {
       </div>
 
       {/* Navigasi Tab */}
-      <div className="w-full h-fit flex justify-between text-second font-normal mt-8 text-xs">
+      <div className="w-full h-fit flex justify-between text-second font-normal mt-8 text-sm">
         <div className="flex flex-col gap-2 w-full px-2">
           <Link
             href={"/"}
@@ -110,7 +125,7 @@ export default function Home() {
 
       <div className="w-full min-h-[100dvh] p-4">
         <div className="w-full h-full flex flex-col gap-4">
-          <div className="w-full aspect-[2/3] relative">
+          <div className="w-full aspect-[2/3] relative rounded-lg overflow-hidden">
             {" "}
             <div className="w-full aspect-[2/3] absolute inset-0 ">
               {bestSellingBanner?.banner_url ? (
@@ -142,7 +157,7 @@ export default function Home() {
               })}
             </div>
           </div>
-          <div className="w-full aspect-[2/3] relative">
+          <div className="w-full aspect-[2/3] relative rounded-lg overflow-hidden">
             {" "}
             <div className="w-full aspect-[2/3] absolute inset-0 ">
               {promoBanner?.banner_url ? (
@@ -174,19 +189,31 @@ export default function Home() {
               })}
             </div>
           </div>
-          <div className="w-full grid grid-cols-2">
+          <div className="w-full grid grid-cols-2 gap-2">
             {data?.cameras.map((item) => {
               return (
                 <div
                   key={item.id}
-                  className="w-40 h-50 bg-black flex flex-col gap-4"
+                  className="w-[100%] aspect-[3/4] flex flex-col gap-2"
                 >
-                  <div className="w-full aspect-square relative">
+                  <div className="w-full aspect-square relative rounded-lg overflow-hidden">
                     <Image
                       alt={`${item.name} photo`}
                       src={item.image_url}
                       fill
                     ></Image>{" "}
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <h3 className="text-second text-base font-normal">
+                      <span className="bg-second2 text-primary text-xs p-1 font-semibold">
+                        {item.condition}
+                      </span>{" "}
+                      {item.name}
+                    </h3>
+                    <p className="text-base text-grad font-semibold">
+                      <span className="text-sm">Rp</span>
+                      {formatPrice(item.price)}
+                    </p>
                   </div>
                 </div>
               );
