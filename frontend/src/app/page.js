@@ -1,41 +1,87 @@
 "use client";
 import Image from "next/image";
 import { useGetHome } from "./features/public/hooks.js";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CiSearch } from "react-icons/ci";
-import Link from "next/link.js";
 import { normalizeApiError } from "../lib/api/errors.js";
 import notify from "../lib/notify.js";
+import StoreHomePage from "../components/public/home/store-page.jsx";
 
-const priceFormatter = new Intl.NumberFormat("id-ID", {
-  maximumFractionDigits: 0,
-});
+const TABS = [
+  { key: "toko", label: "Toko" },
+  { key: "produk", label: "Produk" },
+  { key: "kategori", label: "Kategori" },
+  { key: "kontak", label: "Kontak" },
+];
 
-// Contoh: 12000000 -> "12.000.000"
-function formatPrice(value) {
-  const number = Number(value);
-
-  if (value === null || value === undefined || Number.isNaN(number)) {
-    return "0";
-  }
-
-  return priceFormatter.format(number);
+// Placeholder sementara. Ganti dengan komponen asli kalau sudah dibuat.
+function PlaceholderPanel({ title }) {
+  return (
+    <div className="flex min-h-64 items-center justify-center rounded-lg border border-second/20 text-sm text-second/50">
+      Halaman {title} menyusul
+    </div>
+  );
 }
 
 export default function Home() {
   const { data, isLoading, isError, error } = useGetHome();
 
-  // Karena cuma ada 1 best seller di DB, ambil index [0]-nya langsung
-  const bestSellingBanner = data?.banners?.find(
-    (item) => item.is_best_seller === true,
-  );
-  const promoBanner = data?.banners?.find((item) => item.is_promo === true);
+  const navRef = useRef(null);
+  const scrollerRef = useRef(null);
+  const panelRefs = useRef([]);
+
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [panelHeight, setPanelHeight] = useState(null);
+
   useEffect(() => {
     if (!isError || !error) return;
 
     const apiError = normalizeApiError(error);
     notify.error(apiError.message);
   }, [isError, error]);
+
+  // Tinggi container mengikuti tinggi panel yang sedang aktif.
+  useEffect(() => {
+    if (isLoading) return;
+
+    const panel = panelRefs.current[activeIndex];
+    if (!panel) return;
+
+    const updateHeight = () => setPanelHeight(panel.offsetHeight);
+    updateHeight();
+
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(panel);
+
+    return () => observer.disconnect();
+  }, [activeIndex, isLoading]);
+
+  // Dipanggil saat user menggeser: hitung panel mana yang sedang tampil.
+  function handleScroll(event) {
+    const el = event.currentTarget;
+    if (!el.clientWidth) return;
+
+    const index = Math.round(el.scrollLeft / el.clientWidth);
+    const clamped = Math.min(Math.max(index, 0), TABS.length - 1);
+
+    if (clamped !== activeIndex) setActiveIndex(clamped);
+  }
+
+  // Dipanggil saat tab diklik: geser ke panel yang dipilih.
+  function goToTab(index) {
+    const el = scrollerRef.current;
+    if (!el) return;
+
+    // Kalau bar tab sedang menempel di atas (halaman sudah discroll),
+    // naikkan halaman ke awal konten supaya panel baru mulai dari atas.
+    const nav = navRef.current;
+    if (nav && nav.getBoundingClientRect().top <= 0) {
+      const navTop = nav.getBoundingClientRect().top + window.scrollY;
+      window.scrollTo({ top: navTop, behavior: "smooth" });
+    }
+
+    el.scrollTo({ left: index * el.clientWidth, behavior: "smooth" });
+  }
 
   // Kalau masih loading, tampilkan placeholder supaya gak error
   if (isLoading) {
@@ -46,6 +92,13 @@ export default function Home() {
     );
   }
 
+  const panels = [
+    <StoreHomePage key="toko" data={data} />,
+    <PlaceholderPanel key="produk" title="Produk" />,
+    <PlaceholderPanel key="kategori" title="Kategori" />,
+    <PlaceholderPanel key="kontak" title="Kontak" />,
+  ];
+
   return (
     <div className="min-h-[100dvh] w-full flex flex-col bg-primary">
       <div className="relative w-full">
@@ -55,7 +108,8 @@ export default function Home() {
             <Image
               alt={`${data?.store?.name || "Toko"} banner`}
               src={data.store.main_banner_url}
-              fill
+              width={3000}
+              height={1000}
               className="object-cover"
             />
           ) : (
@@ -76,7 +130,7 @@ export default function Home() {
 
         {/* 2. BAGIAN LOGO BULAT */}
         <div className="flex justify-center">
-          <div className="-mt-8 sm:-mt-16 flex aspect-square w-16 sm:w-32 items-center justify-center overflow-hidden rounded-full bg-primary shadow-xl z-20 border-4 border-primary">
+          <div className="-mt-8 sm:-mt-16 flex aspect-square w-16 sm:w-32 items-center justify-center overflow-hidden rounded-full bg-primary z-20 border-4 border-primary">
             {data?.store?.logo_url ? (
               <Image
                 src={data.store.logo_url}
@@ -92,134 +146,57 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Navigasi Tab */}
-      <div className="w-full h-fit flex justify-between text-second font-normal mt-8 text-sm">
-        <div className="flex flex-col gap-2 w-full px-2">
-          <Link
-            href={"/"}
-            className="text-center w-full text-grad font-semibold"
-          >
-            Toko
-          </Link>
-          <div className="h-[2px] w-full bg-grad"></div>
-        </div>
-        <div className="flex flex-col gap-2 w-full px-2">
-          <Link href={"/"} className="text-center w-full">
-            Produk
-          </Link>
-          <div className="h-[2px] w-full"></div>
-        </div>
-        <div className="flex flex-col gap-2 w-full px-2">
-          <Link href={"/"} className="text-center w-full">
-            Kategori
-          </Link>
-          <div className="h-[2px] w-full"></div>
-        </div>
-        <div className="flex flex-col gap-2 w-full px-2">
-          <Link href={"/"} className="text-center w-full">
-            Kontak
-          </Link>
-          <div className="h-[2px] w-full"></div>
-        </div>
+      {/* Navigasi Tab: menempel di atas layar saat discroll */}
+      <div
+        ref={navRef}
+        role="tablist"
+        className="sticky top-0 z-30 mt-4 flex h-fit w-full justify-between border-b border-second/10 bg-primary pt-4 text-sm font-normal text-second"
+      >
+        {TABS.map((tab, index) => {
+          const isActive = activeIndex === index;
+
+          return (
+            <div key={tab.key} className="flex flex-col gap-2 w-full px-2">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => goToTab(index)}
+                className={`text-center w-full transition-colors ${
+                  isActive ? "text-grad font-semibold" : ""
+                }`}
+              >
+                {tab.label}
+              </button>
+              <div
+                className={`h-[2px] w-full transition-colors ${
+                  isActive ? "bg-grad" : ""
+                }`}
+              ></div>
+            </div>
+          );
+        })}
       </div>
 
-      <div className="w-full min-h-[100dvh] p-4">
-        <div className="w-full h-full flex flex-col gap-4">
-          <div className="w-full aspect-[2/3] relative rounded-lg overflow-hidden">
-            {" "}
-            <div className="w-full aspect-[2/3] absolute inset-0 ">
-              {bestSellingBanner?.banner_url ? (
-                <Image
-                  src={bestSellingBanner.banner_url}
-                  alt="best selling banner"
-                  fill
-                  className=""
-                />
-              ) : (
-                <div className="w-full h-full bg-grad"></div>
-              )}
-            </div>
-            <div className="w-full absolute aspect-square bottom-0 left-0 grid grid-cols-2 p-4 gap-4">
-              {data?.best_selling_cameras.map((item, i) => {
-                return (
-                  <Link
-                    href={`/${item.id}`}
-                    key={item.id}
-                    className="w-full aspect-square relative mt-auto mx-auto"
-                  >
-                    <Image
-                      alt={`${item.name} photo`}
-                      fill
-                      src={item.image_url}
-                    ></Image>
-                  </Link>
-                );
-              })}
-            </div>
+      {/* Konten: bisa digeser horizontal, ikut berganti dengan tab di atas */}
+      <div
+        ref={scrollerRef}
+        onScroll={handleScroll}
+        style={panelHeight ? { height: panelHeight } : undefined}
+        className="flex w-full snap-x snap-mandatory items-start overflow-x-auto overflow-y-hidden overscroll-x-contain transition-[height] duration-200 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        {panels.map((panel, index) => (
+          <div
+            key={TABS[index].key}
+            ref={(node) => {
+              panelRefs.current[index] = node;
+            }}
+            role="tabpanel"
+            className="w-full shrink-0 snap-center snap-always p-4"
+          >
+            {panel}
           </div>
-          <div className="w-full aspect-[2/3] relative rounded-lg overflow-hidden">
-            {" "}
-            <div className="w-full aspect-[2/3] absolute inset-0 ">
-              {promoBanner?.banner_url ? (
-                <Image
-                  src={promoBanner.banner_url}
-                  alt="best selling banner"
-                  fill
-                  className=""
-                />
-              ) : (
-                <div className="w-full h-full bg-grad"></div>
-              )}
-            </div>
-            <div className="w-full absolute aspect-square bottom-0 left-0 grid grid-cols-2 p-4 gap-4">
-              {data?.promo_cameras.map((item, i) => {
-                return (
-                  <Link
-                    href={`/${item.id}`}
-                    key={item.id}
-                    className="w-full aspect-square relative mt-auto mx-auto"
-                  >
-                    <Image
-                      alt={`${item.name} photo`}
-                      fill
-                      src={item.image_url}
-                    ></Image>
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-          <div className="w-full grid grid-cols-2 gap-2">
-            {data?.cameras.map((item) => {
-              return (
-                <div
-                  key={item.id}
-                  className="w-[100%] aspect-[3/4] flex flex-col gap-2"
-                >
-                  <div className="w-full aspect-square relative rounded-lg overflow-hidden">
-                    <Image
-                      alt={`${item.name} photo`}
-                      src={item.image_url}
-                      fill
-                    ></Image>{" "}
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <h3 className="text-second text-base font-normal">
-                      <span className="bg-second2 text-primary text-xs p-1 font-semibold">
-                        {item.condition}
-                      </span>{" "}
-                      {item.name}
-                    </h3>
-                    <p className="text-base text-grad font-semibold">
-                      <span className="text-sm">Rp</span>
-                      {formatPrice(item.price)}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        ))}
       </div>
     </div>
   );
