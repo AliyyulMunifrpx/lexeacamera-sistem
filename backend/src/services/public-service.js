@@ -14,6 +14,8 @@ const PER_PAGE = 20;
 // Jumlah item di beranda
 const HOME_GENERAL_SIZE = 12;
 const HOME_FEATURED_SIZE = 4;
+// Batas aman supaya query beranda nggak pernah tanpa batas
+const HOME_MAX_CATEGORIES = 100;
 
 // Kamera yang di-soft-delete nggak pernah terlihat publik
 const ACTIVE = { is_deleted: false };
@@ -179,40 +181,46 @@ const getPublicCamera = async (request) => {
   };
 };
 
-// Semua data beranda dalam satu request. Toko, kamera umum, promo, dan best
+// Semua data beranda dalam satu request. Toko, kategori, kamera umum, promo, dan best
 // seller dibaca dalam satu transaksi; banner memakai query banner yang sama
 // dengan GET /banners supaya urutan dan batasnya selalu sama.
 const getPublicHome = async (query = {}) => {
   validate(getPublicHomeValidation, query);
 
-  const [[store, general, promo, bestSelling], banners] = await Promise.all([
-    prisma.$transaction([
-      prisma.store.findFirst({ select: STORE_SELECT, orderBy: { id: "asc" } }),
-      prisma.camera.findMany({
-        where: {
-          ...ACTIVE,
-          promo: false, // 🎯 Filter bukan promo
-          best_selling: false, // 🎯 Filter bukan best selling
-        },
-        select: CARD_SELECT,
-        orderBy: ORDER_BY.newest,
-        take: HOME_GENERAL_SIZE,
-      }),
-      prisma.camera.findMany({
-        where: { ...ACTIVE, promo: true },
-        select: CARD_SELECT,
-        orderBy: ORDER_BY.newest,
-        take: HOME_FEATURED_SIZE,
-      }),
-      prisma.camera.findMany({
-        where: { ...ACTIVE, best_selling: true },
-        select: CARD_SELECT,
-        orderBy: ORDER_BY.newest,
-        take: HOME_FEATURED_SIZE,
-      }),
-    ]),
-    bannerService.getAllBanner(),
-  ]);
+  const [[store, categories, general, promo, bestSelling], banners] =
+    await Promise.all([
+      prisma.$transaction([
+        prisma.store.findFirst({
+          select: STORE_SELECT,
+          orderBy: { id: "asc" },
+        }),
+        prisma.category.findMany({
+          select: { id: true, name: true },
+          // id sebagai tiebreaker supaya urutan stabil
+          orderBy: [{ name: "asc" }, { id: "asc" }],
+          take: HOME_MAX_CATEGORIES,
+        }),
+        prisma.camera.findMany({
+          where: ACTIVE,
+          select: CARD_SELECT,
+          orderBy: ORDER_BY.newest,
+          take: HOME_GENERAL_SIZE,
+        }),
+        prisma.camera.findMany({
+          where: { ...ACTIVE, promo: true },
+          select: CARD_SELECT,
+          orderBy: ORDER_BY.newest,
+          take: HOME_FEATURED_SIZE,
+        }),
+        prisma.camera.findMany({
+          where: { ...ACTIVE, best_selling: true },
+          select: CARD_SELECT,
+          orderBy: ORDER_BY.newest,
+          take: HOME_FEATURED_SIZE,
+        }),
+      ]),
+      bannerService.getAllBanner(),
+    ]);
 
   if (!store) {
     throw new ResponseError(404, "STORE_NOT_FOUND");
@@ -221,6 +229,7 @@ const getPublicHome = async (query = {}) => {
   return {
     store,
     banners,
+    categories,
     cameras: general.map(toCard),
     promo_cameras: promo.map(toCard),
     best_selling_cameras: bestSelling.map(toCard),

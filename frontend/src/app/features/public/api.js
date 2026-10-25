@@ -5,24 +5,38 @@ export async function getHome() {
   return response.data.data;
 }
 
-export async function getCameras({
-  search,
-  min_price,
-  max_price,
-  category_id,
-  condition,
-  page = 1,
-}) {
+export async function getCameras(filters = {}) {
+  const {
+    search,
+    category_id,
+    condition,
+    min_price,
+    max_price,
+    promo,
+    best_selling,
+    sort,
+    page = 1,
+  } = filters;
+
+  const hasValue = (value) =>
+    value !== undefined && value !== null && value !== "";
+
+  const trimmedSearch = typeof search === "string" ? search.trim() : "";
+
   const params = {
-    ...(search && { search }),
-    ...(min_price !== "" && min_price != null && { min_price }),
-    ...(max_price !== "" && max_price != null && { max_price }),
-    ...(category_id && { category_id }),
-    ...(condition && { condition }),
+    ...(trimmedSearch && { search: trimmedSearch.slice(0, 100) }),
+    ...(hasValue(category_id) && { category_id }),
+    ...(hasValue(condition) && { condition }),
+    ...(hasValue(min_price) && { min_price }),
+    ...(hasValue(max_price) && { max_price }),
+    ...(hasValue(promo) && { promo }),
+    ...(hasValue(best_selling) && { best_selling }),
+    ...(hasValue(sort) && { sort }),
     page,
   };
 
   const response = await api.get("/public/cameras", { params });
 
+  // { data: [...], paging: { page, per_page, total, total_pages } }
   return response.data;
 }

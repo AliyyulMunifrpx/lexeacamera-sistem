@@ -6,6 +6,7 @@ import { CiSearch } from "react-icons/ci";
 import { normalizeApiError } from "../lib/api/errors.js";
 import notify from "../lib/notify.js";
 import StoreHomePage from "../components/public/home/store-page.jsx";
+import CamerasHomePage from "../components/public/home/cameras-page.jsx";
 
 const TABS = [
   { key: "toko", label: "Toko" },
@@ -13,6 +14,8 @@ const TABS = [
   { key: "kategori", label: "Kategori" },
   { key: "kontak", label: "Kontak" },
 ];
+
+const PRODUCT_TAB_INDEX = 1;
 
 // Placeholder sementara. Ganti dengan komponen asli kalau sudah dibuat.
 function PlaceholderPanel({ title }) {
@@ -29,9 +32,12 @@ export default function Home() {
   const navRef = useRef(null);
   const scrollerRef = useRef(null);
   const panelRefs = useRef([]);
+  const searchRequestId = useRef(0);
 
   const [activeIndex, setActiveIndex] = useState(0);
   const [panelHeight, setPanelHeight] = useState(null);
+  const [searchInput, setSearchInput] = useState("");
+  const [searchRequest, setSearchRequest] = useState(null);
 
   useEffect(() => {
     if (!isError || !error) return;
@@ -68,19 +74,42 @@ export default function Home() {
   }
 
   // Dipanggil saat tab diklik: geser ke panel yang dipilih.
-  function goToTab(index) {
+  // forceScrollToNav: naikkan halaman sampai bar tab berada di atas layar.
+  function goToTab(index, { forceScrollToNav = false } = {}) {
     const el = scrollerRef.current;
     if (!el) return;
 
-    // Kalau bar tab sedang menempel di atas (halaman sudah discroll),
-    // naikkan halaman ke awal konten supaya panel baru mulai dari atas.
     const nav = navRef.current;
-    if (nav && nav.getBoundingClientRect().top <= 0) {
-      const navTop = nav.getBoundingClientRect().top + window.scrollY;
-      window.scrollTo({ top: navTop, behavior: "smooth" });
+    if (nav) {
+      const navRect = nav.getBoundingClientRect();
+
+      // Kalau bar tab sedang menempel (halaman sudah discroll) atau diminta
+      // paksa, posisikan halaman di awal konten supaya panel baru mulai dari atas.
+      if (forceScrollToNav || navRect.top <= 0) {
+        window.scrollTo({
+          top: navRect.top + window.scrollY,
+          behavior: "smooth",
+        });
+      }
     }
 
     el.scrollTo({ left: index * el.clientWidth, behavior: "smooth" });
+  }
+
+  // Enter di search bar: kirim kata kunci ke halaman produk lalu pindah tab.
+  function handleSearchSubmit(event) {
+    event.preventDefault();
+
+    searchRequestId.current += 1;
+    setSearchRequest({
+      value: searchInput.trim(),
+      id: searchRequestId.current,
+    });
+
+    // Tutup keyboard di HP.
+    document.activeElement?.blur();
+
+    goToTab(PRODUCT_TAB_INDEX, { forceScrollToNav: true });
   }
 
   // Kalau masih loading, tampilkan placeholder supaya gak error
@@ -94,7 +123,7 @@ export default function Home() {
 
   const panels = [
     <StoreHomePage key="toko" data={data} />,
-    <PlaceholderPanel key="produk" title="Produk" />,
+    <CamerasHomePage key="produk" searchRequest={searchRequest} />,
     <PlaceholderPanel key="kategori" title="Kategori" />,
     <PlaceholderPanel key="kontak" title="Kontak" />,
   ];
@@ -119,14 +148,23 @@ export default function Home() {
           )}
         </div>
 
-        <div className="absolute w-[80%] top-2 left-1/2 -translate-x-1/2 rounded-lg backdrop-blur-xs flex gap-2 bg-second/30 items-center px-2 py-2">
+        <form
+          role="search"
+          onSubmit={handleSearchSubmit}
+          className="absolute w-[80%] top-2 left-1/2 -translate-x-1/2 rounded-lg backdrop-blur-xs flex gap-2 bg-second/30 items-center px-2 py-2"
+        >
           <CiSearch />
           <input
-            type="text"
+            type="search"
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+            enterKeyHint="search"
+            maxLength={100}
+            aria-label="Cari produk di toko ini"
             className="text-sm font-extralight outline-none bg-transparent w-full text-primary placeholder:text-primary/60"
             placeholder="Cari produk di toko ini"
           />
-        </div>
+        </form>
 
         {/* 2. BAGIAN LOGO BULAT */}
         <div className="flex justify-center">

@@ -44,10 +44,10 @@ export default function StoreHomePage({ data }) {
           </div>
         ))}
 
-      <div className="w-full grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
-        {data?.cameras?.map((item) => {
-          return <CameraCard key={item.id} data={item}></CameraCard>;
-        })}
+      <div className="columns-2 gap-2 md:columns-4 lg:columns-6">
+        {data?.cameras?.map((item) => (
+          <CameraCard key={item.id} data={item} />
+        ))}
       </div>
     </div>
   );
