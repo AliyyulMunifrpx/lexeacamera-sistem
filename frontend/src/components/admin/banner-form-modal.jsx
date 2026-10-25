@@ -282,17 +282,19 @@ export default function BannerFormModal({
               <div className="mb-3 flex items-center justify-between gap-3">
                 <p className="text-sm font-medium">Atur Crop Gambar</p>
 
+                {/* 🎯 Indikator rasio diubah jadi 2:3 */}
                 <span className="rounded-lg bg-second/10 px-2.5 py-1 text-xs font-medium">
-                  1:1
+                  2:3
                 </span>
               </div>
 
-              <div className="relative mx-auto aspect-square w-full max-w-[440px] overflow-hidden rounded-xl bg-black">
+              {/* 🎯 Wrapper cropper diubah ke aspect-[2/3] agar berbentuk vertikal poster */}
+              <div className="relative mx-auto aspect-[2/3] w-full max-w-[340px] overflow-hidden rounded-xl bg-black">
                 <Cropper
                   image={imageSrc}
                   crop={crop}
                   zoom={zoom}
-                  aspect={1}
+                  aspect={2 / 3} // 🎯 Rasio 2:3 (1500 x 2250)
                   objectFit="contain"
                   restrictPosition
                   onCropChange={setCrop}
@@ -303,8 +305,8 @@ export default function BannerFormModal({
 
               <p className="mt-3 text-xs leading-relaxed text-second/60">
                 Geser gambar untuk mengatur posisinya. Gunakan slider untuk
-                memperbesar atau memperkecil gambar. Hasil crop berbentuk
-                persegi dengan resolusi 1600 × 1600 piksel.
+                memperbesar atau memperkecil gambar. Hasil crop berbentuk poster
+                vertikal dengan resolusi 1500 × 2250 piksel.
               </p>
 
               <div className="mt-4 flex items-center gap-3">
@@ -342,21 +344,22 @@ export default function BannerFormModal({
             <>
               {banner?.banner_url ? (
                 <div className="overflow-hidden rounded-xl border border-second/20 bg-second/5">
-                  <div className="relative aspect-[16/9]">
+                  {/* 🎯 Pratinjau banner saat ini juga disesuaikan ke 2:3 */}
+                  <div className="relative aspect-[2/3] max-w-[240px] mx-auto">
                     <Image
                       src={banner.banner_url}
                       alt="Gambar banner saat ini"
                       fill
                       unoptimized
-                      sizes="(max-width: 640px) 90vw, 540px"
+                      sizes="(max-width: 640px) 90vw, 240px"
                       className="object-contain"
                     />
                   </div>
                 </div>
               ) : (
-                <div className="flex aspect-[16/9] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-second/30 bg-second/5">
+                <div className="flex aspect-[2/3] max-w-[240px] mx-auto flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-second/30 bg-second/5">
                   <FiImage size={32} className="opacity-60" />
-                  <p className="text-sm text-second/60">
+                  <p className="text-xs text-center text-second/60 px-2">
                     Pratinjau gambar akan muncul di sini
                   </p>
                 </div>
@@ -389,7 +392,7 @@ export default function BannerFormModal({
 
           <p className="text-xs leading-relaxed text-second/60">
             Format PNG, JPEG, atau WebP. File asli maksimal 5 MB. Hasil crop
-            dikirim sebagai WebP dan akan diproses kembali oleh server.
+            berukuran 1500 × 2250 piksel (rasio 2:3) dikirim sebagai WebP.
           </p>
 
           {validationError && (

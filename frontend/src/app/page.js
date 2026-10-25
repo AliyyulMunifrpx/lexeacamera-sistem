@@ -14,7 +14,7 @@ export default function Home() {
   const bestSellingBanner = data?.banners?.find(
     (item) => item.is_best_seller === true,
   );
-
+  const promoBanner = data?.banners?.find((item) => item.is_promo === true);
   useEffect(() => {
     if (!isError || !error) return;
 
@@ -109,25 +109,22 @@ export default function Home() {
       </div>
 
       <div className="w-full min-h-[100dvh] p-4">
-        <div className="w-full h-full   flex flex-col">
-          <h2 className="text-second text-center w-full uppercase font-semibold">
-            Best Seller
-          </h2>
-          <div className="w-full aspect-square relative">
+        <div className="w-full h-full flex flex-col gap-4">
+          <div className="w-full aspect-[2/3] relative">
             {" "}
-            <div className="w-full aspect-square absolute inset-0 ">
+            <div className="w-full aspect-[2/3] absolute inset-0 ">
               {bestSellingBanner?.banner_url ? (
                 <Image
                   src={bestSellingBanner.banner_url}
                   alt="best selling banner"
                   fill
-                  className="object-cover"
+                  className=""
                 />
               ) : (
                 <div className="w-full h-full bg-grad"></div>
               )}
             </div>
-            <div className="w-full absolute h-full bottom-0 left-0 grid grid-cols-2 p-4 gap-4">
+            <div className="w-full absolute aspect-square bottom-0 left-0 grid grid-cols-2 p-4 gap-4">
               {data?.best_selling_cameras.map((item, i) => {
                 return (
                   <Link
@@ -144,6 +141,56 @@ export default function Home() {
                 );
               })}
             </div>
+          </div>
+          <div className="w-full aspect-[2/3] relative">
+            {" "}
+            <div className="w-full aspect-[2/3] absolute inset-0 ">
+              {promoBanner?.banner_url ? (
+                <Image
+                  src={promoBanner.banner_url}
+                  alt="best selling banner"
+                  fill
+                  className=""
+                />
+              ) : (
+                <div className="w-full h-full bg-grad"></div>
+              )}
+            </div>
+            <div className="w-full absolute aspect-square bottom-0 left-0 grid grid-cols-2 p-4 gap-4">
+              {data?.promo_cameras.map((item, i) => {
+                return (
+                  <Link
+                    href={`/${item.id}`}
+                    key={item.id}
+                    className="w-full aspect-square relative mt-auto mx-auto"
+                  >
+                    <Image
+                      alt={`${item.name} photo`}
+                      fill
+                      src={item.image_url}
+                    ></Image>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+          <div className="w-full grid grid-cols-2">
+            {data?.cameras.map((item) => {
+              return (
+                <div
+                  key={item.id}
+                  className="w-40 h-50 bg-black flex flex-col gap-4"
+                >
+                  <div className="w-full aspect-square relative">
+                    <Image
+                      alt={`${item.name} photo`}
+                      src={item.image_url}
+                      fill
+                    ></Image>{" "}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

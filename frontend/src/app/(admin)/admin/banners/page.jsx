@@ -313,14 +313,14 @@ export default function BannersPage() {
                   key={banner.id}
                   className="overflow-hidden rounded-2xl border border-second/15 bg-primary/5 transition-colors hover:border-second/30"
                 >
-                  <div className="relative flex aspect-[1/1] rounded-2xl items-center justify-center overflow-hidden bg-second/5 p-2">
+                  <div className="relative flex aspect-[2/3] rounded-2xl items-center justify-center overflow-hidden bg-second/5 p-2">
                     <Image
-                      width={1600}
-                      height={1600}
+                      width={1500}
+                      height={2250}
                       src={banner.banner_url}
                       alt={`Banner dibuat ${formatDate(banner.created_at)}`}
                       loading="lazy"
-                      className="h-full w-full rounded-xl object-contain"
+                      className="h-full w-full rounded-xl"
                     />
 
                     {(banner.is_promo || banner.is_best_seller) && (

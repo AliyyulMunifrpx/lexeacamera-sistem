@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image.js";
 import {
@@ -54,6 +54,21 @@ function FormField({ label, htmlFor, required, children, description }) {
   );
 }
 
+function ImagePreview({ file, alt }) {
+  const [src, setSrc] = useState("");
+
+  useEffect(() => {
+    const url = URL.createObjectURL(file);
+    setSrc(url);
+
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  if (!src) return null;
+
+  return <img src={src} alt={alt} className="h-full w-full object-cover" />;
+}
+
 export default function CreateCameraPage() {
   const router = useRouter();
   const createCamera = useCreateCamera();
@@ -74,7 +89,22 @@ export default function CreateCameraPage() {
 
   const [form, setForm] = useState(initialForm);
   const [images, setImages] = useState([]);
+  const [primaryKey, setPrimaryKey] = useState(null);
   const [marketplaceUrls, setMarketplaceUrls] = useState({});
+
+  const isSubmitting = createCamera.isPending;
+
+  // Jika gambar utama belum dipilih / sudah dihapus, gambar pertama otomatis jadi utama.
+  const effectivePrimaryKey = images.some((image) => image.key === primaryKey)
+    ? primaryKey
+    : (images[0]?.key ?? null);
+
+  function resetForm() {
+    setForm(initialForm);
+    setImages([]);
+    setPrimaryKey(null);
+    setMarketplaceUrls({});
+  }
 
   function updateField(event) {
     const { name, value, type, checked } = event.target;
@@ -106,11 +136,16 @@ export default function CreateCameraPage() {
       return;
     }
 
-    setImages((previous) => [...previous, ...selectedFiles]);
+    const additions = selectedFiles.map((file) => ({
+      key: crypto.randomUUID(),
+      file,
+    }));
+
+    setImages((previous) => [...previous, ...additions]);
   }
 
-  function removeImage(index) {
-    setImages((previous) => previous.filter((_, i) => i !== index));
+  function removeImage(key) {
+    setImages((previous) => previous.filter((image) => image.key !== key));
   }
 
   function updateMarketplaceUrl(marketplaceId, value) {
@@ -162,8 +197,15 @@ export default function CreateCameraPage() {
     formData.append("promo", String(form.promo));
     formData.append("best_selling", String(form.best_selling));
 
-    images.forEach((image) => {
-      formData.append("images", image);
+    // Gambar pertama yang dikirim menjadi gambar utama,
+    // jadi gambar yang dipilih sebagai utama dipindah ke urutan pertama.
+    const orderedImages = [
+      ...images.filter((image) => image.key === effectivePrimaryKey),
+      ...images.filter((image) => image.key !== effectivePrimaryKey),
+    ];
+
+    orderedImages.forEach(({ file }) => {
+      formData.append("images", file);
     });
 
     if (marketplaceLinks.length > 0) {
@@ -172,6 +214,7 @@ export default function CreateCameraPage() {
 
     createCamera.mutate(formData, {
       onSuccess: () => {
+        resetForm();
         notify.success("Kamera berhasil ditambahkan.");
         router.push("/admin/cameras");
       },
@@ -181,8 +224,6 @@ export default function CreateCameraPage() {
       },
     });
   }
-
-  const isSubmitting = createCamera.isPending;
 
   return (
     <div className="mx-auto w-full max-w-screen-xl space-y-6 pb-10">
@@ -229,6 +270,7 @@ export default function CreateCameraPage() {
               placeholder="Contoh: Canon EOS R50"
               maxLength={100}
               required
+              disabled={isSubmitting}
             />
           </FormField>
 
@@ -249,6 +291,7 @@ export default function CreateCameraPage() {
                   className={`${inputClass} pl-11`}
                   placeholder="12000000"
                   required
+                  disabled={isSubmitting}
                 />
               </div>
             </FormField>
@@ -265,6 +308,7 @@ export default function CreateCameraPage() {
                 className={inputClass}
                 placeholder="3"
                 required
+                disabled={isSubmitting}
               />
             </FormField>
 
@@ -276,6 +320,7 @@ export default function CreateCameraPage() {
                 onChange={updateField}
                 className={inputClass}
                 required
+                disabled={isSubmitting}
               >
                 <option value="NEW">Baru</option>
                 <option value="SECOND">Bekas</option>
@@ -290,6 +335,7 @@ export default function CreateCameraPage() {
                 onChange={updateField}
                 className={inputClass}
                 disabled={
+                  isSubmitting ||
                   categoriesPending ||
                   categoriesError ||
                   categories.length === 0
@@ -332,6 +378,7 @@ export default function CreateCameraPage() {
               className={`${inputClass} min-h-28 resize-y`}
               placeholder="Jelaskan spesifikasi dan keunggulan kamera..."
               maxLength={1000}
+              disabled={isSubmitting}
             />
             <p className="mt-1 text-right text-xs text-second/40">
               {form.description.length}/1000
@@ -351,78 +398,97 @@ export default function CreateCameraPage() {
               className={`${inputClass} min-h-24 resize-y`}
               placeholder="Daftar barang yang disertakan..."
               maxLength={1000}
+              disabled={isSubmitting}
             />
           </FormField>
         </section>
 
         <section className="space-y-5 rounded-2xl border border-second/30 p-5 sm:p-7">
           <div>
-            <h2 className="font-semibold text-second">Gambar kamera</h2>
+            <h2 className="font-semibold text-second">Galeri gambar</h2>
+
             <p className="mt-1 text-sm text-second/50">
-              JPEG, PNG, atau WebP. Maksimal 12 gambar, masing-masing 5 MB.
-              Gambar pertama akan menjadi gambar utama.
+              JPEG, PNG, atau WebP. Maksimal {MAX_IMAGES} gambar, masing-masing
+              5 MB. Pilih gambar utama atau hapus gambar yang tidak diperlukan.
             </p>
           </div>
 
-          <label
-            htmlFor="images"
-            className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-second/20 px-5 py-9 text-center transition-colors hover:border-second/50 hover:bg-second/[0.03]"
-          >
-            <FiUploadCloud size={32} className="text-second/50" />
-            <span className="mt-3 text-sm font-semibold text-second">
-              Pilih gambar kamera
-            </span>
-            <span className="mt-1 text-xs text-second/50">
-              {images.length}/{MAX_IMAGES} gambar dipilih
-            </span>
-
-            <input
-              id="images"
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              multiple
-              onChange={handleImageChange}
-              className="sr-only"
-            />
-          </label>
-
           {images.length > 0 && (
-            <div className="space-y-3">
-              {images.map((image, index) => (
-                <div
-                  key={`${image.name}-${image.size}-${index}`}
-                  className="flex min-w-0 items-center gap-3 rounded-xl border border-second/30 p-3"
-                >
-                  <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-second/5">
-                    <FiCamera size={19} className="text-second/60" />
-                  </div>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+              {images.map(({ key, file }) => {
+                const isPrimary = effectivePrimaryKey === key;
 
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-second">
-                      {image.name}
-                    </p>
-                    <p className="mt-1 text-xs text-second/50">
-                      {(image.size / (1024 * 1024)).toFixed(2)} MB
-                      {index === 0 && (
-                        <span className="ml-2 font-medium text-second">
-                          · Gambar utama
-                        </span>
-                      )}
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => removeImage(index)}
-                    aria-label={`Hapus gambar ${image.name}`}
-                    className="flex size-9 shrink-0 items-center justify-center rounded-lg text-second/50 transition-colors hover:bg-red-500/10 hover:text-red-500"
+                return (
+                  <div
+                    key={key}
+                    className={`overflow-hidden rounded-xl border ${
+                      isPrimary
+                        ? "border-second ring-2 ring-second/20"
+                        : "border-second/30"
+                    }`}
                   >
-                    <FiX size={18} />
-                  </button>
-                </div>
-              ))}
+                    <div className="aspect-square bg-second/[0.03]">
+                      <ImagePreview file={file} alt={file.name} />
+                    </div>
+
+                    <div className="space-y-2 p-2">
+                      <p className="truncate text-xs text-second/60">
+                        {file.name}
+                      </p>
+
+                      <button
+                        type="button"
+                        onClick={() => setPrimaryKey(key)}
+                        disabled={isSubmitting}
+                        className={`w-full rounded-lg px-2 py-2 text-xs font-semibold disabled:opacity-50 ${
+                          isPrimary
+                            ? "bg-second text-primary"
+                            : "bg-second/5 text-second hover:bg-second/10"
+                        }`}
+                      >
+                        {isPrimary ? "Gambar utama" : "Jadikan utama"}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => removeImage(key)}
+                        disabled={isSubmitting}
+                        className="flex w-full items-center justify-center gap-1 rounded-lg py-1.5 text-xs text-red-500 hover:bg-red-500/5 disabled:opacity-50"
+                      >
+                        <FiX size={13} />
+                        Hapus
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-second/50">
+              {images.length}/{MAX_IMAGES} gambar
+            </p>
+
+            <label
+              className={`inline-flex cursor-pointer items-center justify-center gap-2 self-start rounded-full border border-second/15 px-4 py-2.5 text-sm font-semibold text-second transition-colors hover:bg-second/5 ${
+                images.length >= MAX_IMAGES || isSubmitting
+                  ? "pointer-events-none opacity-40"
+                  : ""
+              }`}
+            >
+              <FiUploadCloud size={17} />
+              Tambah gambar
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                disabled={images.length >= MAX_IMAGES || isSubmitting}
+                onChange={handleImageChange}
+                className="sr-only"
+              />
+            </label>
+          </div>
         </section>
 
         <section className="space-y-4 rounded-2xl border border-second/30 p-5 sm:p-7">
@@ -439,6 +505,7 @@ export default function CreateCameraPage() {
               name="promo"
               checked={form.promo}
               onChange={updateField}
+              disabled={isSubmitting}
               className="mt-1 size-4 accent-current"
             />
             <span>
@@ -457,6 +524,7 @@ export default function CreateCameraPage() {
               name="best_selling"
               checked={form.best_selling}
               onChange={updateField}
+              disabled={isSubmitting}
               className="mt-1 size-4 accent-current"
             />
             <span>
@@ -546,6 +614,7 @@ export default function CreateCameraPage() {
                       }
                       className={inputClass}
                       placeholder={`URL produk ${marketplace.name} (opsional)`}
+                      disabled={isSubmitting}
                     />
                   </div>
 
@@ -560,7 +629,7 @@ export default function CreateCameraPage() {
           )}
         </section>
 
-        <div className="flex flex-col-reverse gap-3 border-t border border-second/30 pt-5 sm:flex-row sm:justify-end">
+        <div className="flex flex-col-reverse gap-3 border-t border-second/30 pt-5 sm:flex-row sm:justify-end">
           <button
             type="button"
             onClick={() => router.back()}

@@ -16,7 +16,7 @@ const HOME_GENERAL_SIZE = 12;
 const HOME_FEATURED_SIZE = 4;
 
 // Kamera yang di-soft-delete nggak pernah terlihat publik
-const ACTIVE = { is_deleted: false };
+const ACTIVE = { is_deleted: false, is_promo: false, is_best_selling: false };
 
 // Hanya field yang aman untuk publik. id toko sengaja nggak ikut.
 const STORE_SELECT = {
