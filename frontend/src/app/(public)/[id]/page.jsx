@@ -383,9 +383,9 @@ function CameraDetailContent() {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {/* Galeri */}
-          <div className="space-y-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-rows-[auto_1fr]">
+          {/* Galeri. Di xl memanjang dua baris, di kiri info dan deskripsi. */}
+          <div className="space-y-4 xl:row-span-2">
             <div className="relative aspect-square w-full overflow-hidden rounded-md bg-second/5">
               {images.length > 0 ? (
                 <div
@@ -508,30 +508,33 @@ function CameraDetailContent() {
               <BuyButtons variant="inline" {...buyButtonProps} />
             </div>
           </div>
+
+          {/* Deskripsi + kelengkapan.
+              Di bawah xl: satu blok selebar halaman di bawah galeri dan info
+              (2 kolom di md). Di xl: di kolom kanan, di bawah tombol beli,
+              ditumpuk atas-bawah. */}
+          {(camera.description || camera.inclusions) && (
+            <div className="grid grid-cols-1 gap-4 md:col-span-2 md:grid-cols-2 xl:col-span-1 xl:grid-cols-1 xl:self-start">
+              {camera.description && (
+                <section className="space-y-2">
+                  <h2 className="font-semibold text-second text-base">
+                    Deskripsi
+                  </h2>
+                  <ExpandableText key={camera.id} text={camera.description} />
+                </section>
+              )}
+
+              {camera.inclusions && (
+                <section className="space-y-2">
+                  <h2 className="font-semibold text-base text-second">
+                    Kelengkapan
+                  </h2>
+                  <ExpandableText key={camera.id} text={camera.inclusions} />
+                </section>
+              )}
+            </div>
+          )}
         </div>
-
-        {/* Deskripsi + kelengkapan */}
-        {(camera.description || camera.inclusions) && (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {camera.description && (
-              <section className="space-y-2">
-                <h2 className="font-semibold text-second text-base">
-                  Deskripsi
-                </h2>
-                <ExpandableText key={camera.id} text={camera.description} />
-              </section>
-            )}
-
-            {camera.inclusions && (
-              <section className="space-y-2">
-                <h2 className="font-semibold text-base text-second">
-                  Kelengkapan
-                </h2>
-                <ExpandableText key={camera.id} text={camera.inclusions} />
-              </section>
-            )}
-          </div>
-        )}
 
         {/* Kamu mungkin juga suka: kamera lain di kategori yang sama */}
         {relatedCameras.length > 0 && (
