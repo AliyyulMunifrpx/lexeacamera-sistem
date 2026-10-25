@@ -16,7 +16,7 @@ const HOME_GENERAL_SIZE = 12;
 const HOME_FEATURED_SIZE = 4;
 
 // Kamera yang di-soft-delete nggak pernah terlihat publik
-const ACTIVE = { is_deleted: false, is_promo: false, is_best_selling: false };
+const ACTIVE = { is_deleted: false };
 
 // Hanya field yang aman untuk publik. id toko sengaja nggak ikut.
 const STORE_SELECT = {
@@ -189,7 +189,11 @@ const getPublicHome = async (query = {}) => {
     prisma.$transaction([
       prisma.store.findFirst({ select: STORE_SELECT, orderBy: { id: "asc" } }),
       prisma.camera.findMany({
-        where: ACTIVE,
+        where: {
+          ...ACTIVE,
+          promo: false, // 🎯 Filter bukan promo
+          best_selling: false, // 🎯 Filter bukan best selling
+        },
         select: CARD_SELECT,
         orderBy: ORDER_BY.newest,
         take: HOME_GENERAL_SIZE,
