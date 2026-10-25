@@ -28,7 +28,7 @@ const STORE_SELECT = {
 
 const IMAGE_OPTIONS = {
   logo: { width: 512, height: 512, quality: 82, fit: "inside" },
-  banner: { width: 1920, height: 1080, quality: 82, fit: "inside" },
+  banner: { width: 3000, height: 1000, quality: 82, fit: "inside" },
 };
 
 const OPTIONAL_TEXT_FIELDS = [

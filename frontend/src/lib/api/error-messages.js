@@ -1,15 +1,28 @@
 const ERROR_MESSAGES = {
+  // Auth & akun
   EMAIL_ALREADY_EXIST: "Email sudah terdaftar.",
   EMAIL_NOT_VERIVIED:
     "Email belum diverifikasi. Silakan periksa kotak masuk email Anda.",
   INCORRECT_EMAIL_OR_PASSWORD: "Email atau kata sandi salah.",
   ACCOUNT_SUSPEND: "Akun Anda sedang ditangguhkan.",
   USER_DATABASE_MISMATCH: "Data akun tidak ditemukan.",
-  UNAUTHORIZED: "Sesi Anda telah berakhir. Silakan masuk kembali.",
+  UNAUTHORIZED:
+    "Sesi Anda tidak valid atau telah berakhir. Silakan masuk kembali.",
+  CURRENT_PASSWORD_INVALID: "",
+  UPDATE_EMAIL_REQUEST_FAILED: "",
+
+  // Toko & marketplace
   INVALID_PRICE_RANGE: "",
   MARKETPLACE_ALREADY_EXIST: "",
   STORE_NOT_FOUND: "",
+
+  // Banner
   BANNER_IMAGE_REQUIRED: "Pilih gambar banner terlebih dahulu.",
+  BANNER_FLAG_CONFLICT:
+    "Satu banner tidak boleh menjadi Promo dan Best Seller sekaligus.",
+  BANNER_FLAG_TAKEN:
+    "Flag ini baru saja dipakai banner lain. Muat ulang lalu coba lagi.",
+  NOTHING_TO_UPDATE: "Tidak ada perubahan yang dikirim.",
   INVALID_IMAGE_FORMAT: "Format gambar harus PNG, JPEG, atau WebP.",
   INVALID_IMAGE:
     "File tidak dapat diproses sebagai gambar. Coba gunakan file lain.",
@@ -20,10 +33,6 @@ const ERROR_MESSAGES = {
   BANNER_UPLOAD_FAILED: "Gagal mengunggah gambar banner. Silakan coba kembali.",
   BANNER_BUCKET_NOT_CONFIGURED:
     "Penyimpanan gambar banner belum dikonfigurasi di server.",
-  UNAUTHORIZED:
-    "Sesi Anda tidak valid atau telah berakhir. Silakan masuk kembali.",
-  CURRENT_PASSWORD_INVALID: "",
-  UPDATE_EMAIL_REQUEST_FAILED: "",
 };
 
 export function getErrorMessage(code, fallback) {
@@ -55,6 +64,22 @@ export function getValidationMessage(message) {
     {
       regex: /^"name" is required$/,
       message: "Nama wajib diisi.",
+    },
+    {
+      regex: /^"id" must be a valid GUID$/,
+      message: "ID tidak valid.",
+    },
+    {
+      regex: /^"is_promo" must be a boolean$/,
+      message: "Nilai Promo harus true atau false.",
+    },
+    {
+      regex: /^"is_best_seller" must be a boolean$/,
+      message: "Nilai Best Seller harus true atau false.",
+    },
+    {
+      regex: /^".+" is not allowed$/,
+      message: "Data yang dikirim mengandung field yang tidak dikenali.",
     },
   ];
 

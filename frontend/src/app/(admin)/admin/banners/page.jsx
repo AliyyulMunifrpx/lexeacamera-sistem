@@ -8,6 +8,8 @@ import {
   FiLoader,
   FiPlus,
   FiRefreshCw,
+  FiStar,
+  FiTag,
   FiTrash2,
 } from "react-icons/fi";
 
@@ -21,9 +23,15 @@ import {
 } from "../../../features/banners/hooks.js";
 import notify from "../../../../lib/notify.js";
 import { normalizeApiError } from "../../../../lib/api/errors.js";
+import { getErrorMessage } from "../../../../lib/api/error-messages.js";
 
 const FOCUS_RING =
   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-second";
+
+const FLAG_LABELS = {
+  is_promo: "Promo",
+  is_best_seller: "Best Seller",
+};
 
 function formatNumber(value = 0) {
   return new Intl.NumberFormat("id-ID").format(Number(value) || 0);
@@ -58,6 +66,7 @@ export default function BannersPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [bannerToEdit, setBannerToEdit] = useState(null);
   const [bannerToDelete, setBannerToDelete] = useState(null);
+  const [flagUpdatingId, setFlagUpdatingId] = useState(null);
 
   const isSaving = createBanner.isPending || updateBanner.isPending;
 
@@ -93,9 +102,26 @@ export default function BannersPage() {
     setBannerToEdit(null);
   }
 
-  async function handleSubmit(file) {
+  /**
+   * file  : berkas gambar dari modal.
+   * flags : opsional, { is_promo?: boolean, is_best_seller?: boolean }.
+   *         Flag yang tidak diisi tidak dikirim (backend memakai default
+   *         false saat membuat, dan tidak mengubah apa pun saat mengedit).
+   */
+  async function handleSubmit(file, flags = {}) {
+    if (flags.is_promo === true && flags.is_best_seller === true) {
+      notify.error(getErrorMessage("BANNER_FLAG_CONFLICT"));
+      return;
+    }
+
     const formData = new FormData();
     formData.append("banner", file);
+
+    for (const key of Object.keys(FLAG_LABELS)) {
+      if (typeof flags[key] === "boolean") {
+        formData.append(key, String(flags[key]));
+      }
+    }
 
     try {
       if (bannerToEdit) {
@@ -113,8 +139,53 @@ export default function BannersPage() {
 
       setIsFormOpen(false);
       setBannerToEdit(null);
+
+      // Flag banner lain bisa ikut tercabut, jadi pastikan daftar segar.
+      refetch();
     } catch (error) {
       notify.error(normalizeApiError(error).message);
+    }
+  }
+
+  async function handleToggleFlag(banner, flag) {
+    if (flagUpdatingId) return;
+
+    const otherFlag = flag === "is_promo" ? "is_best_seller" : "is_promo";
+    const nextValue = !banner[flag];
+    const label = FLAG_LABELS[flag];
+
+    const currentHolder = banners.find(
+      (item) => item.id !== banner.id && item[flag],
+    );
+
+    const formData = new FormData();
+    formData.append(flag, String(nextValue));
+
+    // Satu banner tidak boleh memegang dua flag: pindahkan perannya.
+    if (nextValue && banner[otherFlag]) {
+      formData.append(otherFlag, "false");
+    }
+
+    setFlagUpdatingId(banner.id);
+
+    try {
+      await updateBanner.mutateAsync({ id: banner.id, formData });
+
+      if (!nextValue) {
+        notify.success(`Banner ini tidak lagi menjadi banner ${label}.`);
+      } else if (currentHolder) {
+        notify.success(
+          `Banner ${label} dipindahkan ke banner ini. Banner ${label} sebelumnya otomatis dicabut.`,
+        );
+      } else {
+        notify.success(`Banner ini sekarang menjadi banner ${label}.`);
+      }
+
+      refetch();
+    } catch (error) {
+      notify.error(normalizeApiError(error).message);
+    } finally {
+      setFlagUpdatingId(null);
     }
   }
 
@@ -187,7 +258,8 @@ export default function BannersPage() {
           </div>
 
           <p className="mt-2 text-sm text-second/60">
-            Kelola gambar banner yang ditampilkan di halaman utama.
+            Kelola gambar banner yang ditampilkan di halaman utama, termasuk
+            banner promo dan best seller.
           </p>
         </div>
         <div className="flex gap-4 w-full md:w-fit">
@@ -221,7 +293,8 @@ export default function BannersPage() {
 
         <p className="mt-1 text-sm text-second/60">
           {formatNumber(banners.length)} banner ditemukan. Banner terbaru ada di
-          paling atas.
+          paling atas. Hanya satu banner yang bisa menjadi Promo dan satu lagi
+          Best Seller.
         </p>
       </div>
 
@@ -232,59 +305,123 @@ export default function BannersPage() {
       >
         {banners.length > 0 ? (
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
-            {banners.map((banner) => (
-              <article
-                key={banner.id}
-                className="overflow-hidden rounded-2xl border border-second/15 bg-primary/5 transition-colors hover:border-second/30"
-              >
-                <div className="flex aspect-[1/1] rounded-2xl items-center justify-center overflow-hidden bg-second/5 p-2">
-                  <Image
-                    width={1600}
-                    height={1600}
-                    src={banner.banner_url}
-                    alt={`Banner dibuat ${formatDate(banner.created_at)}`}
-                    loading="lazy"
-                    className="h-full w-full rounded-xl object-contain"
-                  />
-                </div>
+            {banners.map((banner) => {
+              const isFlagUpdating = flagUpdatingId === banner.id;
 
-                <div className="space-y-4 p-4">
-                  <div>
-                    <p className="text-xs text-second/60">Tanggal dibuat</p>
+              return (
+                <article
+                  key={banner.id}
+                  className="overflow-hidden rounded-2xl border border-second/15 bg-primary/5 transition-colors hover:border-second/30"
+                >
+                  <div className="relative flex aspect-[1/1] rounded-2xl items-center justify-center overflow-hidden bg-second/5 p-2">
+                    <Image
+                      width={1600}
+                      height={1600}
+                      src={banner.banner_url}
+                      alt={`Banner dibuat ${formatDate(banner.created_at)}`}
+                      loading="lazy"
+                      className="h-full w-full rounded-xl object-contain"
+                    />
 
-                    <p className="mt-1 text-sm font-medium text-second">
-                      {formatDate(banner.created_at)}
-                    </p>
+                    {(banner.is_promo || banner.is_best_seller) && (
+                      <div className="absolute left-4 top-4 flex flex-wrap gap-2">
+                        {banner.is_promo && (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-grad px-3 py-1 text-xs font-semibold text-primary shadow">
+                            <FiTag size={13} />
+                            Promo
+                          </span>
+                        )}
+
+                        {banner.is_best_seller && (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-grad px-3 py-1 text-xs font-semibold text-primary shadow">
+                            <FiStar size={13} />
+                            Best Seller
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 pt-4">
-                    <button
-                      type="button"
-                      onClick={() => handleEdit(banner)}
-                      aria-label="Ganti gambar banner"
-                      className={`inline-flex items-center justify-center gap-2 rounded-full bg-second px-4 py-2 text-xs font-semibold text-primary transition-colors hover:bg-second/80 ${FOCUS_RING}`}
-                    >
-                      <FiEdit2 size={16} />
-                      Ganti Gambar
-                    </button>
+                  <div className="space-y-4 p-4">
+                    <div>
+                      <p className="text-xs text-second/60">Tanggal dibuat</p>
 
-                    <button
-                      type="button"
-                      onClick={() => handleOpenDelete(banner)}
-                      disabled={
-                        deleteBanner.isPending &&
-                        bannerToDelete?.id === banner.id
-                      }
-                      aria-label="Hapus banner"
-                      className={`inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-xs font-semibold text-primary bg-second2 transition-colors hover:bg-second2/80 disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`}
-                    >
-                      <FiTrash2 size={16} />
-                      Hapus
-                    </button>
+                      <p className="mt-1 text-sm font-medium text-second">
+                        {formatDate(banner.created_at)}
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 border-t border-second/15 pt-4">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleFlag(banner, "is_promo")}
+                        disabled={Boolean(flagUpdatingId)}
+                        aria-pressed={Boolean(banner.is_promo)}
+                        className={`inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING} ${
+                          banner.is_promo
+                            ? "bg-grad text-primary"
+                            : "border border-second/30 text-second hover:bg-second/5"
+                        }`}
+                      >
+                        {isFlagUpdating ? (
+                          <FiLoader size={16} className="animate-spin" />
+                        ) : (
+                          <FiTag size={16} />
+                        )}
+                        Promo
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleToggleFlag(banner, "is_best_seller")
+                        }
+                        disabled={Boolean(flagUpdatingId)}
+                        aria-pressed={Boolean(banner.is_best_seller)}
+                        className={`inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING} ${
+                          banner.is_best_seller
+                            ? "bg-grad text-primary"
+                            : "border border-second/30 text-second hover:bg-second/5"
+                        }`}
+                      >
+                        {isFlagUpdating ? (
+                          <FiLoader size={16} className="animate-spin" />
+                        ) : (
+                          <FiStar size={16} />
+                        )}
+                        Best Seller
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => handleEdit(banner)}
+                        aria-label="Ganti gambar banner"
+                        className={`inline-flex items-center justify-center gap-2 rounded-full bg-second px-4 py-2 text-xs font-semibold text-primary transition-colors hover:bg-second/80 ${FOCUS_RING}`}
+                      >
+                        <FiEdit2 size={16} />
+                        Ganti Gambar
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleOpenDelete(banner)}
+                        disabled={
+                          deleteBanner.isPending &&
+                          bannerToDelete?.id === banner.id
+                        }
+                        aria-label="Hapus banner"
+                        className={`inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-xs font-semibold text-primary bg-second2 transition-colors hover:bg-second2/80 disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`}
+                      >
+                        <FiTrash2 size={16} />
+                        Hapus
+                      </button>
+                    </div>
                   </div>
-                </div>
-              </article>
-            ))}
+                </article>
+              );
+            })}
           </div>
         ) : (
           <div className="flex min-h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-second/20 bg-primary px-6 text-center">
