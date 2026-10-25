@@ -4,6 +4,10 @@ export async function getHome() {
   const response = await api.get("/public/home");
   return response.data.data;
 }
+export async function getCamera(id) {
+  const response = await api.get(`/public/cameras/${id}`);
+  return response.data.data;
+}
 
 export async function getCameras(filters = {}) {
   const {
@@ -38,5 +42,11 @@ export async function getCameras(filters = {}) {
   const response = await api.get("/public/cameras", { params });
 
   // { data: [...], paging: { page, per_page, total, total_pages } }
+  return response.data;
+}
+export async function createOrder(payload) {
+  const response = await api.post("/orders", payload);
+
+  // { data: { no_invoice, customer_name, total_amount, created_at, items: [...] } }
   return response.data;
 }

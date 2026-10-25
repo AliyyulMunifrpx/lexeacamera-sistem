@@ -7,14 +7,18 @@ const nextConfig = {
       {
         protocol: "https",
         hostname: "wdivgrgyywklfwhwsxug.supabase.co",
-        pathname: "/**", // Bikin wildcard penuh ke seluruh endpoint Supabase kamu
+        pathname: "/**",
       },
-      // Opsional: kalau mau support semua project Supabase lain sekaligus:
-      // {
-      //   protocol: "https",
-      //   hostname: "*.supabase.co",
-      //   pathname: "/**",
-      // }
+      {
+        protocol: "https",
+        hostname: "commons.wikimedia.org",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "upload.wikimedia.org",
+        pathname: "/**",
+      },
     ],
   },
   experimental: {

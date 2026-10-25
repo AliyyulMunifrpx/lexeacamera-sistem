@@ -34,6 +34,7 @@ export default function CameraCard({ data }) {
             alt={`${data.name} photo`}
             src={data.image_url}
             fill
+            unoptimized
             className="w-full h-full object-cover transition-transform group-hover:scale-105 ease-out duration-300"
           />
         ) : (

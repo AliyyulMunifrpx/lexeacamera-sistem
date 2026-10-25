@@ -12,6 +12,7 @@ import bannerService from "./banner-service.js";
 const PER_PAGE = 20;
 
 // Jumlah item di beranda
+const HOME_GENERAL_SIZE = 18;
 const HOME_FEATURED_SIZE = 4;
 // Batas aman supaya query beranda nggak pernah tanpa batas
 const HOME_MAX_CATEGORIES = 100;
@@ -207,6 +208,7 @@ const getPublicHome = async (query = {}) => {
           },
           select: CARD_SELECT,
           orderBy: ORDER_BY.newest,
+          take: HOME_GENERAL_SIZE,
         }),
         prisma.camera.findMany({
           where: { ...ACTIVE, promo: true },

@@ -322,15 +322,11 @@ export default function CamerasHomePage({ searchRequest }) {
             : "Belum ada produk."}
         </p>
       ) : (
-        <MasonryGrid
-          className={`w-full grid-cols-2 transition-opacity md:grid-cols-4 lg:grid-cols-6 ${
-            isPlaceholderData ? "opacity-60" : ""
-          }`}
-        >
+        <div className="w-full grid gap-2 grid-cols-2 md:grid-cols-4 lg:grid-cols-6">
           {cameras.map((item) => (
             <CameraCard key={item.id} data={item} />
           ))}
-        </MasonryGrid>
+        </div>
       )}
 
       {/* Paginasi */}
