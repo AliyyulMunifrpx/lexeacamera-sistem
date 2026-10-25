@@ -31,6 +31,19 @@ const INITIAL_FILTERS = {
 };
 
 const PER_PAGE = 20;
+const SEARCH_DEBOUNCE_MS = 400;
+
+function useDebouncedValue(value, delay = SEARCH_DEBOUNCE_MS) {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+
+  return debounced;
+}
 
 function formatNumber(value = 0) {
   return new Intl.NumberFormat("id-ID").format(Number(value) || 0);
@@ -77,6 +90,35 @@ export default function InvoicesPage() {
 
   const { data, isPending, isError, isFetching, error, refetch } = query;
 
+  const debouncedSearch = useDebouncedValue(draftFilters.search.trim());
+
+  const { created_from, created_to, is_final } = draftFilters;
+
+  // Pencarian teks: tunggu user berhenti mengetik sebentar.
+  useEffect(() => {
+    setFilters((current) =>
+      current.search === debouncedSearch
+        ? current
+        : { ...current, search: debouncedSearch, page: 1 },
+    );
+  }, [debouncedSearch]);
+
+  // Tanggal dan status: langsung diterapkan saat berubah.
+  useEffect(() => {
+    if (created_from && created_to && created_from > created_to) {
+      notify.error("Tanggal awal tidak boleh melewati tanggal akhir.");
+      return;
+    }
+
+    setFilters((current) =>
+      current.created_from === created_from &&
+      current.created_to === created_to &&
+      current.is_final === is_final
+        ? current
+        : { ...current, created_from, created_to, is_final, page: 1 },
+    );
+  }, [created_from, created_to, is_final]);
+
   useEffect(() => {
     if (!isError || !error) return;
 
@@ -101,10 +143,10 @@ export default function InvoicesPage() {
     filters.is_final !== "",
   );
 
+  // Enter / tombol terapkan tetap jalan dan langsung menerapkan semuanya
+  // tanpa menunggu debounce.
   function handleApplyFilters(event) {
-    event.preventDefault();
-
-    const { created_from, created_to } = draftFilters;
+    event?.preventDefault();
 
     if (created_from && created_to && created_from > created_to) {
       notify.error("Tanggal awal tidak boleh melewati tanggal akhir.");
@@ -113,9 +155,9 @@ export default function InvoicesPage() {
 
     setFilters({
       search: draftFilters.search.trim(),
-      created_from: draftFilters.created_from,
-      created_to: draftFilters.created_to,
-      is_final: draftFilters.is_final,
+      created_from,
+      created_to,
+      is_final,
       page: 1,
     });
   }
