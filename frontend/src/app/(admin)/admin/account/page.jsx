@@ -61,7 +61,7 @@ function ErrorState({ onRetry, isFetching }) {
 function AccountField({ icon: Icon, label, value, onEdit, masked = false }) {
   return (
     <div className="flex min-w-0 items-center gap-3">
-      <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-second/10">
+      <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-grad text-primary">
         <Icon size={19} />
       </div>
 
@@ -80,7 +80,7 @@ function AccountField({ icon: Icon, label, value, onEdit, masked = false }) {
       <button
         type="button"
         onClick={onEdit}
-        className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-second/25 px-3 py-2 text-sm font-medium transition hover:bg-second/10"
+        className="inline-flex shrink-0 items-center gap-2 text-primary rounded-full bg-second px-3 py-2 text-sm font-medium transition hover:bg-second/80"
       >
         <FiEdit2 size={15} />
         <span className="hidden sm:inline">Edit</span>
@@ -447,7 +447,7 @@ export default function AccountPage() {
 
       <section className="rounded-2xl border border-second/15 p-5 sm:p-6">
         <div className="flex items-center gap-4">
-          <div className="flex size-16 shrink-0 items-center justify-center rounded-2xl bg-grad text-primary">
+          <div className="flex size-16 shrink-0 items-center justify-center rounded-full bg-grad text-primary">
             <FiUser size={30} />
           </div>
 
