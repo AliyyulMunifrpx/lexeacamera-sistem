@@ -237,14 +237,14 @@ export default function BannersPage() {
                 key={banner.id}
                 className="overflow-hidden rounded-2xl border border-second/15 bg-primary/5 transition-colors hover:border-second/30"
               >
-                <div className="flex aspect-[1/1] items-center justify-center overflow-hidden bg-second/5 p-2">
+                <div className="flex aspect-[1/1] rounded-2xl items-center justify-center overflow-hidden bg-second/5 p-2">
                   <Image
                     width={1600}
                     height={1600}
                     src={banner.banner_url}
                     alt={`Banner dibuat ${formatDate(banner.created_at)}`}
                     loading="lazy"
-                    className="h-full w-full object-contain"
+                    className="h-full w-full rounded-xl object-contain"
                   />
                 </div>
 
@@ -257,7 +257,7 @@ export default function BannersPage() {
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 border-t border border-second/30 pt-4">
+                  <div className="grid grid-cols-2 gap-3 pt-4">
                     <button
                       type="button"
                       onClick={() => handleEdit(banner)}

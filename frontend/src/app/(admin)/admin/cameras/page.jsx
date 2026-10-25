@@ -374,7 +374,7 @@ export default function CamerasPage() {
       </div>
 
       {totalCameras > 0 && (
-        <div className="flex flex-col gap-4 border-t border border-second/30 pt-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-4 pt-5 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-second/60">
             Halaman {safePage} dari {totalPages}
           </p>

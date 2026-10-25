@@ -54,7 +54,7 @@ export default function CameraCard({ camera }) {
           </p>
         </div>
 
-        <div className="flex items-center justify-between border-t border border-second/30 pt-3">
+        <div className="flex items-center justify-between  pt-3">
           <div className="flex items-center gap-2 text-sm text-second/60">
             <FiPackage size={16} />
             <span>Stok tersedia</span>
