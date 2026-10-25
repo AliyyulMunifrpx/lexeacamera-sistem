@@ -7,6 +7,8 @@ import { normalizeApiError } from "../lib/api/errors.js";
 import notify from "../lib/notify.js";
 import StoreHomePage from "../components/public/home/store-page.jsx";
 import CamerasHomePage from "../components/public/home/cameras-page.jsx";
+import ContactHomePage from "../components/public/home/contact-page.jsx";
+import TermsHomePage from "../components/public/home/terms-page.jsx";
 
 const TABS = [
   { key: "toko", label: "Toko" },
@@ -125,8 +127,8 @@ export default function Home() {
   const panels = [
     <StoreHomePage key="toko" data={data} />,
     <CamerasHomePage key="produk" searchRequest={searchRequest} />,
-    <PlaceholderPanel key="kategori" title="Kategori" />,
-    <PlaceholderPanel key="kontak" title="Kontak" />,
+    <ContactHomePage data={data} key="kontak" title="Kontak" />,
+    <TermsHomePage data={data} key="S&K" title="S&K" />,
   ];
 
   return (

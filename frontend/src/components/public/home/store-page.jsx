@@ -11,7 +11,13 @@ export default function StoreHomePage({ data }) {
 
   const promoBanner = data?.banners?.find((item) => item.is_promo === true);
   const promoCameras = data?.promo_cameras || [];
-
+  const kameraMasih = (data?.cameras || []).filter((value, index, array) => {
+    return value.stock !== 0;
+  });
+  const kameraHabis = (data?.cameras || []).filter((value, index, array) => {
+    return value.stock === 0;
+  });
+  const cameras = [...kameraMasih, ...kameraHabis];
   // Filter banner standar (yang bukan promo & bukan best seller)
   const standartBanner =
     data?.banners?.filter((item) => {
@@ -45,7 +51,7 @@ export default function StoreHomePage({ data }) {
         ))}
 
       <div className="columns-2 gap-2 md:columns-4 lg:columns-6">
-        {data?.cameras?.map((item) => (
+        {cameras?.map((item) => (
           <CameraCard key={item.id} data={item} />
         ))}
       </div>
