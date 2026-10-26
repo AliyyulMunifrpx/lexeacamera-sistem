@@ -19,26 +19,22 @@ const SITE_URL = process.env.NEXT_PUBLIC_FRONTEND_URL ?? "https://wavcamera.id";
 const FALLBACK_NAME = "WAV Camera";
 
 // Data toko diambil dari endpoint publik dan di-cache lewat "use cache".
-// Sukses: cache 5 menit. Gagal (backend gratisan lambat bangun): cache singkat
-// supaya fallback tidak tertahan lama.
+// cacheLife harus satu nilai tetap dengan expire >= 5 menit, supaya ikut
+// diprerender (cache jangka pendek dianggap dynamic dan membuat build gagal).
 async function getStore() {
   "use cache";
+  cacheLife({ stale: 300, revalidate: 300, expire: 3600 });
 
   try {
     const response = await fetch(`${API_URL}/public/store`, {
       signal: AbortSignal.timeout(4000),
     });
 
-    if (!response.ok) {
-      cacheLife({ stale: 30, revalidate: 30, expire: 60 });
-      return null;
-    }
+    if (!response.ok) return null;
 
     const json = await response.json();
-    cacheLife({ stale: 300, revalidate: 300, expire: 3600 });
     return json?.data ?? null;
   } catch {
-    cacheLife({ stale: 30, revalidate: 30, expire: 60 });
     return null;
   }
 }
