@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase.js";
 import { normalizeApiError } from "../../../../lib/api/errors.js";
 import notify from "../../../../lib/notify.js";
+import { clearAuthTokens } from "../../../../lib/auth/token-storage.js";
 
 export default function ResetPasswordPage() {
   const router = useRouter();
@@ -36,6 +37,7 @@ export default function ResetPasswordPage() {
       notify.success("Kata sandi berhasil diperbarui.");
 
       await supabase.auth.signOut();
+      clearAuthTokens(); // buang token lama di aplikasi
 
       router.replace("/auth/login");
     } catch (err) {
