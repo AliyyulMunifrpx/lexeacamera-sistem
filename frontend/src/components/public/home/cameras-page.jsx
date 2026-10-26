@@ -5,12 +5,10 @@ import { FiLoader, FiSearch, FiX } from "react-icons/fi";
 
 import { useGetHome } from "../../../app/features/public/hooks.js";
 import { useGetInfiniteCameras } from "../../../app/features/public/infinite-cameras.js";
-import { useGetCategories } from "../../../app/features/categories/hooks.js";
 import { normalizeApiError } from "../../../lib/api/errors.js";
 import notify from "../../../lib/notify.js";
 // Sesuaikan path import CameraCard
 import CameraCard from "./camera-card.jsx";
-import MasonryGrid from "./masonry-grid.jsx";
 
 const CONDITIONS = [
   { value: "", label: "Semua" },
