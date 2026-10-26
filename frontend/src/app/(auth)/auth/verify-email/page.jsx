@@ -57,7 +57,7 @@ function VerifyEmailContent() {
         type: "signup",
         email,
         options: {
-          emailRedirectTo: `${window.location.origin}/admin/`,
+          emailRedirectTo: `${process.env.NEXT_PUBLIC_FRONTEND_URL}/admin`,
         },
       });
 
@@ -131,7 +131,10 @@ function VerifyEmailContent() {
 
         <p className="text-center text-sm text-second/70">
           Sudah melakukan verifikasi?{" "}
-          <Link href="/auth/login" className="font-semibold underline text-second3">
+          <Link
+            href="/auth/login"
+            className="font-semibold underline text-second3"
+          >
             Login
           </Link>
         </p>

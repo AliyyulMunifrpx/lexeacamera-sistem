@@ -38,7 +38,7 @@ const register = async function (request) {
           email: user.email,
           password: user.password,
           options: {
-            emailRedirectTo: `${process.env.FRONTEND_URL}/admin/`,
+            emailRedirectTo: `${process.env.FRONTEND_URL}/auth/verify-email`,
           },
         });
         if (result.error) {
