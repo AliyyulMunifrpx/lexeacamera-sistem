@@ -13,13 +13,12 @@ import {
 } from "react-icons/fi";
 
 import Image from "next/image.js";
-import {
-  useDeleteCamera,
-  useGetCamera,
-} from "../../../../features/cameras/hooks.js";
-import { normalizeApiError } from "../../../../../lib/api/errors.js";
-import notify from "../../../../../lib/notify.js";
+
 import DeleteCameraModal from "../../../../../components/admin/delete-camera-modal.jsx";
+import { useDeleteCamera } from "../../features/cameras/hooks.js";
+import { useGetCamera } from "../../features/public/hooks.js";
+import { normalizeApiError } from "../../../lib/api/errors.js";
+import notify from "../../../lib/notify.js";
 
 function formatNumber(number = 0) {
   return new Intl.NumberFormat("id-ID").format(number);
