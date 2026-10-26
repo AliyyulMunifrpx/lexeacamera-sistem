@@ -1,198 +1,66 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
-import Image from "next/image.js";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link.js";
 import { useParams, useRouter } from "next/navigation";
 import {
   FiArrowLeft,
-  FiExternalLink,
+  FiCamera,
   FiLoader,
-  FiShoppingBag,
-  FiShoppingCart,
-  FiX,
+  FiPackage,
+  FiTag,
+  FiTrash2,
 } from "react-icons/fi";
-import { FaWhatsapp } from "react-icons/fa";
 
+import Image from "next/image.js";
 import {
+  useDeleteCamera,
   useGetCamera,
-  useGetCameras,
-  useGetHome,
-} from "../../features/public/hooks.js";
-import { normalizeApiError } from "../../../lib/api/errors.js";
-import notify from "../../../lib/notify.js";
-// Sesuaikan path dua import ini dengan lokasi file kamu.
-import MasonryGrid from "./../../../components/public/home/masonry-grid";
-import CameraCard from "../../../components/public/home/camera-card.jsx";
+} from "../../../../features/cameras/hooks.js";
+import { normalizeApiError } from "../../../../../lib/api/errors.js";
+import notify from "../../../../../lib/notify.js";
+import DeleteCameraModal from "../../../../../components/admin/delete-camera-modal.jsx";
 
-const RELATED_LIMIT = 18;
-
-const priceFormatter = new Intl.NumberFormat("id-ID", {
-  maximumFractionDigits: 0,
-});
-
-function formatPrice(value) {
-  const number = Number(value);
-
-  if (value === null || value === undefined || Number.isNaN(number)) {
-    return "0";
-  }
-
-  return priceFormatter.format(number);
+function formatNumber(number = 0) {
+  return new Intl.NumberFormat("id-ID").format(number);
 }
 
-const CONDITION_LABEL = {
-  NEW: "Baru",
-  SECOND: "Bekas",
-};
-
-// Nomor dari API bisa "0823...", "62823...", atau "823...". Hasilnya selalu berawalan 62.
-function normalizeWhatsapp(value) {
-  const digits = String(value ?? "").replace(/\D/g, "");
-  if (!digits) return "";
-
-  if (digits.startsWith("62")) return digits;
-  if (digits.startsWith("0")) return `62${digits.slice(1)}`;
-  return `62${digits}`;
+function formatPrice(price = 0) {
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0,
+  }).format(price);
 }
 
-// Teks panjang: kalau tingginya lebih dari setengah tinggi layar,
-// dipotong di setengah layar dan diberi tombol "Selengkapnya".
-function ExpandableText({ text }) {
-  const textRef = useRef(null);
-  const [expanded, setExpanded] = useState(false);
-  const [limit, setLimit] = useState(0);
-  const [overflowing, setOverflowing] = useState(false);
-
-  useEffect(() => {
-    const node = textRef.current;
-    if (!node) return;
-
-    function measure() {
-      const max = Math.round(window.innerHeight / 2);
-      setLimit(max);
-      setOverflowing(node.scrollHeight > max);
-    }
-
-    measure();
-
-    const observer = new ResizeObserver(measure);
-    observer.observe(node);
-    window.addEventListener("resize", measure);
-
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", measure);
-    };
-  }, [text]);
-
-  const isClamped = overflowing && !expanded;
-
+function DetailItem({ label, children }) {
   return (
-    <div>
-      <div
-        className="relative overflow-hidden"
-        style={isClamped ? { maxHeight: limit } : undefined}
-      >
-        <p
-          ref={textRef}
-          className="whitespace-pre-line break-words text-sm text-second/70"
-        >
-          {text}
-        </p>
-
-        {isClamped && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-primary to-transparent" />
-        )}
+    <div className="space-y-1.5">
+      <p className="text-sm text-second/50">{label}</p>
+      <div className="break-words text-sm font-medium text-second">
+        {children || "—"}
       </div>
-
-      {overflowing && (
-        <button
-          type="button"
-          onClick={() => setExpanded((previous) => !previous)}
-          aria-expanded={expanded}
-          className="mt-2 text-sm font-light text-center w-full text-second/50 "
-        >
-          {expanded ? "Lebih sedikit ^" : "Selengkapnya ˅"}
-        </button>
-      )}
     </div>
   );
 }
 
-// Tombol pembelian. Dipakai dua kali: sebagai dock di HP dan sebagai blok di desktop.
-function BuyButtons({
-  variant,
-  cameraId,
-  isOutOfStock,
-  hasMarketplaces,
-  hasWhatsapp,
-  onOpenMarketplaces,
-  onWhatsapp,
-}) {
-  const isDock = variant === "dock";
-
-  const secondaryClass = `flex h-12 items-center justify-center gap-2  text-sm font-semibold px-4 text-second transition-colors hover:bg-second/5 disabled:cursor-not-allowed disabled:opacity-50 ${
-    isDock ? "" : "w-full"
-  }`;
-
-  const primaryClass = `flex h-12 items-center justify-center gap-2 bg-second  text-sm font-semibold px-4 text-primary transition-colors hover:bg-second/80 ${
-    isDock ? "flex-1" : "w-full"
-  }`;
-
+function StatusBadge({ active, children }) {
   return (
-    <div className={isDock ? "flex items-center gap-2" : "flex flex-col gap-2"}>
-      {hasMarketplaces && (
-        <button
-          type="button"
-          onClick={onOpenMarketplaces}
-          aria-label="Beli lewat marketplace"
-          className={secondaryClass}
-        >
-          <FiShoppingBag size={24} />
-          <span className={isDock ? "hidden min-[400px]:inline" : ""}>
-            Marketplace
-          </span>
-        </button>
-      )}
-
-      {hasWhatsapp && (
-        <button
-          type="button"
-          onClick={onWhatsapp}
-          disabled={isOutOfStock}
-          aria-label="Beli lewat WhatsApp"
-          className={secondaryClass}
-        >
-          <FaWhatsapp size={24} />
-          <span className={isDock ? "hidden min-[400px]:inline" : ""}>
-            WhatsApp
-          </span>
-        </button>
-      )}
-
-      {isOutOfStock ? (
-        <button
-          type="button"
-          disabled
-          className={`${primaryClass} cursor-not-allowed opacity-50`}
-        >
-          <FiShoppingCart size={24} />
-          Stok habis
-        </button>
-      ) : (
-        <Link href={`/pesan?camera_id=${cameraId}`} className={primaryClass}>
-          <FiShoppingCart size={24} />
-          Beli langsung
-        </Link>
-      )}
-    </div>
+    <span
+      className={`inline-flex rounded-full px-3 py-1.5 text-xs font-semibold ${
+        active
+          ? "bg-emerald-500/10 text-emerald-600"
+          : "bg-second/5 text-second/60"
+      }`}
+    >
+      {children}
+    </span>
   );
 }
 
 function CameraDetailFallback() {
   return (
-    <div className="flex h-[100dvh] items-center bg-primary justify-center gap-2 text-sm text-second/60">
+    <div className="flex min-h-64 items-center justify-center gap-3 text-sm text-second/60">
       <FiLoader className="animate-spin" size={22} />
       Memuat detail kamera...
     </div>
@@ -204,432 +72,337 @@ function CameraDetailContent() {
   const params = useParams();
   const id = typeof params.id === "string" ? params.id : "";
 
-  const cameraQuery = useGetCamera(id);
-  const homeQuery = useGetHome(); // sudah di-cache dari halaman utama, dipakai untuk nomor WhatsApp toko
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
-  const sliderRef = useRef(null);
+  // State untuk menyimpan gambar yang sedang terpilih
+  const [activeImage, setActiveImage] = useState(null);
 
-  const [activeImage, setActiveImage] = useState(0);
-  const [showMarketplaces, setShowMarketplaces] = useState(false);
+  const deleteCam = useDeleteCamera();
 
-  // Response API: { data: {...} }. Dua bentuk ditangani, tergantung hook mengembalikan apa.
-  const camera = cameraQuery.data?.data ?? cameraQuery.data;
-  const store = homeQuery.data?.store;
+  const {
+    data: camera,
+    isPending,
+    isError,
+    error,
+    refetch,
+    isFetching,
+  } = useGetCamera(id);
 
-  // Rekomendasi: kamera lain di kategori yang sama. Baru jalan setelah kategori diketahui.
-  const categoryId = camera?.category?.id ?? "";
-  const relatedQuery = useGetCameras(
-    { category_id: categoryId, sort: "newest" },
-    { enabled: Boolean(categoryId) },
-  );
-  const rawRelated = relatedQuery.data?.data ?? [];
-
-  const relatedMasih = rawRelated.filter(
-    (item) => item.id !== camera?.id && item.stock !== 0,
-  );
-
-  const relatedHabis = rawRelated.filter(
-    (item) => item.id !== camera?.id && item.stock === 0,
-  );
-
-  const relatedCameras = [...relatedMasih, ...relatedHabis].slice(
-    0,
-    RELATED_LIMIT,
-  );
   useEffect(() => {
-    if (!cameraQuery.isError || !cameraQuery.error) return;
+    if (!isError || !error) return;
 
-    const apiError = normalizeApiError(cameraQuery.error);
+    const apiError = normalizeApiError(error);
     notify.error(apiError.message);
-  }, [cameraQuery.isError, cameraQuery.error]);
+  }, [isError, error]);
 
-  // Pindah ke kamera lain (misalnya dari rekomendasi): reset galeri dan modal.
-  const currentCameraId = camera?.id;
+  // Set default activeImage begitu data camera berhasil di-fetch
   useEffect(() => {
-    setActiveImage(0);
-    setShowMarketplaces(false);
-
-    if (sliderRef.current) sliderRef.current.scrollLeft = 0;
-  }, [currentCameraId]);
-
-  // Modal marketplace: kunci scroll halaman dan tutup dengan tombol Escape.
-  useEffect(() => {
-    if (!showMarketplaces) return;
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    function handleKeyDown(event) {
-      if (event.key === "Escape") setShowMarketplaces(false);
+    if (camera?.images && camera.images.length > 0) {
+      const primary =
+        camera.images.find((img) => img.is_primary) ?? camera.images[0];
+      setActiveImage(primary);
     }
+  }, [camera]);
 
-    window.addEventListener("keydown", handleKeyDown);
+  async function handleDeleteCamera() {
+    try {
+      await deleteCam.mutateAsync(id);
 
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [showMarketplaces]);
-
-  function goBack() {
-    if (window.history.length > 1) {
-      router.back();
-    } else {
-      router.push("/");
+      setShowDeleteModal(false);
+      notify.success("Kamera berhasil dihapus.");
+      router.replace("/admin/cameras");
+    } catch (error) {
+      const apiError = normalizeApiError(error);
+      notify.error(apiError.message);
     }
   }
 
-  // Geser foto: hitung foto mana yang sedang tampil.
-  function handleSliderScroll(event, total) {
-    const el = event.currentTarget;
-    if (!el.clientWidth) return;
-
-    const index = Math.round(el.scrollLeft / el.clientWidth);
-    const clamped = Math.min(Math.max(index, 0), total - 1);
-
-    if (clamped !== activeImage) setActiveImage(clamped);
-  }
-
-  // Klik thumbnail (desktop): geser slider ke foto itu.
-  function goToImage(index) {
-    const el = sliderRef.current;
-    if (!el) return;
-
-    el.scrollTo({ left: index * el.clientWidth, behavior: "smooth" });
-  }
-
-  if (cameraQuery.isPending) {
+  if (isPending) {
     return <CameraDetailFallback />;
   }
 
-  if (cameraQuery.isError || !camera) {
+  if (isError || !camera) {
     return (
-      <div className="mx-auto flex min-h-[100dvh] w-full max-w-md flex-col items-center justify-center gap-4 p-4 text-center">
-        <h1 className="font-semibold text-second">Kamera tidak ditemukan</h1>
-        <p className="text-sm text-second/60">
-          Produk ini mungkin sudah dihapus atau terjadi gangguan koneksi.
-        </p>
+      <div className="flex min-h-64 flex-col items-center justify-center gap-4 rounded-2xl border border-second/30 p-6 text-center">
+        <FiCamera size={36} className="text-second/30" />
 
-        <div className="flex gap-2">
-          <Link
-            href="/"
-            className="flex h-8 items-center rounded-full border border-second/15 px-4 text-sm font-semibold text-second"
-          >
-            Ke beranda
-          </Link>
+        <div>
+          <h2 className="font-semibold text-second">
+            Gagal memuat detail kamera
+          </h2>
+          <p className="mt-2 text-sm text-second/60">
+            Data kamera tidak ditemukan atau gagal dimuat.
+          </p>
+        </div>
 
+        <div className="flex flex-wrap justify-center gap-3">
           <button
             type="button"
-            onClick={() => cameraQuery.refetch()}
-            disabled={cameraQuery.isFetching}
-            className="flex h-8 items-center rounded-full bg-second px-4 text-sm font-semibold text-primary disabled:opacity-50"
+            onClick={() => router.push("/admin/cameras")}
+            className="rounded-full border border-second/15 px-5 py-2.5 text-sm font-semibold text-second hover:bg-second/5"
           >
-            {cameraQuery.isFetching ? "Memuat..." : "Coba lagi"}
+            Kembali
           </button>
+
+          {isError && (
+            <button
+              type="button"
+              onClick={() => refetch()}
+              disabled={isFetching}
+              className="rounded-full bg-second px-5 py-2.5 text-sm font-semibold text-primary disabled:opacity-50"
+            >
+              {isFetching ? "Memuat..." : "Coba lagi"}
+            </button>
+          )}
         </div>
       </div>
     );
   }
 
-  // Gambar utama selalu di urutan pertama.
-  const images = [...(camera.images ?? [])].sort(
-    (a, b) => Number(b.is_primary) - Number(a.is_primary),
-  );
+  const images = camera.images ?? [];
+  const marketplaces = camera.marketplaceLinks ?? [];
 
-  const marketplaces = (camera.marketplaces ?? []).filter(
-    (item) => item.product_url,
-  );
-
-  const isOutOfStock = Number(camera.stock) <= 0;
-  const whatsapp = normalizeWhatsapp(store?.whatsapp);
-
-  function buyViaWhatsapp() {
-    const message = [
-      "Halo, saya tertarik dengan produk ini:",
-      `${camera.name} (${CONDITION_LABEL[camera.condition] ?? camera.condition})`,
-      `Harga: Rp${formatPrice(camera.price)}`,
-      window.location.href,
-    ].join("\n");
-
-    window.open(
-      `https://wa.me/${whatsapp}?text=${encodeURIComponent(message)}`,
-      "_blank",
-      "noopener,noreferrer",
-    );
-  }
-
-  const buyButtonProps = {
-    cameraId: camera.id,
-    isOutOfStock,
-    hasMarketplaces: marketplaces.length > 0,
-    hasWhatsapp: Boolean(whatsapp),
-    onOpenMarketplaces: () => setShowMarketplaces(true),
-    onWhatsapp: buyViaWhatsapp,
+  const conditionLabel = {
+    NEW: "Baru",
+    SECOND: "Bekas",
   };
 
   return (
-    <>
-      {/* Konten halaman. space-y hanya berlaku di sini. */}
-      <div className="mx-auto w-full space-y-4 bg-primary p-4 pb-[calc(5rem+max(0.5rem,env(safe-area-inset-bottom)))] md:pb-8">
-        {/* Tombol kembali: menempel di atas layar saat discroll */}
-        <div className="sticky top-0 z-30 -mx-4 -mt-4 bg-primary px-4 py-4">
-          <button
-            type="button"
-            onClick={goBack}
-            className="inline-flex items-center gap-2 text-sm text-second/60 transition-colors hover:text-second"
-          >
-            <FiArrowLeft size={18} />
-            Kembali
-          </button>
+    <div className="mx-auto w-full max-w-screen-2xl space-y-6 pb-10">
+      <button
+        type="button"
+        onClick={() => router.push("/admin/cameras")}
+        className="inline-flex items-center gap-2 text-sm text-second/60 transition-colors hover:text-second"
+      >
+        <FiArrowLeft size={18} />
+        Kembali
+      </button>
+
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <FiCamera size={24} />
+
+            <h1 className="text-2xl font-bold tracking-tight text-second sm:text-3xl">
+              Detail Kamera
+            </h1>
+          </div>
+
+          <p className="mt-2 text-sm text-second/60">
+            Informasi lengkap kamera dalam katalog penjualan.
+          </p>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-rows-[auto_1fr]">
-          {/* Galeri. Di xl memanjang dua baris, di kiri info dan deskripsi. */}
-          <div className="space-y-4 xl:row-span-2">
-            <div className="relative aspect-square w-full overflow-hidden rounded-md bg-second/5">
-              {images.length > 0 ? (
-                <div
-                  ref={sliderRef}
-                  onScroll={(event) => handleSliderScroll(event, images.length)}
-                  className="flex h-full w-full snap-x snap-mandatory overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-                >
-                  {images.map((image, index) => (
-                    <div
-                      key={image.id}
-                      className="relative h-full w-full shrink-0 snap-center snap-always"
-                    >
-                      <Image
-                        src={image.image_url}
-                        alt={`${camera.name} ${index + 1}`}
-                        fill
-                        priority={index === 0}
-                        sizes="(min-width: 768px) 50vw, 100vw"
-                        className="object-cover"
-                      />
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex h-full items-center justify-center text-sm text-second/40">
-                  No image
-                </div>
-              )}
+        <div className="flex flex-wrap gap-2">
+          <StatusBadge active={camera.promo}>
+            {camera.promo ? "Promosi aktif" : "Promosi tidak aktif"}
+          </StatusBadge>
 
-              {isOutOfStock && (
-                <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/50">
-                  <span className="flex h-8 items-center rounded-full bg-primary px-4 text-sm font-semibold text-second">
-                    Stok habis
-                  </span>
-                </div>
-              )}
+          <StatusBadge active={camera.best_selling}>
+            {camera.best_selling ? "Best seller" : "Bukan best seller"}
+          </StatusBadge>
+        </div>
+      </div>
 
-              {/* Indikator: foto sekarang / total foto */}
-              {images.length > 1 && (
-                <span
-                  aria-live="polite"
-                  className="pointer-events-none absolute bottom-2 right-2 flex h-8 items-center rounded-full bg-black/60 px-2 text-sm font-semibold text-white"
-                >
-                  {activeImage + 1}/{images.length}
-                </span>
-              )}
-            </div>
-
-            {/* Thumbnail hanya di desktop */}
-            {images.length > 1 && (
-              <div className="hidden grid-cols-5 gap-2 md:grid">
-                {images.map((image, index) => (
-                  <button
-                    key={image.id}
-                    type="button"
-                    onClick={() => goToImage(index)}
-                    aria-label={`Lihat gambar ${index + 1}`}
-                    className={`relative aspect-square overflow-hidden rounded-lg border-2 bg-second/5 transition-colors ${
-                      index === activeImage
-                        ? "border-second"
-                        : "border-transparent opacity-70 hover:opacity-100"
-                    }`}
-                  >
-                    <Image
-                      src={image.image_url}
-                      alt={`${camera.name} ${index + 1}`}
-                      fill
-                      sizes="80px"
-                      className="object-cover"
-                    />
-                  </button>
-                ))}
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
+        <section className="space-y-4 rounded-2xl border border-second/30 p-4 sm:p-6">
+          {/* Frame Utama / Gambar Besar */}
+          <div className="flex aspect-square items-center justify-center overflow-hidden rounded-xl bg-second/[0.03]">
+            {activeImage?.image_url ? (
+              <Image
+                width={1600}
+                height={1600}
+                src={activeImage.image_url}
+                alt={camera.name}
+                className="h-full w-full object-cover transition-all duration-300"
+              />
+            ) : (
+              <div className="flex flex-col items-center gap-2 text-second/30">
+                <FiCamera size={48} />
+                <span className="text-sm">Gambar tidak tersedia</span>
               </div>
             )}
           </div>
 
-          {/* Info */}
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <h1 className="break-words text-base font-bold tracking-tight text-second">
-                {camera.name}
-              </h1>
+          {/* List Thumbnail Gambar Kecil */}
+          {images.length > 0 && (
+            <div className="grid grid-cols-4 gap-3 sm:grid-cols-5">
+              {images.map((image, index) => {
+                // Cek apakah thumbnail ini yang sedang aktif ditampilkan
+                const isSelected = activeImage
+                  ? (activeImage.id && activeImage.id === image.id) ||
+                    activeImage.image_url === image.image_url
+                  : image.is_primary;
 
-              <p className="text-base font-semibold text-grad">
-                <span className="text-base">Rp</span>
-                {formatPrice(camera.price)}
-              </p>
+                return (
+                  <button
+                    type="button"
+                    key={image.id ?? image.image_url ?? index}
+                    onClick={() => setActiveImage(image)}
+                    className={`flex aspect-square cursor-pointer items-center justify-center overflow-hidden rounded-xl bg-second/[0.03] transition-all hover:opacity-80 ${
+                      isSelected
+                        ? "ring-2 ring-second ring-offset-2 ring-offset-primary"
+                        : "border border-second/30 opacity-60"
+                    }`}
+                  >
+                    {image.image_url ? (
+                      <div className="relative h-full w-full">
+                        {image.is_primary && (
+                          <p className="absolute inset-0 z-20 bg-grad h-fit text-primary">
+                            Utama
+                          </p>
+                        )}
 
-              <p className="text-sm text-second/60">
-                {isOutOfStock ? "Stok habis" : `Stok tersedia: ${camera.stock}`}
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
-              <span className="flex py-1 items-center rounded-full bg-second2 px-2 text-primary">
-                {CONDITION_LABEL[camera.condition] ?? camera.condition}
-              </span>
-
-              {camera.category?.name && (
-                <span className="flex py-1 items-center rounded-full border border-second/20 px-2 text-second/70">
-                  {camera.category.name}
-                </span>
-              )}
-
-              {camera.promo && (
-                <span className="flex h-8 items-center rounded-full bg-red-500 px-2 text-white">
-                  Promo
-                </span>
-              )}
-
-              {camera.best_selling && (
-                <span className="flex h-8 items-center rounded-full bg-yellow-500 px-2 text-black">
-                  Best seller
-                </span>
-              )}
-            </div>
-
-            {/* Tombol beli versi desktop (di HP pakai dock di bawah layar) */}
-            <div className="hidden md:block">
-              <BuyButtons variant="inline" {...buyButtonProps} />
-            </div>
-          </div>
-
-          {/* Deskripsi + kelengkapan.
-              Di bawah xl: satu blok selebar halaman di bawah galeri dan info
-              (2 kolom di md). Di xl: di kolom kanan, di bawah tombol beli,
-              ditumpuk atas-bawah. */}
-          {(camera.description || camera.inclusions) && (
-            <div className="grid grid-cols-1 gap-4 md:col-span-2 md:grid-cols-2 xl:col-span-1 xl:grid-cols-1 xl:self-start">
-              {camera.description && (
-                <section className="space-y-2">
-                  <h2 className="font-semibold text-second text-base">
-                    Deskripsi
-                  </h2>
-                  <ExpandableText key={camera.id} text={camera.description} />
-                </section>
-              )}
-
-              {camera.inclusions && (
-                <section className="space-y-2">
-                  <h2 className="font-semibold text-base text-second">
-                    Kelengkapan
-                  </h2>
-                  <ExpandableText key={camera.id} text={camera.inclusions} />
-                </section>
-              )}
+                        <Image
+                          fill
+                          src={image.image_url}
+                          alt={`${camera.name} ${index + 1}`}
+                          className="z-10 h-full w-full object-cover"
+                        />
+                      </div>
+                    ) : (
+                      <FiCamera className="text-second/30" size={22} />
+                    )}
+                  </button>
+                );
+              })}
             </div>
           )}
-        </div>
 
-        {/* Kamu mungkin juga suka: kamera lain di kategori yang sama */}
-        {relatedCameras.length > 0 && (
-          <section className="space-y-4 pt-4">
-            <h2 className="font-semibold text-sm text-center w-full text-second">
-              ------- Kamu mungkin juga suka ------
+          <p className="text-xs text-second/50">{images.length} gambar</p>
+        </section>
+
+        <section className="flex h-full flex-col space-y-6 rounded-2xl border border-second/30 p-5 sm:p-7">
+          <div>
+            <p className="text-sm text-second/50">Nama kamera</p>
+            <h2 className="mt-2 text-2xl font-bold text-second">
+              {camera.name}
             </h2>
-            <div className="w-full grid gap-2 grid-cols-2 md:grid-cols-4 lg:grid-cols-6">
-              {relatedCameras.map((item) => (
-                <CameraCard key={item.id} data={item} />
-              ))}
-            </div>
-          </section>
-        )}
-      </div>
+          </div>
 
-      {/* Dock tombol beli (HP). z-[60] supaya tetap di atas lapisan gelap modal. */}
-      <div className="fixed inset-x-0 bottom-0 z-[60] border-t border-second/10 bg-primary md:hidden">
-        <BuyButtons variant="dock" {...buyButtonProps} />
-      </div>
+          <div>
+            <p className="text-sm text-second/50">Harga</p>
+            <p className="mt-1 text-3xl font-bold text-second">
+              {formatPrice(camera.price)}
+            </p>
+          </div>
 
-      {/* Modal kecil marketplace: melayang di atas dock */}
-      {showMarketplaces && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center md:items-center backdrop-blur-md"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Pilih marketplace"
-        >
-          <button
-            type="button"
-            aria-label="Tutup"
-            onClick={() => setShowMarketplaces(false)}
-            className="absolute inset-0 bg-black/50"
-          />
+          <div className="grid grid-cols-2 gap-5 border-y border-second/30 py-5">
+            <div className="flex items-center gap-3">
+              <div className="flex size-10 items-center justify-center rounded-full bg-grad text-primary">
+                <FiPackage size={20} />
+              </div>
 
-          {/* Di HP: margin bawah = tinggi dock (8 + 48 + 8px / safe area) + jarak 8px. */}
-          <div className="relative mx-2 mb-[calc(4rem+max(0.5rem,env(safe-area-inset-bottom)))] w-[calc(100%-1rem)] max-w-md space-y-4 rounded-md bg-primary p-4 md:mx-0 md:mb-0 md:w-full">
-            <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-second">Beli di marketplace</h2>
-
-              <button
-                type="button"
-                onClick={() => setShowMarketplaces(false)}
-                aria-label="Tutup"
-                className="flex size-8 items-center justify-center rounded-md text-second/50 transition-colors hover:bg-second/5 hover:text-second"
-              >
-                <FiX size={18} />
-              </button>
+              <div>
+                <p className="text-xs text-second/50">Stok</p>
+                <p className="mt-1 font-semibold text-second">
+                  {formatNumber(camera.stock)} unit
+                </p>
+              </div>
             </div>
 
-            <div className="max-h-[50dvh] space-y-4 overflow-y-auto">
-              {marketplaces.map((marketplace) => (
-                <a
-                  key={marketplace.id}
-                  href={marketplace.product_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="group flex items-center gap-4 rounded-md transition-colors hover:bg-second/5"
-                >
-                  <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white">
-                    {marketplace.logo_url ? (
-                      <Image
-                        src={marketplace.logo_url}
-                        alt={`Logo ${marketplace.name}`}
-                        width={80}
-                        height={80}
-                        unoptimized
-                        className="h-full w-full object-contain"
-                      />
-                    ) : (
-                      <FiShoppingBag size={18} className="text-second/40" />
-                    )}
-                  </div>
+            <div className="flex items-center gap-3">
+              <div className="flex size-10 items-center justify-center rounded-full bg-grad text-primary">
+                <FiTag size={20} />
+              </div>
 
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-second">
-                    {marketplace.name}
-                  </span>
-
-                  <FiExternalLink
-                    size={16}
-                    className="shrink-0 text-second/30 transition-colors group-hover:text-second"
-                  />
-                </a>
-              ))}
+              <div>
+                <p className="text-xs text-second/50">Kondisi</p>
+                <p className="mt-1 font-semibold text-second">
+                  {conditionLabel[camera.condition] ?? camera.condition ?? "—"}
+                </p>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </>
+
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
+            <DetailItem label="Kategori">
+              {camera.category?.name ?? camera.category_id}
+            </DetailItem>
+
+            <DetailItem label="Tanggal ditambahkan">
+              {camera.created_at
+                ? new Date(camera.created_at).toLocaleDateString("id-ID", {
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric",
+                  })
+                : "—"}
+            </DetailItem>
+          </div>
+
+          <div className="space-y-2">
+            <h3 className="font-semibold text-second">Deskripsi</h3>
+            <p className="whitespace-pre-line text-sm leading-6 text-second/70">
+              {camera.description || "Tidak ada deskripsi."}
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <h3 className="font-semibold text-second">Kelengkapan</h3>
+            <p className="whitespace-pre-line text-sm leading-6 text-second/70">
+              {camera.inclusions || "Tidak ada informasi kelengkapan."}
+            </p>
+          </div>
+
+          {marketplaces.length > 0 && (
+            <div className="space-y-3 border-t border-second/30 pt-5">
+              <h3 className="font-semibold text-second">Marketplace</h3>
+              <div className="flex gap-4">
+                {marketplaces.map((item, index) => (
+                  <Link
+                    key={item.id ?? item.marketplace_id ?? index}
+                    href={item.product_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between gap-3 rounded-xl  p-4 text-sm text-second transition-colors hover:bg-second/[0.03]"
+                  >
+                    <Image
+                      alt={`${item.marketplace.name} logo`}
+                      src={item.marketplace.logo_url}
+                      width={50}
+                      height={50}
+                    ></Image>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="mt-auto flex w-full gap-4 pt-2">
+            <Link
+              href={`/admin/cameras/${camera.id}/edit`}
+              className="flex w-full items-center justify-center rounded-full bg-second px-5 py-3 text-sm font-semibold text-primary transition-colors hover:bg-second/80"
+            >
+              Edit Kamera
+            </Link>
+
+            <button
+              type="button"
+              onClick={() => setShowDeleteModal(true)}
+              disabled={deleteCam.isPending}
+              className="flex w-full items-center justify-center gap-2 rounded-full bg-second2 px-5 py-3 text-sm font-semibold text-primary transition-colors hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <FiTrash2 size={17} />
+              Hapus Kamera
+            </button>
+          </div>
+        </section>
+      </div>
+
+      <DeleteCameraModal
+        isOpen={showDeleteModal}
+        cameraName={camera.name}
+        isDeleting={deleteCam.isPending}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={handleDeleteCamera}
+      />
+    </div>
   );
 }
 
 // Suspense wajib karena useParams() membaca data runtime.
-export default function CameraDetail() {
+export default function CameraDetailPage() {
   return (
     <Suspense fallback={<CameraDetailFallback />}>
       <CameraDetailContent />
