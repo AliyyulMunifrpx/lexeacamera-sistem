@@ -18,7 +18,10 @@ export default function AuthGuard({ children }) {
     refetch,
   } = useCurrentUser();
 
-  const isUnauthorized = isError && error?.response?.status === 401;
+  // Hanya anggap 401 valid kalau hasilnya sudah final (bukan error basi dari cache
+  // yang sedang direfetch).
+  const isUnauthorized =
+    isError && !isFetching && error?.response?.status === 401;
 
   useEffect(() => {
     if (!hasToken || isUnauthorized) {
@@ -26,7 +29,7 @@ export default function AuthGuard({ children }) {
     }
   }, [hasToken, isUnauthorized, router]);
 
-  if (!hasToken || isUnauthorized || (isPending && !user)) {
+  if (!hasToken || isUnauthorized || (!user && (isPending || isFetching))) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-neutral-950 text-sm text-neutral-400">
         Memeriksa sesi...
