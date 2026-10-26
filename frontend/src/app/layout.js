@@ -23,6 +23,9 @@ export const metadata = {
     default: `${NAME} | Jual Kamera dan Perlengkapan Kamera`,
     template: `%s | ${NAME}`,
   },
+  icons: {
+    icon: "/favicon.ico",
+  },
   description: DESCRIPTION,
   applicationName: NAME,
   keywords: [
