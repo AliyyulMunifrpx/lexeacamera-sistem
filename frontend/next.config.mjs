@@ -23,9 +23,10 @@ const nextConfig = {
   },
   experimental: {
     agentFeedback: true,
+    instantInsights: {
+      validationLevel: "manual-warning",
+    },
   },
-  cacheComponents: true,
-  partialPrefetching: true,
   reactCompiler: true,
   turbopack: {
     rules: {
