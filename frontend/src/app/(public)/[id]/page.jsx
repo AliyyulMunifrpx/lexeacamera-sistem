@@ -14,10 +14,10 @@ import {
 
 import Image from "next/image.js";
 
-import DeleteCameraModal from "../../../../../components/admin/delete-camera-modal.jsx";
 import { useDeleteCamera, useGetCamera } from "../../features/cameras/hooks.js";
 import { normalizeApiError } from "../../../lib/api/errors.js";
 import notify from "../../../lib/notify.js";
+import DeleteCameraModal from "../../../components/admin/delete-camera-modal.jsx";
 
 function formatNumber(number = 0) {
   return new Intl.NumberFormat("id-ID").format(number);
