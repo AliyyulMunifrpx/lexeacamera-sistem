@@ -26,6 +26,16 @@ import notify from "../../../lib/notify.js";
 const MAX_QUANTITY = 10;
 const MAX_ITEMS = 10;
 
+const WEB3FORMS_ENDPOINT = "https://api.web3forms.com/submit";
+
+// Next.js hanya mengekspos env ke browser kalau diawali NEXT_PUBLIC_.
+// Dua nama dicek supaya aman kalau env-nya ditulis FORM_ atau FROM_.
+// Setiap env harus dirujuk secara statis agar ikut di-inline saat build.
+const WEB3FORMS_ACCESS_KEY =
+  process.env.NEXT_PUBLIC_FORM_ACCESS_KEY ??
+  process.env.NEXT_PUBLIC_FROM_ACCESS_KEY ??
+  "";
+
 const priceFormatter = new Intl.NumberFormat("id-ID", {
   maximumFractionDigits: 0,
 });
@@ -79,34 +89,76 @@ function maxQuantityOf(item) {
   return Math.max(1, Math.min(MAX_QUANTITY, item.stock));
 }
 
-// Ubah error API menjadi pesan yang bisa dibaca pembeli.
-function getOrderErrorMessage(error) {
-  const data = error?.response?.data;
-  const code = typeof data?.errors === "string" ? data.errors : "";
-
-  if (code === "INSUFFICIENT_STOCK") {
-    const list = data?.details?.cameras ?? [];
-
-    return list.length > 0
-      ? `Stok tidak cukup: ${list
-          .map((item) => `${item.name} (tersisa ${item.stock})`)
-          .join(", ")}.`
-      : "Stok kamera tidak cukup.";
+// Kirim salinan pesanan ke email lewat Web3Forms.
+// Dipanggil setelah pesanan berhasil dibuat di server. Kegagalan email tidak
+// boleh menggagalkan pesanan, jadi error hanya dicatat di console.
+async function sendOrderEmail({ order, payload, fallbackItems }) {
+  if (!WEB3FORMS_ACCESS_KEY) {
+    console.warn(
+      "Web3Forms: access key belum diatur (NEXT_PUBLIC_FORM_ACCESS_KEY).",
+    );
+    return;
   }
 
-  if (code === "CAMERA_NOT_FOUND") {
-    return "Ada kamera yang sudah tidak tersedia dan dihapus dari pesanan.";
-  }
+  const orderItems =
+    order?.items?.length > 0
+      ? order.items.map((item) => ({
+          name: item.camera_name,
+          quantity: item.quantity,
+          price: item.camera_price,
+          total: item.line_total,
+        }))
+      : fallbackItems.map((item) => ({
+          name: item.name,
+          quantity: item.quantity,
+          price: item.price,
+          total: item.price * item.quantity,
+        }));
 
-  if (code === "TOO_MANY_REQUESTS") {
-    return "Terlalu banyak percobaan. Coba lagi dalam beberapa menit.";
-  }
+  const itemLines = orderItems
+    .map(
+      (item, index) =>
+        `${index + 1}. ${item.name} - ${item.quantity} x Rp${formatPrice(
+          item.price,
+        )} = Rp${formatPrice(item.total)}`,
+    )
+    .join("\n");
 
-  if (code === "STORE_NOT_READY") {
-    return "Toko belum siap menerima pesanan. Coba lagi nanti.";
-  }
+  const total =
+    order?.total_amount ??
+    orderItems.reduce((sum, item) => sum + Number(item.total), 0);
 
-  return normalizeApiError(error).message || "Gagal membuat pesanan.";
+  const invoiceNumber = order?.no_invoice ?? "-";
+
+  try {
+    const response = await fetch(WEB3FORMS_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        access_key: WEB3FORMS_ACCESS_KEY,
+        subject: `Pesanan baru ${invoiceNumber} dari ${payload.customer_name}`,
+        from_name: "Form Pemesanan Toko",
+        invoice: invoiceNumber,
+        nama: payload.customer_name,
+        whatsapp: payload.whatsapp,
+        instagram: payload.instagram || "-",
+        alamat: payload.address,
+        produk: itemLines,
+        total: `Rp${formatPrice(total)}`,
+      }),
+    });
+
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok || result?.success === false) {
+      console.warn("Web3Forms: gagal mengirim email.", result?.message);
+    }
+  } catch (error) {
+    console.warn("Web3Forms: gagal mengirim email.", error);
+  }
 }
 
 function PageFallback() {
@@ -583,18 +635,30 @@ function OrderPageContent() {
       })),
     };
 
+    // Salinan item saat submit, dipakai sebagai cadangan isi email.
+    const submittedItems = items;
+
     createOrder.mutate(payload, {
       onSuccess: (response) => {
-        setOrder(response?.data ?? response);
+        const createdOrder = response?.data ?? response;
+
+        setOrder(createdOrder);
         window.scrollTo({ top: 0 });
+
+        // Fire-and-forget: pesanan sudah tersimpan di server, jadi struk
+        // tidak perlu menunggu email terkirim.
+        void sendOrderEmail({
+          order: createdOrder,
+          payload,
+          fallbackItems: submittedItems,
+        });
       },
       onError: (error) => {
-        notify.error(getOrderErrorMessage(error));
-
         const data = error?.response?.data;
         const code = data?.errors;
+        const apiError = normalizeApiError(code);
 
-        // Stok berubah: samakan stok dan jumlah item dengan yang dikirim server.
+        notify.error(apiError.message); // Stok berubah: samakan stok dan jumlah item dengan yang dikirim server.
         if (code === "INSUFFICIENT_STOCK") {
           const list = data?.details?.cameras ?? [];
 

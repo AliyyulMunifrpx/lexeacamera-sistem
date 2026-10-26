@@ -1,12 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FiLoader, FiSearch, FiX } from "react-icons/fi";
 
-import {
-  useGetCameras,
-  useGetHome,
-} from "../../../app/features/public/hooks.js";
+import { useGetHome } from "../../../app/features/public/hooks.js";
+import { useGetInfiniteCameras } from "../../../app/features/public/infinite-cameras.js";
 import { useGetCategories } from "../../../app/features/categories/hooks.js";
 import { normalizeApiError } from "../../../lib/api/errors.js";
 import notify from "../../../lib/notify.js";
@@ -29,15 +27,6 @@ const SORTS = [
 const selectClass =
   "w-full rounded-lg border border-second/30 bg-primary px-3 py-2 text-sm text-second outline-none transition-colors focus:border-second";
 
-function getPageNumbers(current, total) {
-  const windowSize = 5;
-  let start = Math.max(1, current - Math.floor(windowSize / 2));
-  const end = Math.min(total, start + windowSize - 1);
-  start = Math.max(1, end - windowSize + 1);
-
-  return Array.from({ length: end - start + 1 }, (_, i) => start + i);
-}
-
 function CameraSkeleton() {
   return (
     <div className="flex w-full flex-col gap-2">
@@ -50,6 +39,7 @@ function CameraSkeleton() {
 
 export default function CamerasHomePage({ searchRequest }) {
   const topRef = useRef(null);
+  const sentinelRef = useRef(null);
   const isFirstRender = useRef(true);
 
   const [search, setSearch] = useState("");
@@ -59,7 +49,6 @@ export default function CamerasHomePage({ searchRequest }) {
   const [categoryId, setCategoryId] = useState("");
   const [priceDraft, setPriceDraft] = useState({ min: "", max: "" });
   const [priceRange, setPriceRange] = useState({ min: "", max: "" });
-  const [page, setPage] = useState(1);
 
   const { data: store } = useGetHome();
 
@@ -72,43 +61,59 @@ export default function CamerasHomePage({ searchRequest }) {
     refetch,
     isFetching,
     isPlaceholderData,
-  } = useGetCameras({
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+  } = useGetInfiniteCameras({
     search: debouncedSearch,
     condition,
     sort,
     category_id: categoryId,
     min_price: priceRange.min,
     max_price: priceRange.max,
-    page,
-  });
-  // 🎯 Amankan dengan fallback `|| []` agar tidak error jika data belum ada
-  const cameraHabis = (data?.data || []).filter((value) => {
-    return value.stock === 0;
   });
 
-  const cameraMasih = (data?.data || []).filter((value) => {
-    return value.stock !== 0; // atau value.stock > 0
-  });
+  // Gabungkan semua halaman. Offset-based paging bisa mengulang satu kamera di
+  // dua halaman kalau ada kamera baru di tengah scroll, jadi dibuang yang kembar.
+  const loadedCameras = useMemo(() => {
+    const seen = new Set();
+    const items = [];
 
-  const cameras = [...cameraMasih, ...cameraHabis];
-  console.log(cameraMasih);
-  const paging = data?.paging;
+    for (const pageData of data?.pages ?? []) {
+      for (const item of pageData?.data ?? []) {
+        if (seen.has(item.id)) continue;
+        seen.add(item.id);
+        items.push(item);
+      }
+    }
+
+    return items;
+  }, [data]);
+
+  // Stok habis di akhir daftar. Dihitung dari SEMUA halaman yang sudah dimuat,
+  // bukan per halaman, supaya yang habis nggak terselip di tengah daftar.
+  const cameras = useMemo(
+    () => [
+      ...loadedCameras.filter((item) => item.stock !== 0),
+      ...loadedCameras.filter((item) => item.stock === 0),
+    ],
+    [loadedCameras],
+  );
+
+  const total = data?.pages?.[0]?.paging?.total ?? 0;
+  const loadedPages = data?.pages?.length ?? 0;
+
   useEffect(() => {
     if (!searchRequest) return;
 
     setSearch(searchRequest.value);
     setDebouncedSearch(searchRequest.value);
-    setPage(1);
   }, [searchRequest]);
   // Debounce pencarian supaya tidak request di setiap ketikan.
   useEffect(() => {
     const timer = setTimeout(() => {
-      const next = search.trim();
-
-      setDebouncedSearch((previous) => {
-        if (previous !== next) setPage(1);
-        return next;
-      });
+      setDebouncedSearch(search.trim());
     }, 400);
 
     return () => clearTimeout(timer);
@@ -121,29 +126,77 @@ export default function CamerasHomePage({ searchRequest }) {
     notify.error(apiError.message);
   }, [isError, error]);
 
-  // Naik ke awal daftar saat pindah halaman (bukan saat pertama render).
+  // Filter berubah: kalau daftar sudah di-scroll jauh, naik ke awal daftar.
+  // Kalau awal daftar masih terlihat, nggak perlu bergeser.
+  const filtersKey = JSON.stringify([
+    debouncedSearch,
+    condition,
+    sort,
+    categoryId,
+    priceRange.min,
+    priceRange.max,
+  ]);
+
   useEffect(() => {
     if (isFirstRender.current) {
       isFirstRender.current = false;
       return;
     }
 
-    topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [page]);
+    const node = topRef.current;
+    if (node && node.getBoundingClientRect().top < 0) {
+      node.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [filtersKey]);
+
+  // Infinite scroll: saat penanda di bawah daftar mendekati layar (800px lagi),
+  // muat halaman berikutnya. Observer dibuat ulang setiap selesai memuat, jadi
+  // kalau penanda MASIH dekat (layar tinggi, atau halamannya sedikit) halaman
+  // berikutnya langsung dimuat lagi.
+  // Setelah gagal, jangan memuat otomatis: tunggu tombol "Coba lagi", kalau
+  // tidak, error akan memicu request berulang tanpa henti.
+  useEffect(() => {
+    const node = sentinelRef.current;
+
+    if (
+      !node ||
+      !hasNextPage ||
+      isFetchingNextPage ||
+      isFetchNextPageError ||
+      isPlaceholderData
+    ) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) fetchNextPage();
+      },
+      { rootMargin: "800px 0px" },
+    );
+
+    observer.observe(node);
+
+    return () => observer.disconnect();
+  }, [
+    hasNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+    isPlaceholderData,
+    fetchNextPage,
+    cameras.length,
+  ]);
 
   function changeCondition(value) {
     setCondition(value);
-    setPage(1);
   }
 
   function changeSort(value) {
     setSort(value);
-    setPage(1);
   }
 
   function changeCategory(value) {
     setCategoryId(value);
-    setPage(1);
   }
 
   function applyPrice(event) {
@@ -168,7 +221,6 @@ export default function CamerasHomePage({ searchRequest }) {
     }
 
     setPriceRange({ min, max });
-    setPage(1);
   }
 
   function resetFilters() {
@@ -179,7 +231,6 @@ export default function CamerasHomePage({ searchRequest }) {
     setCategoryId("");
     setPriceDraft({ min: "", max: "" });
     setPriceRange({ min: "", max: "" });
-    setPage(1);
   }
 
   const hasActiveFilters =
@@ -322,55 +373,51 @@ export default function CamerasHomePage({ searchRequest }) {
             : "Belum ada produk."}
         </p>
       ) : (
-        <div className="w-full grid gap-2 grid-cols-2 md:grid-cols-4 lg:grid-cols-6">
-          {cameras.map((item) => (
-            <CameraCard key={item.id} data={item} />
-          ))}
-        </div>
-      )}
-
-      {/* Paginasi */}
-      {paging && paging.total_pages > 1 && (
-        <nav
-          aria-label="Paginasi"
-          className="flex flex-wrap items-center justify-center gap-1.5 pt-2"
-        >
-          <button
-            type="button"
-            onClick={() => setPage((previous) => Math.max(1, previous - 1))}
-            disabled={page <= 1 || isPlaceholderData}
-            className="rounded-lg border border-second/20 px-3 py-1.5 text-sm text-second disabled:opacity-40"
+        <>
+          <div
+            className={`w-full grid gap-2 grid-cols-2 md:grid-cols-4 lg:grid-cols-6 transition-opacity ${
+              isPlaceholderData ? "opacity-60" : ""
+            }`}
           >
-            Sebelumnya
-          </button>
+            {cameras.map((item) => (
+              <CameraCard key={item.id} data={item} />
+            ))}
+          </div>
 
-          {getPageNumbers(page, paging.total_pages).map((number) => (
-            <button
-              key={number}
-              type="button"
-              onClick={() => setPage(number)}
-              aria-current={number === page ? "page" : undefined}
-              className={`size-9 rounded-lg border text-sm font-semibold transition-colors ${
-                number === page
-                  ? "border-second bg-second text-primary"
-                  : "border-second/20 text-second hover:bg-second/5"
-              }`}
+          {/* Penanda untuk infinite scroll: dibaca IntersectionObserver di atas */}
+          <div ref={sentinelRef} aria-hidden="true" className="h-px w-full" />
+
+          {isFetchingNextPage && (
+            <div
+              role="status"
+              className="flex items-center justify-center gap-2 py-4 text-sm text-second/60"
             >
-              {number}
-            </button>
-          ))}
+              <FiLoader className="animate-spin" size={18} />
+              Memuat lebih banyak...
+            </div>
+          )}
 
-          <button
-            type="button"
-            onClick={() =>
-              setPage((previous) => Math.min(paging.total_pages, previous + 1))
-            }
-            disabled={page >= paging.total_pages || isPlaceholderData}
-            className="rounded-lg border border-second/20 px-3 py-1.5 text-sm text-second disabled:opacity-40"
-          >
-            Berikutnya
-          </button>
-        </nav>
+          {isFetchNextPageError && (
+            <div className="flex flex-col items-center gap-2 py-4 text-center">
+              <p className="text-sm text-second/70">
+                Gagal memuat produk berikutnya.
+              </p>
+              <button
+                type="button"
+                onClick={() => fetchNextPage()}
+                className="rounded-full bg-second px-5 py-2 text-sm font-semibold text-primary"
+              >
+                Coba lagi
+              </button>
+            </div>
+          )}
+
+          {!hasNextPage && loadedPages > 1 && (
+            <p className="py-4 text-center text-xs text-second/40">
+              -------- Semua {total} produk sudah ditampilkan --------
+            </p>
+          )}
+        </>
       )}
     </div>
   );

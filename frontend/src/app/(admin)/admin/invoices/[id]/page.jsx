@@ -41,13 +41,86 @@ import { downloadInvoicePdf } from "../../../../../components/admin/invoice-pdf.
 const ACTION_BUTTON_CLASS =
   "inline-flex items-center gap-2 rounded-full border border-second/25 bg-second px-4 py-2 text-sm font-medium cursor-pointer text-primary transition hover:bg-second/80 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-second";
 
-/* Dipakai berulang, jadi tetap komponen. */
-function DetailField({ label, value, wide = false }) {
+/* Gaya link di dalam DetailField. */
+const FIELD_LINK_CLASS =
+  "underline decoration-second/40 underline-offset-4 transition hover:decoration-second";
+
+/* Ubah nomor WhatsApp berbagai format menjadi link wa.me.
+   Contoh yang didukung:
+   "+62 812-3456-7890", "62812...", "0812...", "812...",
+   "0062 812...", "+62 (0)812...", "08.12/3456"
+   Mengembalikan null jika nomor tidak valid. */
+function getWhatsappHref(value) {
+  if (!value) return null;
+
+  let digits = String(value).replace(/\D/g, "");
+  if (!digits) return null;
+
+  // Awalan internasional "00" → buang (0062812... → 62812...)
+  if (digits.startsWith("00")) digits = digits.slice(2);
+
+  if (digits.startsWith("62")) {
+    // "+62 (0)812..." atau "620812..." → buang 0 setelah kode negara
+    if (digits[2] === "0") digits = `62${digits.slice(3)}`;
+  } else if (digits.startsWith("0")) {
+    // 0812... → 62812...
+    digits = `62${digits.slice(1)}`;
+  } else if (digits.startsWith("8")) {
+    // 812... (nol di depan hilang) → 62812...
+    digits = `62${digits}`;
+  }
+  // Selain itu dianggap nomor luar negeri yang sudah lengkap dengan kode negara.
+
+  // Standar E.164: maksimal 15 digit.
+  if (digits.length < 8 || digits.length > 15) return null;
+
+  return `https://wa.me/${digits}`;
+}
+
+/* Ubah username Instagram berbagai format menjadi link profil.
+   Contoh yang didukung:
+   "itsaliyyul", "@itsaliyyul", " @itsaliyyul ",
+   "instagram.com/itsaliyyul", "https://www.instagram.com/itsaliyyul/?igsh=xx"
+   Mengembalikan null jika username tidak valid. */
+function getInstagramHref(value) {
+  if (!value) return null;
+
+  let username = String(value).trim();
+
+  // Jika berupa URL / domain instagram, ambil segmen username-nya.
+  const urlMatch = username.match(
+    /(?:https?:\/\/)?(?:www\.|m\.)?instagram\.com\/([^/?#\s]+)/i,
+  );
+  if (urlMatch) username = urlMatch[1];
+
+  // Buang @ di depan dan spasi/titik-koma yang kebawa.
+  username = username.replace(/^@+/, "").trim();
+
+  // Aturan username Instagram: huruf, angka, titik, underscore (maks 30).
+  if (!/^[A-Za-z0-9._]{1,30}$/.test(username)) return null;
+
+  return `https://www.instagram.com/${username}/`;
+}
+
+/* Dipakai berulang, jadi tetap komponen.
+   Jika `href` diisi, nilai tampil sebagai link yang membuka tab baru. */
+function DetailField({ label, value, wide = false, href = null }) {
   return (
     <div className={`min-w-0 ${wide ? "sm:col-span-2" : ""}`}>
       <p className="text-xs text-second/55">{label}</p>
       <p className="mt-1 break-words text-sm font-medium">
-        {displayValue(value)}
+        {href ? (
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={FIELD_LINK_CLASS}
+          >
+            {displayValue(value)}
+          </a>
+        ) : (
+          displayValue(value)
+        )}
       </p>
     </div>
   );
@@ -176,6 +249,9 @@ export default function InvoiceDetailPage() {
 
   const items = invoice.items ?? [];
   const isFinal = invoice.is_final === true;
+
+  const customerWhatsappHref = getWhatsappHref(invoice.customer_whatsapp);
+  const customerInstagramHref = getInstagramHref(invoice.customer_instagram);
 
   return (
     <div className="space-y-7 pb-10 text-second">
@@ -314,8 +390,16 @@ export default function InvoiceDetailPage() {
         <DetailSection icon={FiUser} title="Informasi Pelanggan">
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <DetailField label="Nama pelanggan" value={invoice.customer_name} />
-            <DetailField label="WhatsApp" value={invoice.customer_whatsapp} />
-            <DetailField label="Instagram" value={invoice.customer_instagram} />
+            <DetailField
+              label="WhatsApp"
+              value={invoice.customer_whatsapp}
+              href={customerWhatsappHref}
+            />
+            <DetailField
+              label="Instagram"
+              value={invoice.customer_instagram}
+              href={customerInstagramHref}
+            />
             <DetailField label="Alamat" value={invoice.customer_address} wide />
           </div>
         </DetailSection>

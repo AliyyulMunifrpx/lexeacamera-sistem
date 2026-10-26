@@ -27,11 +27,42 @@ export default function StoreHomePage({ data }) {
   return (
     <div className="w-full h-full flex flex-col gap-4">
       {bestSellingCamera.length > 0 && (
-        <PrimaryBanner cameras={bestSellingCamera} banner={bestSellingBanner} />
+        <div className="lg:hidden">
+          {" "}
+          <PrimaryBanner
+            cameras={bestSellingCamera}
+            banner={bestSellingBanner}
+          />
+        </div>
       )}
-
+      {bestSellingCamera.length > 0 && (
+        <div className="hidden lg:grid w-full h-full grid-cols-6 items-center">
+          <h3 className="col-start-1 col-end-3 text-[6rem] font-semibold text-second leading-none">
+            Best Seller:
+          </h3>
+          <div className="grid grid-cols-4 col-start-3 col-end-7 gap-2 w-full">
+            {bestSellingCamera.map((item) => (
+              <CameraCard key={item.id} data={item} />
+            ))}
+          </div>
+        </div>
+      )}
       {promoCameras.length > 0 && (
-        <PrimaryBanner cameras={promoCameras} banner={promoBanner} />
+        <div className="lg:hidden">
+          <PrimaryBanner cameras={promoCameras} banner={promoBanner} />
+        </div>
+      )}
+      {promoCameras.length > 0 && (
+        <div className="hidden lg:grid w-full h-full grid-cols-6 items-center">
+          <h3 className="col-start-1 col-end-3 text-[6rem] font-semibold text-second leading-none">
+            Promo:
+          </h3>
+          <div className="grid grid-cols-4 col-start-3 col-end-7 gap-2 w-full">
+            {promoCameras.map((item) => (
+              <CameraCard key={item.id} data={item} />
+            ))}
+          </div>
+        </div>
       )}
 
       {/* 🎯 Perbaikan Render Standard Banner */}

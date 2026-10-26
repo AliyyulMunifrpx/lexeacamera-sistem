@@ -8,13 +8,15 @@ const ERROR_MESSAGES = {
   USER_DATABASE_MISMATCH: "Data akun tidak ditemukan.",
   UNAUTHORIZED:
     "Sesi Anda tidak valid atau telah berakhir. Silakan masuk kembali.",
-  CURRENT_PASSWORD_INVALID: "",
-  UPDATE_EMAIL_REQUEST_FAILED: "",
+  CURRENT_PASSWORD_INVALID: "Kata sandi saat ini salah.",
+  UPDATE_EMAIL_REQUEST_FAILED:
+    "Gagal memproses pembaruan email. Silakan coba lagi.",
 
   // Toko & marketplace
-  INVALID_PRICE_RANGE: "",
-  MARKETPLACE_ALREADY_EXIST: "",
-  STORE_NOT_FOUND: "",
+  INVALID_PRICE_RANGE:
+    "Rentang harga tidak valid. Harga minimum harus lebih kecil dari maksimum.",
+  MARKETPLACE_ALREADY_EXIST: "Marketplace tersebut sudah terdaftar.",
+  STORE_NOT_FOUND: "Data toko tidak ditemukan.",
 
   // Banner
   BANNER_IMAGE_REQUIRED: "Pilih gambar banner terlebih dahulu.",
@@ -33,6 +35,9 @@ const ERROR_MESSAGES = {
   BANNER_UPLOAD_FAILED: "Gagal mengunggah gambar banner. Silakan coba kembali.",
   BANNER_BUCKET_NOT_CONFIGURED:
     "Penyimpanan gambar banner belum dikonfigurasi di server.",
+  TO_MANY_REQUESTS:
+    "Terlalu banyak permintaan. Silakan coba beberapa saat lagi.",
+  SESSION_EXPIRED: "Sesi Anda telah kedaluwarsa. Silakan masuk kembali.",
 };
 
 export function getErrorMessage(code, fallback) {

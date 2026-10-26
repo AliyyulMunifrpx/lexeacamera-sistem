@@ -170,7 +170,7 @@ export default function Home() {
         </form>
 
         {/* 2. BAGIAN LOGO BULAT */}
-        <div className="flex justify-center">
+        <div className="flex justify-center items-center gap-2">
           <div className="-mt-8 sm:-mt-16 flex aspect-square w-16 sm:w-32 items-center justify-center overflow-hidden rounded-full bg-primary z-20 border-4 border-primary">
             {data?.store?.logo_url ? (
               <Image
@@ -183,6 +183,10 @@ export default function Home() {
             ) : (
               <div className="text-[10px] text-second/50">Logo</div>
             )}
+          </div>
+          <div className="bg-primary text-base lg:text-4xl text-second px-2 h-8 lg:h-16 flex items-center rounded-full -mt-8 lg:-mt-16 z-20 font-semibold">
+            {" "}
+            <p className="">{data?.store?.name}</p>
           </div>
         </div>
       </div>
@@ -197,13 +201,16 @@ export default function Home() {
           const isActive = activeIndex === index;
 
           return (
-            <div key={tab.key} className="flex flex-col gap-2 w-full px-2">
+            <div
+              key={tab.key}
+              className="flex flex-col gap-2 w-full px-2 lg:px-16"
+            >
               <button
                 type="button"
                 role="tab"
                 aria-selected={isActive}
                 onClick={() => goToTab(index)}
-                className={`text-center w-full transition-colors ${
+                className={`text-center cursor-pointer w-full transition-colors ${
                   isActive ? "text-grad font-semibold" : ""
                 }`}
               >
