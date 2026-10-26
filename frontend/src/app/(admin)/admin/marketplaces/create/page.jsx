@@ -254,7 +254,7 @@ export default function CreateMarketplacePage() {
           </label>
         </section>
 
-        <div className="flex flex-col-reverse gap-3 border-t border border-second/30 pt-5 sm:flex-row sm:justify-end">
+        <div className="flex flex-col-reverse gap-3 pt-5 sm:flex-row sm:justify-end">
           <Link
             href="/admin/marketplaces"
             className="inline-flex items-center justify-center rounded-full border border-second/15 px-6 py-3 text-sm font-semibold text-second transition-colors hover:bg-second/5"

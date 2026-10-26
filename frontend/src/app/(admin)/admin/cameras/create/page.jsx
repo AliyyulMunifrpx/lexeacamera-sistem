@@ -246,7 +246,7 @@ export default function CreateCameraPage() {
             Tambah Kamera
           </h1>
           <p className="mt-1 text-sm text-second/60">
-            Tambahkan kamera baru ke katalog rental.
+            Tambahkan kamera baru ke katalog penjualan.
           </p>
         </div>
       </div>

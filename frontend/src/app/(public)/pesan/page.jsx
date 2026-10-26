@@ -961,7 +961,7 @@ function OrderPageContent() {
         </div>
 
         {/* Ringkasan total. Angka final dihitung server saat pesanan dibuat. */}
-        <section className="space-y-2 rounded-md border border-second/30 p-4">
+        <section className="space-y-2 py-4">
           <div className="flex items-center justify-between gap-4 text-sm">
             <p className="text-second/60">
               Total ({items.reduce((sum, item) => sum + item.quantity, 0)} unit)

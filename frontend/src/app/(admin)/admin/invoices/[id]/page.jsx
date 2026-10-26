@@ -537,15 +537,6 @@ export default function InvoiceDetailPage() {
 
       <ThermalReceipt invoice={invoice} paperWidth={paperWidth} />
 
-      <div className="no-print flex items-start gap-3 text-sm leading-relaxed text-second/55">
-        <FiCheckCircle size={17} className="mt-0.5 shrink-0" />
-        <p>
-          Data yang ditampilkan berasal dari snapshot invoice. Untuk mencetak
-          struk thermal, pilih lebar kertas yang sesuai dengan printer, lalu
-          pilih printer tersebut di dialog cetak browser.
-        </p>
-      </div>
-
       {deleteOpen && (
         <ConfirmDeleteModal
           invoice={invoice}

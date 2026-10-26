@@ -186,7 +186,7 @@ export default function CameraDetailPage() {
           </div>
 
           <p className="mt-2 text-sm text-second/60">
-            Informasi lengkap kamera dalam katalog rental.
+            Informasi lengkap kamera dalam katalog penjualan.
           </p>
         </div>
 

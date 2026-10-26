@@ -250,7 +250,7 @@ export default function CamerasPage() {
           </div>
 
           <p className="mt-2 text-sm text-second/60">
-            Kelola inventaris kamera rental Anda.
+            Kelola inventaris penjualan kamera Anda.
           </p>
         </div>
         <div className="flex gap-4 w-full md:w-fit">
@@ -353,11 +353,11 @@ export default function CamerasPage() {
             <FiCamera size={36} className="text-second/30" />
 
             <h3 className="mt-4 font-semibold text-second">
-              Kamera tidak ditemukan
+              Produk tidak ditemukan
             </h3>
 
             <p className="mt-2 max-w-sm text-sm text-second/60">
-              Tidak ada kamera yang sesuai dengan filter yang dipilih.
+              Tidak ada produk yang sesuai dengan filter yang dipilih.
             </p>
 
             {hasFilters && (
