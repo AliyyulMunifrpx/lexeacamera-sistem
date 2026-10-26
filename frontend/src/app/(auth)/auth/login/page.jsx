@@ -2,15 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
 import { useLogin } from "../../../features/auth/hooks.js";
 import { normalizeApiError } from "../../../../lib/api/errors.js";
 import notify from "../../../../lib/notify.js";
+import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
   const router = useRouter();
-  const queryClient = useQueryClient();
   const login = useLogin();
 
   const [email, setEmail] = useState("");
@@ -25,14 +23,11 @@ export default function LoginPage() {
         password,
       });
 
-      // Tandai query lama basi tanpa menghapus data yang baru di-set oleh login.
-      await queryClient.invalidateQueries();
-
       notify.success("Login berhasil");
 
-      // Pindah halaman lalu paksa Next membuang Router Cache yang basi.
-      router.replace("/admin");
-      router.refresh();
+      // Hard navigation: semua state client (cache query, Router Cache,
+      // nilai token basi) dibuang, lalu /admin dirender ulang dengan token baru.
+      window.location.assign("/admin");
     } catch (err) {
       const apiError = normalizeApiError(err);
       notify.error(apiError.message);

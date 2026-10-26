@@ -1,13 +1,19 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getAccessToken } from "../../lib/auth/token-storage.js";
 import { useCurrentUser } from "../../app/features/auth/hooks.js";
 
 export default function AuthGuard({ children }) {
   const router = useRouter();
-  const hasToken = Boolean(getAccessToken());
+
+  // null = belum dicek. Token dibaca setelah mount, bukan saat render pertama.
+  const [hasToken, setHasToken] = useState(null);
+
+  useEffect(() => {
+    setHasToken(Boolean(getAccessToken()));
+  }, []);
 
   const {
     data: user,
@@ -18,18 +24,21 @@ export default function AuthGuard({ children }) {
     refetch,
   } = useCurrentUser();
 
-  // Hanya anggap 401 valid kalau hasilnya sudah final (bukan error basi dari cache
-  // yang sedang direfetch).
   const isUnauthorized =
     isError && !isFetching && error?.response?.status === 401;
 
   useEffect(() => {
-    if (!hasToken || isUnauthorized) {
+    if (hasToken === false || isUnauthorized) {
       router.replace("/auth/login");
     }
   }, [hasToken, isUnauthorized, router]);
 
-  if (!hasToken || isUnauthorized || (!user && (isPending || isFetching))) {
+  if (
+    hasToken === null ||
+    hasToken === false ||
+    isUnauthorized ||
+    (!user && (isPending || isFetching))
+  ) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-neutral-950 text-sm text-neutral-400">
         Memeriksa sesi...
