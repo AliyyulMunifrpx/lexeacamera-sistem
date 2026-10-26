@@ -38,8 +38,14 @@ async function getStore() {
     return null;
   }
 }
-
 export async function generateMetadata() {
+  "use cache";
+  cacheLife({
+    stale: 300,
+    revalidate: 300,
+    expire: 3600,
+  });
+
   const store = await getStore();
 
   const name = store?.name?.trim() || FALLBACK_NAME;

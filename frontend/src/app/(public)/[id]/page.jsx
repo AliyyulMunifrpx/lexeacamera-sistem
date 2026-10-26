@@ -121,7 +121,7 @@ function CameraDetailContent() {
 
   if (isError || !camera) {
     return (
-      <div className="flex min-h-64 flex-col items-center justify-center gap-4 rounded-2xl border border-second/30 p-6 text-center">
+      <div className="flex min-h-64 flex-col items-center justify-center gap-4 rounded-2xl bg-primary border border-second/30 p-6 text-center">
         <FiCamera size={36} className="text-second/30" />
 
         <div>
