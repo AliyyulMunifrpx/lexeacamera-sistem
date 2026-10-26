@@ -25,11 +25,14 @@ export default function LoginPage() {
         password,
       });
 
-      // Buang cache lama (termasuk error "current user" sebelum login).
-      queryClient.clear();
+      // Tandai query lama basi tanpa menghapus data yang baru di-set oleh login.
+      await queryClient.invalidateQueries();
 
       notify.success("Login berhasil");
+
+      // Pindah halaman lalu paksa Next membuang Router Cache yang basi.
       router.replace("/admin");
+      router.refresh();
     } catch (err) {
       const apiError = normalizeApiError(err);
       notify.error(apiError.message);
