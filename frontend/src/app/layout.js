@@ -1,4 +1,5 @@
 import { Geist, Geist_Mono } from "next/font/google";
+import { cacheLife } from "next/cache";
 import "./globals.css";
 import Providers from "./providers.jsx";
 import { Toaster } from "react-hot-toast";
@@ -17,21 +18,27 @@ const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/+$/, "");
 const SITE_URL = process.env.NEXT_PUBLIC_FRONTEND_URL ?? "https://wavcamera.id";
 const FALLBACK_NAME = "WAV Camera";
 
-// Layout adalah Server Component, jadi hook React Query tidak bisa dipakai di sini.
-// Data toko diambil langsung dari endpoint publik, di-cache 5 menit oleh Next.
+// Data toko diambil dari endpoint publik dan di-cache lewat "use cache".
+// Sukses: cache 5 menit. Gagal (backend gratisan lambat bangun): cache singkat
+// supaya fallback tidak tertahan lama.
 async function getStore() {
+  "use cache";
+
   try {
     const response = await fetch(`${API_URL}/public/store`, {
-      next: { revalidate: 300 },
-      // Backend di hosting gratis bisa lambat bangun: jangan tahan render halaman
       signal: AbortSignal.timeout(4000),
     });
 
-    if (!response.ok) return null;
+    if (!response.ok) {
+      cacheLife({ stale: 30, revalidate: 30, expire: 60 });
+      return null;
+    }
 
     const json = await response.json();
+    cacheLife({ stale: 300, revalidate: 300, expire: 3600 });
     return json?.data ?? null;
   } catch {
+    cacheLife({ stale: 30, revalidate: 30, expire: 60 });
     return null;
   }
 }
