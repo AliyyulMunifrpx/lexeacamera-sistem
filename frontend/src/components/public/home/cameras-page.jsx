@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FiLoader, FiSearch, FiX } from "react-icons/fi";
+import { FiLoader } from "react-icons/fi";
 
 import { useGetHome } from "../../../app/features/public/hooks.js";
 import { useGetInfiniteCameras } from "../../../app/features/public/infinite-cameras.js";
 import { normalizeApiError } from "../../../lib/api/errors.js";
 import notify from "../../../lib/notify.js";
-// Sesuaikan path import CameraCard
 import CameraCard from "./camera-card.jsx";
 
 const CONDITIONS = [
@@ -40,12 +39,8 @@ export default function CamerasHomePage({ searchRequest }) {
   const sentinelRef = useRef(null);
   const isFirstRender = useRef(true);
 
-  const [search, setSearch] = useState("");
+  // Pencarian hanya berasal dari search bar di banner Home.
   const [debouncedSearch, setDebouncedSearch] = useState("");
-
-  // 👇 STATE BARU UNTUK SKU 👇
-  const [sku, setSku] = useState("WAV-");
-  const [debouncedSku, setDebouncedSku] = useState("WAV-");
 
   const [condition, setCondition] = useState("");
   const [sort, setSort] = useState("newest");
@@ -54,8 +49,8 @@ export default function CamerasHomePage({ searchRequest }) {
   const [priceRange, setPriceRange] = useState({ min: "", max: "" });
 
   const { data: store } = useGetHome();
-
   const categories = store?.categories || [];
+
   const {
     data,
     isLoading,
@@ -70,7 +65,6 @@ export default function CamerasHomePage({ searchRequest }) {
     isFetchNextPageError,
   } = useGetInfiniteCameras({
     search: debouncedSearch,
-    sku: debouncedSku, // 👇 KIRIM SKU KE HOOK 👇
     condition,
     sort,
     category_id: categoryId,
@@ -78,8 +72,14 @@ export default function CamerasHomePage({ searchRequest }) {
     max_price: priceRange.max,
   });
 
-  // Gabungkan semua halaman. Offset-based paging bisa mengulang satu kamera di
-  // dua halaman kalau ada kamera baru di tengah scroll, jadi dibuang yang kembar.
+  // Terapkan pencarian yang dikirim oleh search bar di banner.
+  useEffect(() => {
+    if (!searchRequest) return;
+
+    setDebouncedSearch(searchRequest.value.trim());
+  }, [searchRequest]);
+
+  // Gabungkan halaman dan hindari kamera duplikat.
   const loadedCameras = useMemo(() => {
     const seen = new Set();
     const items = [];
@@ -87,6 +87,7 @@ export default function CamerasHomePage({ searchRequest }) {
     for (const pageData of data?.pages ?? []) {
       for (const item of pageData?.data ?? []) {
         if (seen.has(item.id)) continue;
+
         seen.add(item.id);
         items.push(item);
       }
@@ -95,8 +96,7 @@ export default function CamerasHomePage({ searchRequest }) {
     return items;
   }, [data]);
 
-  // Stok habis di akhir daftar. Dihitung dari SEMUA halaman yang sudah dimuat,
-  // bukan per halaman, supaya yang habis nggak terselip di tengah daftar.
+  // Letakkan produk stok habis di akhir daftar.
   const cameras = useMemo(
     () => [
       ...loadedCameras.filter((item) => item.stock !== 0),
@@ -109,41 +109,15 @@ export default function CamerasHomePage({ searchRequest }) {
   const loadedPages = data?.pages?.length ?? 0;
 
   useEffect(() => {
-    if (!searchRequest) return;
-
-    setSearch(searchRequest.value);
-    setDebouncedSearch(searchRequest.value);
-  }, [searchRequest]);
-
-  // Debounce pencarian nama supaya tidak request di setiap ketikan.
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearch(search.trim());
-    }, 400);
-
-    return () => clearTimeout(timer);
-  }, [search]);
-
-  // 👇 DEBOUNCE PENCARIAN SKU 👇
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSku(sku.trim());
-    }, 400);
-
-    return () => clearTimeout(timer);
-  }, [sku]);
-
-  useEffect(() => {
     if (!isError || !error) return;
 
     const apiError = normalizeApiError(error);
     notify.error(apiError.message);
   }, [isError, error]);
 
-  // Filter berubah: kalau daftar sudah di-scroll jauh, naik ke awal daftar.
+  // Filter berubah: kembalikan posisi ke awal daftar.
   const filtersKey = JSON.stringify([
     debouncedSearch,
-    debouncedSku, // 👇 MASUKKAN KE DEPENDENCY FILTER 👇
     condition,
     sort,
     categoryId,
@@ -158,11 +132,16 @@ export default function CamerasHomePage({ searchRequest }) {
     }
 
     const node = topRef.current;
+
     if (node && node.getBoundingClientRect().top < 0) {
-      node.scrollIntoView({ behavior: "smooth", block: "start" });
+      node.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
     }
   }, [filtersKey]);
 
+  // Infinite scroll.
   useEffect(() => {
     const node = sentinelRef.current;
 
@@ -178,7 +157,9 @@ export default function CamerasHomePage({ searchRequest }) {
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting) fetchNextPage();
+        if (entries[0]?.isIntersecting) {
+          fetchNextPage();
+        }
       },
       { rootMargin: "800px 0px" },
     );
@@ -194,18 +175,6 @@ export default function CamerasHomePage({ searchRequest }) {
     fetchNextPage,
     cameras.length,
   ]);
-
-  function changeCondition(value) {
-    setCondition(value);
-  }
-
-  function changeSort(value) {
-    setSort(value);
-  }
-
-  function changeCategory(value) {
-    setCategoryId(value);
-  }
 
   function applyPrice(event) {
     event.preventDefault();
@@ -232,10 +201,7 @@ export default function CamerasHomePage({ searchRequest }) {
   }
 
   function resetFilters() {
-    setSearch("");
     setDebouncedSearch("");
-    setSku("");
-    setDebouncedSku("");
     setCondition("");
     setSort("newest");
     setCategoryId("");
@@ -245,7 +211,6 @@ export default function CamerasHomePage({ searchRequest }) {
 
   const hasActiveFilters =
     debouncedSearch !== "" ||
-    debouncedSku !== "" || // 👇 CEK APAKAH SKU AKTIF 👇
     condition !== "" ||
     sort !== "newest" ||
     categoryId !== "" ||
@@ -254,32 +219,11 @@ export default function CamerasHomePage({ searchRequest }) {
 
   return (
     <div ref={topRef} className="w-full scroll-mt-16 space-y-4">
-      {/* Input Pencarian SKU dengan Prefix WAV- */}
-      <div className="grid grid-cols-1 gap-2 ">
-        <div className="relative flex items-center">
-          <input
-            type="text"
-            value={sku}
-            onChange={(event) => {
-              let val = event.target.value.toUpperCase(); // Biar otomatis huruf kapital
-              // Pastikan selalu ada prefix WAV- di depan
-              if (!val.startsWith("WAV-")) {
-                val = "WAV-" + val.replace(/^WAV-?/i, "");
-              }
-              setSku(val);
-            }}
-            placeholder="WAV-XXXX"
-            className={selectClass}
-            aria-label="Cari SKU"
-          />
-        </div>
-      </div>
-
       {/* Kategori + urutan */}
       <div className="grid grid-cols-2 gap-2">
         <select
           value={categoryId}
-          onChange={(event) => changeCategory(event.target.value)}
+          onChange={(event) => setCategoryId(event.target.value)}
           className={selectClass}
           aria-label="Kategori"
         >
@@ -293,7 +237,7 @@ export default function CamerasHomePage({ searchRequest }) {
 
         <select
           value={sort}
-          onChange={(event) => changeSort(event.target.value)}
+          onChange={(event) => setSort(event.target.value)}
           className={selectClass}
           aria-label="Urutkan"
         >
@@ -305,48 +249,8 @@ export default function CamerasHomePage({ searchRequest }) {
         </select>
       </div>
 
-      {/* Rentang harga */}
-      <form onSubmit={applyPrice} className="flex items-center gap-2">
-        <input
-          type="number"
-          min="0"
-          inputMode="numeric"
-          value={priceDraft.min}
-          onChange={(event) =>
-            setPriceDraft((previous) => ({
-              ...previous,
-              min: event.target.value,
-            }))
-          }
-          placeholder="Harga min"
-          className={`${selectClass} min-w-0`}
-        />
-        <span className="text-second/40">-</span>
-        <input
-          type="number"
-          min="0"
-          inputMode="numeric"
-          value={priceDraft.max}
-          onChange={(event) =>
-            setPriceDraft((previous) => ({
-              ...previous,
-              max: event.target.value,
-            }))
-          }
-          placeholder="Harga maks"
-          className={`${selectClass} min-w-0`}
-        />
-        <button
-          type="submit"
-          className="shrink-0 rounded-lg bg-second px-4 py-2 text-sm font-semibold text-primary transition-colors hover:bg-second/80"
-        >
-          Terapkan
-        </button>
-      </form>
-
-      {/* Ringkasan hasil */}
+      {/* Ringkasan hasil + kondisi */}
       <div className="flex items-center justify-between text-xs text-second/60">
-        {/* Kondisi */}
         <div className="flex gap-2">
           {CONDITIONS.map((item) => {
             const isActive = condition === item.value;
@@ -355,7 +259,7 @@ export default function CamerasHomePage({ searchRequest }) {
               <button
                 key={item.value}
                 type="button"
-                onClick={() => changeCondition(item.value)}
+                onClick={() => setCondition(item.value)}
                 className={`rounded-full border px-4 py-1.5 text-xs font-semibold transition-colors ${
                   isActive
                     ? "border-second bg-second text-primary"
@@ -372,12 +276,22 @@ export default function CamerasHomePage({ searchRequest }) {
           <button
             type="button"
             onClick={resetFilters}
-            className="font-semibold text-primary bg-second2 px-4 py-1.5 rounded-full hover:bg-second2/80"
+            className="rounded-full bg-second2 px-4 py-1.5 font-semibold text-primary hover:bg-second2/80"
           >
             Reset filter
           </button>
         )}
       </div>
+
+      {/* Rentang harga */}
+      <form onSubmit={applyPrice} className="flex w-full items-center gap-2">
+        <button
+          type="submit"
+          className="shrink-0 rounded-lg bg-second px-4 w-full py-2 text-sm font-semibold text-primary transition-colors hover:bg-second/80"
+        >
+          Terapkan
+        </button>
+      </form>
 
       {/* Daftar kamera */}
       {isLoading ? (
@@ -407,7 +321,7 @@ export default function CamerasHomePage({ searchRequest }) {
       ) : (
         <>
           <div
-            className={`w-full grid gap-2 grid-cols-2 md:grid-cols-4 lg:grid-cols-6 transition-opacity ${
+            className={`grid w-full grid-cols-2 gap-2 transition-opacity md:grid-cols-4 lg:grid-cols-6 ${
               isPlaceholderData ? "opacity-60" : ""
             }`}
           >

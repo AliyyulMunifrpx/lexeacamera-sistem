@@ -74,12 +74,28 @@ export default function CameraFilters({
                 type="search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Contoh: Canon EOS R50, NK50"
+                placeholder="Contoh: NK50"
                 className="w-full bg-transparent py-3 text-sm text-second outline-none placeholder:text-second/40"
               />
             </div>
           </Field>
         </div>
+
+        <Field id="camera-category" label="Kategori">
+          <select
+            id="camera-category"
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            className={INPUT_CLASS}
+          >
+            <option value="">Semua kategori</option>
+            {categories.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </Field>
       </div>
     </section>
   );
