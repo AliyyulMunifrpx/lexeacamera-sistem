@@ -53,7 +53,7 @@ function LoadingIndicator({ initial = false }) {
     >
       <FiLoader className="animate-spin text-second" size={22} />
       <span className="text-sm text-second/60">
-        {initial ? "Memuat data kamera..." : "Memperbarui daftar kamera..."}
+        {initial ? "Memuat data Produk..." : "Memperbarui daftar Produk..."}
       </span>
     </div>
   );
@@ -95,8 +95,8 @@ function CategoryRequiredModal({ onClose, onCreateCategory }) {
         </h2>
 
         <p className="mt-2 text-sm leading-6 text-second/60">
-          Anda belum memiliki kategori kamera. Buat kategori terlebih dahulu
-          sebelum menambahkan kamera agar produk dapat dikelompokkan dengan
+          Anda belum memiliki kategori Produk. Buat kategori terlebih dahulu
+          sebelum menambahkan Produk agar produk dapat dikelompokkan dengan
           benar.
         </p>
 
@@ -239,7 +239,7 @@ export default function CamerasPage() {
   if (isError && !data) {
     return (
       <div className="space-y-4 rounded-2xl border border-second/30 p-6">
-        <h2 className="font-semibold text-second">Gagal memuat data kamera</h2>
+        <h2 className="font-semibold text-second">Gagal memuat data Produk</h2>
 
         <p className="text-sm text-second/60">
           Periksa koneksi Anda, lalu coba kembali.
@@ -264,12 +264,12 @@ export default function CamerasPage() {
             <FiCamera size={24} />
 
             <h1 className="text-2xl font-bold tracking-tight text-second sm:text-3xl">
-              Manajemen Kamera
+              Manajemen Produk
             </h1>
           </div>
 
           <p className="mt-2 text-sm text-second/60">
-            Kelola inventaris penjualan kamera Anda.
+            Kelola inventaris penjualan Produk Anda.
           </p>
         </div>
         <div className="flex gap-4 w-full md:w-fit">
@@ -298,14 +298,14 @@ export default function CamerasPage() {
             ) : (
               <FiPlus size={18} />
             )}
-            {categoriesQuery.isPending ? "Memuat kategori..." : "Tambah Kamera"}
+            {categoriesQuery.isPending ? "Memuat kategori..." : "Tambah Produk"}
           </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <SummaryCard
-          label="Jenis kamera ditemukan"
+          label="Jenis produk ditemukan"
           value={totalCameras}
           icon={FiCamera}
         />
@@ -345,11 +345,11 @@ export default function CamerasPage() {
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-lg font-bold text-second">Daftar kamera</h2>
+          <h2 className="text-lg font-bold text-second">Daftar Produk</h2>
 
           <p className="mt-1 text-sm text-second/60">
             Menampilkan {formatNumber(startItem)}–{formatNumber(endItem)} dari{" "}
-            {formatNumber(totalCameras)} kamera
+            {formatNumber(totalCameras)} produk
           </p>
         </div>
       </div>

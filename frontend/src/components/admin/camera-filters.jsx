@@ -49,7 +49,7 @@ export default function CameraFilters({
       <div className="mb-5 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <FiSliders size={18} />
-          <h2 className="font-semibold text-second">Filter kamera</h2>
+          <h2 className="font-semibold text-second">Filter produk</h2>
         </div>
 
         {hasFilters && (
@@ -66,7 +66,7 @@ export default function CameraFilters({
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <div className="sm:col-span-2 xl:col-span-1">
-          <Field id="camera-search" label="Cari nama kamera">
+          <Field id="camera-search" label="Cari nama produk">
             <div className="flex items-center gap-2 rounded-xl border border-second/30 px-3 focus-within:border-second">
               <FiSearch className="shrink-0 text-second/50" size={18} />
               <input

@@ -17,6 +17,7 @@ import {
   FiX,
   FiChevronDown,
   FiLogOut,
+  FiBox,
 } from "react-icons/fi";
 import {
   MdLocalGroceryStore,
@@ -34,7 +35,7 @@ import { normalizeApiError } from "../../lib/api/errors.js";
 import notify from "../../lib/notify.js";
 const navigation = [
   { label: "Dashboard", href: "/admin", icon: FiHome },
-  { label: "Kamera", href: "/admin/cameras", icon: FiCamera },
+  { label: "Produk", href: "/admin/cameras", icon: FiBox },
   { label: "Kategori", href: "/admin/categories", icon: FiTag },
   { label: "Invoice", href: "/admin/invoices", icon: FiFileText },
   {
@@ -49,7 +50,7 @@ const navigation = [
 
 const pageTitles = {
   "/admin": "Dashboard",
-  "/admin/cameras": "Kamera",
+  "/admin/cameras": "Produk",
   "/admin/categories": "Kategori",
   "/admin/invoices": "Invoice",
   "/admin/marketplaces": "Toko Online",

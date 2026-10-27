@@ -161,7 +161,7 @@ export default function CreateCameraPage() {
     event.target.value = "";
 
     if (images.length + selectedFiles.length > MAX_IMAGES) {
-      notify.error(`Maksimal ${MAX_IMAGES} gambar untuk satu kamera.`);
+      notify.error(`Maksimal ${MAX_IMAGES} gambar untuk satu produk.`);
       return;
     }
 
@@ -198,12 +198,12 @@ export default function CreateCameraPage() {
     event.preventDefault();
 
     if (images.length === 0) {
-      notify.error("Tambahkan minimal satu gambar kamera.");
+      notify.error("Tambahkan minimal satu gambar produk.");
       return;
     }
 
     if (images.length > MAX_IMAGES) {
-      notify.error(`Maksimal ${MAX_IMAGES} gambar untuk satu kamera.`);
+      notify.error(`Maksimal ${MAX_IMAGES} gambar untuk satu produk.`);
       return;
     }
 
@@ -274,12 +274,12 @@ export default function CreateCameraPage() {
     createCamera.mutate(formData, {
       onSuccess: () => {
         resetForm();
-        notify.success("Kamera berhasil ditambahkan.");
+        notify.success("produk berhasil ditambahkan.");
         router.push("/admin/cameras");
       },
       onError: (error) => {
         const normalizedError = normalizeApiError(error);
-        notify.error(normalizedError.message || "Gagal menambahkan kamera.");
+        notify.error(normalizedError.message || "Gagal menambahkan produk.");
       },
     });
   }
@@ -302,10 +302,10 @@ export default function CreateCameraPage() {
 
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-second sm:text-3xl">
-            Tambah Kamera
+            Tambah Produk
           </h1>
           <p className="mt-1 text-sm text-second/60">
-            Tambahkan kamera baru ke katalog penjualan.
+            Tambahkan produk baru ke katalog penjualan.
           </p>
         </div>
       </div>
@@ -315,11 +315,11 @@ export default function CreateCameraPage() {
           <div>
             <h2 className="font-semibold text-second">Informasi produk</h2>
             <p className="mt-1 text-sm text-second/50">
-              Informasi dasar kamera yang akan ditambahkan.
+              Informasi dasar produk yang akan ditambahkan.
             </p>
           </div>
 
-          <FormField label="Nama kamera" htmlFor="name" required>
+          <FormField label="Nama produk" htmlFor="name" required>
             <input
               id="name"
               name="name"
@@ -460,7 +460,7 @@ export default function CreateCameraPage() {
                 value={form.serial_number}
                 onChange={updateField}
                 className={inputClass}
-                placeholder="Nomor seri yang tertera di body kamera"
+                placeholder="Nomor seri yang tertera di body produk"
                 maxLength={100}
                 required
                 disabled={isSubmitting}
@@ -485,7 +485,7 @@ export default function CreateCameraPage() {
               label="Shutter count"
               htmlFor="shutter_count"
               required
-              description="Isi 0 jika kamera baru."
+              description="Isi 0 jika produk baru."
             >
               <input
                 id="shutter_count"
@@ -510,7 +510,7 @@ export default function CreateCameraPage() {
               value={form.description}
               onChange={updateField}
               className={`${inputClass} min-h-28 resize-y`}
-              placeholder="Jelaskan spesifikasi dan keunggulan kamera..."
+              placeholder="Jelaskan spesifikasi dan keunggulan produk..."
               maxLength={1000}
               disabled={isSubmitting}
             />
@@ -629,7 +629,7 @@ export default function CreateCameraPage() {
           <div>
             <h2 className="font-semibold text-second">Status katalog</h2>
             <p className="mt-1 text-sm text-second/50">
-              Atur penanda khusus untuk kamera ini.
+              Atur penanda khusus untuk produk ini.
             </p>
           </div>
 
@@ -644,10 +644,10 @@ export default function CreateCameraPage() {
             />
             <span>
               <span className="block text-sm font-medium text-second">
-                Kamera promosi
+                Produk promosi
               </span>
               <span className="mt-1 block text-xs text-second/50">
-                Tandai kamera sebagai produk promosi.
+                Tandai produk sebagai produk promosi.
               </span>
             </span>
           </label>
@@ -663,10 +663,10 @@ export default function CreateCameraPage() {
             />
             <span>
               <span className="block text-sm font-medium text-second">
-                Best seller
+                Produk best seller
               </span>
               <span className="mt-1 block text-xs text-second/50">
-                Tandai kamera sebagai salah satu produk terlaris.
+                Tandai produk sebagai salah satu produk terlaris.
               </span>
             </span>
           </label>
@@ -679,7 +679,7 @@ export default function CreateCameraPage() {
             </h2>
             <p className="mt-1 text-sm text-second/50">
               Isi URL produk pada marketplace yang tersedia. Kosongkan jika
-              kamera tidak tersedia di marketplace tersebut.
+              produk tidak tersedia di marketplace tersebut.
             </p>
           </div>
 
@@ -706,7 +706,7 @@ export default function CreateCameraPage() {
             </div>
           ) : availableMarketplaces.length === 0 ? (
             <p className="rounded-xl bg-second/[0.03] p-4 text-sm text-second/50">
-              Belum ada marketplace yang tersedia. Kamera tetap dapat
+              Belum ada marketplace yang tersedia. produk tetap dapat
               ditambahkan tanpa tautan marketplace.
             </p>
           ) : (
@@ -788,10 +788,10 @@ export default function CreateCameraPage() {
             {isSubmitting ? (
               <>
                 <FiLoader className="animate-spin" size={17} />
-                Menyimpan kamera...
+                Menyimpan produk...
               </>
             ) : (
-              "Simpan kamera"
+              "Simpan produk"
             )}
           </button>
         </div>

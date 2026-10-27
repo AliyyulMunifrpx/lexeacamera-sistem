@@ -101,7 +101,7 @@ export default function CameraDetailPage() {
       await deleteCam.mutateAsync(id);
 
       setShowDeleteModal(false);
-      notify.success("Kamera berhasil dihapus.");
+      notify.success("Produk berhasil dihapus.");
       router.replace("/admin/cameras");
     } catch (error) {
       const apiError = normalizeApiError(error);
@@ -113,7 +113,7 @@ export default function CameraDetailPage() {
     return (
       <div className="flex min-h-64 items-center justify-center gap-3 text-sm text-second/60">
         <FiLoader className="animate-spin" size={22} />
-        Memuat detail kamera...
+        Memuat detail produk...
       </div>
     );
   }
@@ -125,10 +125,10 @@ export default function CameraDetailPage() {
 
         <div>
           <h2 className="font-semibold text-second">
-            Gagal memuat detail kamera
+            Gagal memuat detail produk
           </h2>
           <p className="mt-2 text-sm text-second/60">
-            Data kamera tidak ditemukan atau gagal dimuat.
+            Data produk tidak ditemukan atau gagal dimuat.
           </p>
         </div>
 
@@ -181,12 +181,12 @@ export default function CameraDetailPage() {
             <FiCamera size={24} />
 
             <h1 className="text-2xl font-bold tracking-tight text-second sm:text-3xl">
-              Detail Kamera
+              Detail Produk
             </h1>
           </div>
 
           <p className="mt-2 text-sm text-second/60">
-            Informasi lengkap kamera dalam katalog penjualan.
+            Informasi lengkap produk dalam katalog penjualan.
           </p>
         </div>
 
@@ -271,7 +271,7 @@ export default function CameraDetailPage() {
 
         <section className="flex h-full flex-col space-y-6 rounded-2xl border border-second/30 p-5 sm:p-7">
           <div>
-            <p className="text-sm text-second/50">Nama kamera</p>
+            <p className="text-sm text-second/50">Nama produk</p>
             <h2 className="mt-2 text-2xl font-bold text-second">
               {camera.name}
             </h2>
@@ -312,7 +312,7 @@ export default function CameraDetailPage() {
             </div>
           </div>
 
-          {/* Grid Informasi Spesifikasi Kamera */}
+          {/* Grid Informasi Spesifikasi produk */}
           <div className="grid grid-cols-2 gap-5 sm:grid-cols-3">
             <DetailItem label="Kategori">
               {camera.category?.name ?? camera.category_id}
@@ -387,7 +387,7 @@ export default function CameraDetailPage() {
               href={`/admin/cameras/${camera.id}/edit`}
               className="flex w-full items-center justify-center rounded-full bg-second px-5 py-3 text-sm font-semibold text-primary transition-colors hover:bg-second/80"
             >
-              Edit Kamera
+              Edit Produk
             </Link>
 
             <button
@@ -397,7 +397,7 @@ export default function CameraDetailPage() {
               className="flex w-full items-center justify-center gap-2 rounded-full bg-second2 px-5 py-3 text-sm font-semibold text-primary transition-colors hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <FiTrash2 size={17} />
-              Hapus Kamera
+              Hapus Produk
             </button>
           </div>
         </section>

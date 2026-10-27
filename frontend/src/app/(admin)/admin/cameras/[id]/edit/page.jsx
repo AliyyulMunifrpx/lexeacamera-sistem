@@ -406,7 +406,7 @@ export default function EditCameraPage() {
     const imageCount = keptImages.length + newImages.length;
 
     if (galleryDirty && imageCount === 0) {
-      notify.error("Kamera harus memiliki minimal satu gambar.");
+      notify.error("Produk harus memiliki minimal satu gambar.");
       return;
     }
 
@@ -535,14 +535,14 @@ export default function EditCameraPage() {
         await updateCameraImages.mutateAsync({ id, formData });
       }
 
-      notify.success("Perubahan kamera berhasil disimpan.");
+      notify.success("Perubahan produk berhasil disimpan.");
       router.push(`/admin/cameras/${id}`);
     } catch (error) {
       const apiError = normalizeApiError(error);
 
       if (detailsSaved && galleryDirty) {
         notify.error(
-          `Informasi kamera berhasil disimpan, tetapi galeri gagal diperbarui. ${apiError.message}`,
+          `Informasi produk berhasil disimpan, tetapi galeri gagal diperbarui. ${apiError.message}`,
         );
       } else {
         notify.error(apiError.message);
@@ -554,7 +554,7 @@ export default function EditCameraPage() {
     return (
       <div className="flex min-h-64 items-center justify-center gap-3 text-sm text-second/60">
         <FiLoader className="animate-spin" size={22} />
-        Memuat detail kamera...
+        Memuat detail produk...
       </div>
     );
   }
@@ -562,7 +562,7 @@ export default function EditCameraPage() {
   if (cameraQuery.isError || !camera) {
     return (
       <div className="space-y-4 rounded-2xl border border-second/30 p-6">
-        <h2 className="font-semibold text-second">Gagal memuat kamera</h2>
+        <h2 className="font-semibold text-second">Gagal memuat produk</h2>
 
         <p className="text-sm text-second/60">
           Periksa koneksi Anda, lalu coba kembali.
@@ -596,7 +596,7 @@ export default function EditCameraPage() {
         className="inline-flex items-center gap-2 text-sm text-second/60 transition-colors hover:text-second"
       >
         <FiArrowLeft size={18} />
-        Kembali ke detail kamera
+        Kembali ke detail produk
       </Link>
 
       <div className="flex items-center gap-3">
@@ -606,11 +606,11 @@ export default function EditCameraPage() {
 
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-second sm:text-3xl">
-            Edit Kamera
+            Edit Produk
           </h1>
 
           <p className="mt-1 text-sm text-second/60">
-            Perbarui informasi, galeri gambar, dan marketplace kamera.
+            Perbarui informasi, galeri gambar, dan marketplace produk.
           </p>
         </div>
       </div>
@@ -627,7 +627,7 @@ export default function EditCameraPage() {
 
           <div>
             <label htmlFor="camera-name" className={labelClass}>
-              Nama kamera <span className="text-red-500">*</span>
+              Nama produk <span className="text-red-500">*</span>
             </label>
 
             <input
@@ -793,7 +793,7 @@ export default function EditCameraPage() {
                 value={form.serial_number}
                 onChange={updateField}
                 className={inputClass}
-                placeholder="Nomor seri yang tertera di body kamera"
+                placeholder="Nomor seri yang tertera di body produk"
                 maxLength={100}
                 required
                 disabled={isSaving}
@@ -836,7 +836,7 @@ export default function EditCameraPage() {
                 disabled={isSaving}
               />
               <p className="mt-1.5 text-xs text-second/50">
-                Isi 0 jika kamera baru.
+                Isi 0 jika produk baru.
               </p>
             </div>
           </div>
@@ -853,7 +853,7 @@ export default function EditCameraPage() {
               onChange={updateField}
               maxLength={1000}
               className={`${inputClass} min-h-28 resize-y`}
-              placeholder="Jelaskan spesifikasi dan keunggulan kamera..."
+              placeholder="Jelaskan spesifikasi dan keunggulan produk..."
               disabled={isSaving}
             />
 
@@ -909,7 +909,7 @@ export default function EditCameraPage() {
                     {image.image_url && (
                       <img
                         src={image.image_url}
-                        alt="Gambar kamera"
+                        alt="Gambar produk"
                         className="h-full w-full object-cover"
                       />
                     )}
@@ -1043,10 +1043,10 @@ export default function EditCameraPage() {
 
             <span>
               <span className="block text-sm font-medium text-second">
-                Kamera promosi
+                Produk promosi
               </span>
               <span className="mt-1 block text-xs text-second/50">
-                Tandai kamera sebagai produk promosi.
+                Tandai produk sebagai produk promosi.
               </span>
             </span>
           </label>
@@ -1063,10 +1063,10 @@ export default function EditCameraPage() {
 
             <span>
               <span className="block text-sm font-medium text-second">
-                Best seller
+                Produk best seller
               </span>
               <span className="mt-1 block text-xs text-second/50">
-                Tandai kamera sebagai salah satu produk terlaris.
+                Tandai produk sebagai salah satu produk terlaris.
               </span>
             </span>
           </label>
@@ -1080,7 +1080,7 @@ export default function EditCameraPage() {
 
             <p className="mt-1 text-sm text-second/50">
               URL yang sudah tersimpan akan ditampilkan otomatis. Kosongkan jika
-              kamera tidak tersedia di marketplace tersebut.
+              produk tidak tersedia di marketplace tersebut.
             </p>
           </div>
 
