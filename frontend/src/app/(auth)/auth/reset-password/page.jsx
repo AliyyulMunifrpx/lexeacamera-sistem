@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { FiEye, FiEyeOff } from "react-icons/fi";
 import { supabase } from "../../../../lib/supabase.js";
 import { normalizeApiError } from "../../../../lib/api/errors.js";
 import notify from "../../../../lib/notify.js";
@@ -13,6 +14,8 @@ export default function ResetPasswordPage() {
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
 
   async function handleSubmit(event) {
@@ -37,7 +40,7 @@ export default function ResetPasswordPage() {
       notify.success("Kata sandi berhasil diperbarui.");
 
       await supabase.auth.signOut();
-      clearAuthTokens(); // buang token lama di aplikasi
+      clearAuthTokens();
 
       router.replace("/auth/login");
     } catch (err) {
@@ -64,17 +67,35 @@ export default function ResetPasswordPage() {
             <label htmlFor="password" className="block text-sm font-medium">
               Kata sandi baru
             </label>
-            <input
-              id="password"
-              type="password"
-              autoComplete="new-password"
-              required
-              minLength={6}
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="Masukkan kata sandi baru"
-              className="w-full rounded-xl border border-second/15 bg-transparent px-4 py-3 outline-none transition-colors placeholder:text-second/35 focus:border-second/50"
-            />
+
+            <div className="relative">
+              <input
+                id="password"
+                type={showPassword ? "text" : "password"}
+                autoComplete="new-password"
+                required
+                minLength={6}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="Masukkan kata sandi baru"
+                className="w-full rounded-xl border border-second/15 bg-transparent px-4 py-3 pr-12 outline-none transition-colors placeholder:text-second/35 focus:border-second/50"
+              />
+
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                aria-label={
+                  showPassword
+                    ? "Sembunyikan kata sandi"
+                    : "Tampilkan kata sandi"
+                }
+                aria-pressed={showPassword}
+                className="absolute inset-y-0 right-0 flex items-center justify-center px-4 text-second/50 transition-colors hover:text-second"
+              >
+                {showPassword ? <FiEyeOff size={20} /> : <FiEye size={20} />}
+              </button>
+            </div>
+
             <p className="text-xs text-second/50">
               Minimal 6 karakter atau sesuai ketentuan backend Anda.
             </p>
@@ -87,17 +108,38 @@ export default function ResetPasswordPage() {
             >
               Konfirmasi kata sandi
             </label>
-            <input
-              id="confirmPassword"
-              type="password"
-              autoComplete="new-password"
-              required
-              minLength={6}
-              value={confirmPassword}
-              onChange={(event) => setConfirmPassword(event.target.value)}
-              placeholder="Masukkan kembali kata sandi"
-              className="w-full rounded-xl border border-second/15 bg-transparent px-4 py-3 outline-none transition-colors placeholder:text-second/35 focus:border-second/50"
-            />
+
+            <div className="relative">
+              <input
+                id="confirmPassword"
+                type={showConfirmPassword ? "text" : "password"}
+                autoComplete="new-password"
+                required
+                minLength={6}
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                placeholder="Masukkan kembali kata sandi"
+                className="w-full rounded-xl border border-second/15 bg-transparent px-4 py-3 pr-12 outline-none transition-colors placeholder:text-second/35 focus:border-second/50"
+              />
+
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword((prev) => !prev)}
+                aria-label={
+                  showConfirmPassword
+                    ? "Sembunyikan konfirmasi kata sandi"
+                    : "Tampilkan konfirmasi kata sandi"
+                }
+                aria-pressed={showConfirmPassword}
+                className="absolute inset-y-0 right-0 flex items-center justify-center px-4 text-second/50 transition-colors hover:text-second"
+              >
+                {showConfirmPassword ? (
+                  <FiEyeOff size={20} />
+                ) : (
+                  <FiEye size={20} />
+                )}
+              </button>
+            </div>
           </div>
 
           <button

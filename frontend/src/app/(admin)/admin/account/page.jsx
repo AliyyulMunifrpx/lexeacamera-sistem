@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import {
   FiAlertCircle,
   FiEdit2,
+  FiEye,
+  FiEyeOff,
   FiLock,
   FiMail,
   FiRefreshCw,
@@ -80,11 +82,57 @@ function AccountField({ icon: Icon, label, value, onEdit, masked = false }) {
       <button
         type="button"
         onClick={onEdit}
-        className="inline-flex shrink-0 items-center gap-2 text-primary rounded-full bg-second px-3 py-2 text-sm font-medium transition hover:bg-second/80"
+        className="inline-flex shrink-0 items-center gap-2 rounded-full bg-second px-3 py-2 text-sm text-primary font-medium transition hover:bg-second/80"
       >
         <FiEdit2 size={15} />
         <span className="hidden sm:inline">Edit</span>
       </button>
+    </div>
+  );
+}
+
+function PasswordInput({
+  id,
+  label,
+  value,
+  onChange,
+  autoComplete,
+  placeholder,
+  showPassword,
+  onToggleVisibility,
+}) {
+  return (
+    <div>
+      <label htmlFor={id} className="mb-2 block text-sm font-medium">
+        {label}
+      </label>
+
+      <div className="relative">
+        <input
+          id={id}
+          type={showPassword ? "text" : "password"}
+          value={value}
+          onChange={onChange}
+          required
+          autoComplete={autoComplete}
+          placeholder={placeholder}
+          className={`${INPUT_CLASS} pr-12`}
+        />
+
+        <button
+          type="button"
+          onClick={onToggleVisibility}
+          aria-label={
+            showPassword
+              ? `Sembunyikan ${label.toLowerCase()}`
+              : `Tampilkan ${label.toLowerCase()}`
+          }
+          aria-pressed={showPassword}
+          className="absolute inset-y-0 right-0 flex items-center justify-center px-4 text-second/50 transition-colors hover:text-second"
+        >
+          {showPassword ? <FiEyeOff size={19} /> : <FiEye size={19} />}
+        </button>
+      </div>
     </div>
   );
 }
@@ -98,6 +146,9 @@ function EditAccountModal({
   onClose,
   onSubmit,
 }) {
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+
   if (!type) return null;
 
   const config = {
@@ -220,55 +271,39 @@ function EditAccountModal({
 
           {type === "password" && (
             <>
-              <div>
-                <label
-                  htmlFor="current-password"
-                  className="mb-2 block text-sm font-medium"
-                >
-                  Password Saat Ini
-                </label>
+              <PasswordInput
+                id="current-password"
+                label="Password Saat Ini"
+                value={values.current_password}
+                onChange={(event) =>
+                  setValues((current) => ({
+                    ...current,
+                    current_password: event.target.value,
+                  }))
+                }
+                autoComplete="current-password"
+                placeholder="Masukkan password saat ini"
+                showPassword={showCurrentPassword}
+                onToggleVisibility={() =>
+                  setShowCurrentPassword((prev) => !prev)
+                }
+              />
 
-                <input
-                  id="current-password"
-                  type="password"
-                  value={values.current_password}
-                  onChange={(event) =>
-                    setValues((current) => ({
-                      ...current,
-                      current_password: event.target.value,
-                    }))
-                  }
-                  required
-                  autoComplete="current-password"
-                  placeholder="Masukkan password saat ini"
-                  className={INPUT_CLASS}
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="new-password"
-                  className="mb-2 block text-sm font-medium"
-                >
-                  Password Baru
-                </label>
-
-                <input
-                  id="new-password"
-                  type="password"
-                  value={values.new_password}
-                  onChange={(event) =>
-                    setValues((current) => ({
-                      ...current,
-                      new_password: event.target.value,
-                    }))
-                  }
-                  required
-                  autoComplete="new-password"
-                  placeholder="Masukkan password baru"
-                  className={INPUT_CLASS}
-                />
-              </div>
+              <PasswordInput
+                id="new-password"
+                label="Password Baru"
+                value={values.new_password}
+                onChange={(event) =>
+                  setValues((current) => ({
+                    ...current,
+                    new_password: event.target.value,
+                  }))
+                }
+                autoComplete="new-password"
+                placeholder="Masukkan password baru"
+                showPassword={showNewPassword}
+                onToggleVisibility={() => setShowNewPassword((prev) => !prev)}
+              />
             </>
           )}
 
@@ -305,12 +340,16 @@ export default function AccountPage() {
     isFetching,
     refetch,
   } = useGetCurrentUser();
+
   const [emailConfirmation, setEmailConfirmation] = useState(null);
+
   const updateNameMutation = useUpdateCurrentName();
   const updateEmailMutation = useUpdateCurrentEmail();
   const updatePasswordMutation = useUpdateCurrentPassword();
+
   const router = useRouter();
   const [editType, setEditType] = useState(null);
+
   const [values, setValues] = useState({
     name: "",
     email: "",
@@ -378,7 +417,9 @@ export default function AccountPage() {
           return;
         }
 
-        const result = await updateEmailMutation.mutateAsync({ email });
+        const result = await updateEmailMutation.mutateAsync({
+          email,
+        });
 
         if (result?.message === "EMAIL_UNCHANGED") {
           notify.success("Email yang dimasukkan sama dengan email saat ini.");
@@ -501,6 +542,7 @@ export default function AccountPage() {
         onClose={closeEditor}
         onSubmit={handleSubmit}
       />
+
       <EmailConfirmationModal
         email={emailConfirmation}
         email_before={currentUser.email}
