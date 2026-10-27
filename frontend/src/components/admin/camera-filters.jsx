@@ -140,7 +140,7 @@ export default function CameraFilters({
             type="text"
             value={sku}
             onChange={(e) => setSku(e.target.value)}
-            placeholder="Contoh: CAM-0012"
+            placeholder="Contoh: WAV-0012"
             className={INPUT_CLASS}
           />
         </Field>
