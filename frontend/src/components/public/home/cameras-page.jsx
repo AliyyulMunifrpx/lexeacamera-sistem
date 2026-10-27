@@ -283,16 +283,6 @@ export default function CamerasHomePage({ searchRequest }) {
         )}
       </div>
 
-      {/* Rentang harga */}
-      <form onSubmit={applyPrice} className="flex w-full items-center gap-2">
-        <button
-          type="submit"
-          className="shrink-0 rounded-lg bg-second px-4 w-full py-2 text-sm font-semibold text-primary transition-colors hover:bg-second/80"
-        >
-          Terapkan
-        </button>
-      </form>
-
       {/* Daftar kamera */}
       {isLoading ? (
         <div className="grid w-full grid-cols-2 gap-2 md:grid-cols-4 lg:grid-cols-6">
