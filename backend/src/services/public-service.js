@@ -110,9 +110,8 @@ const getPublicStore = async (query = {}) => {
 
   return store;
 };
-
-const getAllPublicCamera = async (query) => {
-  const req = validate(getAllPublicCameraValidation, query);
+export const getAllPublicCamera = async (query) => {
+  const req = validate(getAllPublicCameraValidation, query); // atau getAllPublicCameraValidation
 
   if (
     req.min_price !== undefined &&
@@ -129,9 +128,14 @@ const getAllPublicCamera = async (query) => {
   }
   if (req.category_id) where.category_id = req.category_id;
   if (req.condition) where.condition = req.condition;
-  // `!== undefined` supaya promo=false tetap jadi filter
   if (req.promo !== undefined) where.promo = req.promo;
   if (req.best_selling !== undefined) where.best_selling = req.best_selling;
+
+  // 👇 TAMBAHKAN FILTER SKU DI SINI 👇
+  if (req.sku) {
+    where.sku = { contains: req.sku, mode: "insensitive" };
+  }
+
   if (req.min_price !== undefined || req.max_price !== undefined) {
     where.price = {};
     if (req.min_price !== undefined) where.price.gte = req.min_price;

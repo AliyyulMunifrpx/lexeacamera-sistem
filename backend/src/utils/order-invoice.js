@@ -15,11 +15,21 @@ export const INVOICE_INCLUDE = {
   order: {
     select: {
       total_amount: true,
-      order_items: { orderBy: [{ camera_name: "asc" }, { id: "asc" }] },
+      order_items: {
+        orderBy: [{ camera_name: "asc" }, { id: "asc" }],
+        include: {
+          camera: {
+            select: {
+              sku: true, // <-- SKU kamera ketarik di sini
+              serial_number: true, // (Opsional kalau butuh)
+              color: true, // (Opsional)
+            },
+          },
+        },
+      },
     },
   },
 };
-
 export const blankToNull = (value) =>
   value === undefined || value === null || value === "" ? null : value;
 
@@ -238,6 +248,7 @@ export const toInvoiceResponse = ({ order, ...invoice }) => ({
     camera_name: item.camera_name,
     camera_price: item.camera_price,
     quantity: item.quantity,
+    sku: item.camera?.sku ?? null, // <-- Tambahin ini bro!
     line_total: String(Number(item.camera_price) * item.quantity),
   })),
 });

@@ -154,7 +154,7 @@ export default function InvoiceDetailPage() {
   } = useGetInvoice(id);
   const { data: store } = useGetStore();
   const { data: currentUser } = useGetCurrentUser();
-
+  console.log(invoice);
   const deleteMutation = useDeleteInvoice();
 
   const [deleteOpen, setDeleteOpen] = useState(false);

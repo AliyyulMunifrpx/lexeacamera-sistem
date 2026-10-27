@@ -19,6 +19,7 @@ export const getAllPublicCameraValidation = Joi.object({
   min_price: Joi.number().min(0),
   max_price: Joi.number().min(0),
   promo: Joi.boolean(),
+  sku: Joi.string(),
   best_selling: Joi.boolean(),
   sort: Joi.string()
     .valid(...SORT_OPTIONS)

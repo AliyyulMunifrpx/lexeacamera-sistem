@@ -129,8 +129,8 @@ export async function downloadInvoicePdf(
     doc.rect(margin, yy, contentRight - margin, 10, "F");
 
     const opt = { size: 9, bold: true, color: C.white };
-    put("NO", margin + 4, yy + 6.5, opt);
-    put("DESKRIPSI ITEM", margin + 18, yy + 6.5, opt);
+    put("SKU", margin + 4, yy + 6.5, opt);
+    put("DESKRIPSI ITEM", margin + 28, yy + 6.5, opt);
     put("HARGA", 140, yy + 6.5, { ...opt, align: "right" });
     put("QTY", 160, yy + 6.5, { ...opt, align: "right" });
     put("TOTAL", contentRight - 4, yy + 6.5, { ...opt, align: "right" });
@@ -244,7 +244,7 @@ export async function downloadInvoicePdf(
   items.forEach((item, index) => {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
-    const nameLines = doc.splitTextToSize(displayValue(item.camera_name), 78);
+    const nameLines = doc.splitTextToSize(displayValue(item.camera_name), 68);
     const rowH = Math.max(12, 4 + nameLines.length * 4.2 + 3);
 
     if (y + rowH > bottomLimit) {
@@ -257,15 +257,17 @@ export async function downloadInvoicePdf(
     doc.setFillColor(...(index % 2 === 0 ? C.rowLight : C.rowDark));
     doc.rect(margin, y, contentRight - margin, rowH, "F");
 
-    put(`${String(index + 1).padStart(2, "0")}.`, margin + 4, y + 6, {
-      size: 8.5,
-      color: C.muted,
+    put(displayValue(item.sku), margin + 4, y + 6, {
+      size: 8,
+      bold: true,
+      color: C.text,
+      maxWidth: 22,
     });
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
     doc.setTextColor(...C.text);
-    doc.text(nameLines, margin + 18, y + 6);
+    doc.text(nameLines, margin + 28, y + 6);
 
     put(formatCurrency(item.camera_price), 140, y + 6, {
       size: 8.5,
@@ -351,16 +353,22 @@ export async function downloadInvoicePdf(
 
   /* ---------- Footer: S&K (kiri bawah) + ucapan (kanan) ---------- */
   const footY = totalY + 22;
-  const signCenterX = margin + 25;
 
-  put("Terima kasih atas kepercayaan Anda!", rightColX, footY + 8, {
-    size: 11,
+  put("Thank you for shipping", rightColX, footY + 6, {
+    size: 10,
     bold: true,
     color: C.accent,
     maxWidth: contentRight - rightColX,
   });
 
-  let contactY = footY + 17;
+  put("Selamat & sukses untuk karyamu,", rightColX, footY + 11.5, {
+    size: 9,
+    bold: true,
+    color: C.text,
+    maxWidth: contentRight - rightColX,
+  });
+
+  let contactY = footY + 18;
 
   if (invoice.whatsapp_store) {
     put(`Whatsapp: ${invoice.whatsapp_store}`, rightColX, contactY, {

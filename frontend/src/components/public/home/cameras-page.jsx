@@ -42,6 +42,11 @@ export default function CamerasHomePage({ searchRequest }) {
 
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  // 👇 STATE BARU UNTUK SKU 👇
+  const [sku, setSku] = useState("WAV-");
+  const [debouncedSku, setDebouncedSku] = useState("WAV-");
+
   const [condition, setCondition] = useState("");
   const [sort, setSort] = useState("newest");
   const [categoryId, setCategoryId] = useState("");
@@ -65,6 +70,7 @@ export default function CamerasHomePage({ searchRequest }) {
     isFetchNextPageError,
   } = useGetInfiniteCameras({
     search: debouncedSearch,
+    sku: debouncedSku, // 👇 KIRIM SKU KE HOOK 👇
     condition,
     sort,
     category_id: categoryId,
@@ -108,7 +114,8 @@ export default function CamerasHomePage({ searchRequest }) {
     setSearch(searchRequest.value);
     setDebouncedSearch(searchRequest.value);
   }, [searchRequest]);
-  // Debounce pencarian supaya tidak request di setiap ketikan.
+
+  // Debounce pencarian nama supaya tidak request di setiap ketikan.
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(search.trim());
@@ -116,6 +123,15 @@ export default function CamerasHomePage({ searchRequest }) {
 
     return () => clearTimeout(timer);
   }, [search]);
+
+  // 👇 DEBOUNCE PENCARIAN SKU 👇
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSku(sku.trim());
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [sku]);
 
   useEffect(() => {
     if (!isError || !error) return;
@@ -125,9 +141,9 @@ export default function CamerasHomePage({ searchRequest }) {
   }, [isError, error]);
 
   // Filter berubah: kalau daftar sudah di-scroll jauh, naik ke awal daftar.
-  // Kalau awal daftar masih terlihat, nggak perlu bergeser.
   const filtersKey = JSON.stringify([
     debouncedSearch,
+    debouncedSku, // 👇 MASUKKAN KE DEPENDENCY FILTER 👇
     condition,
     sort,
     categoryId,
@@ -147,12 +163,6 @@ export default function CamerasHomePage({ searchRequest }) {
     }
   }, [filtersKey]);
 
-  // Infinite scroll: saat penanda di bawah daftar mendekati layar (800px lagi),
-  // muat halaman berikutnya. Observer dibuat ulang setiap selesai memuat, jadi
-  // kalau penanda MASIH dekat (layar tinggi, atau halamannya sedikit) halaman
-  // berikutnya langsung dimuat lagi.
-  // Setelah gagal, jangan memuat otomatis: tunggu tombol "Coba lagi", kalau
-  // tidak, error akan memicu request berulang tanpa henti.
   useEffect(() => {
     const node = sentinelRef.current;
 
@@ -224,6 +234,8 @@ export default function CamerasHomePage({ searchRequest }) {
   function resetFilters() {
     setSearch("");
     setDebouncedSearch("");
+    setSku("");
+    setDebouncedSku("");
     setCondition("");
     setSort("newest");
     setCategoryId("");
@@ -233,6 +245,7 @@ export default function CamerasHomePage({ searchRequest }) {
 
   const hasActiveFilters =
     debouncedSearch !== "" ||
+    debouncedSku !== "" || // 👇 CEK APAKAH SKU AKTIF 👇
     condition !== "" ||
     sort !== "newest" ||
     categoryId !== "" ||
@@ -241,6 +254,27 @@ export default function CamerasHomePage({ searchRequest }) {
 
   return (
     <div ref={topRef} className="w-full scroll-mt-16 space-y-4">
+      {/* Input Pencarian SKU dengan Prefix WAV- */}
+      <div className="grid grid-cols-1 gap-2 ">
+        <div className="relative flex items-center">
+          <input
+            type="text"
+            value={sku}
+            onChange={(event) => {
+              let val = event.target.value.toUpperCase(); // Biar otomatis huruf kapital
+              // Pastikan selalu ada prefix WAV- di depan
+              if (!val.startsWith("WAV-")) {
+                val = "WAV-" + val.replace(/^WAV-?/i, "");
+              }
+              setSku(val);
+            }}
+            placeholder="WAV-XXXX"
+            className={selectClass}
+            aria-label="Cari SKU"
+          />
+        </div>
+      </div>
+
       {/* Kategori + urutan */}
       <div className="grid grid-cols-2 gap-2">
         <select
@@ -382,7 +416,6 @@ export default function CamerasHomePage({ searchRequest }) {
             ))}
           </div>
 
-          {/* Penanda untuk infinite scroll: dibaca IntersectionObserver di atas */}
           <div ref={sentinelRef} aria-hidden="true" className="h-px w-full" />
 
           {isFetchingNextPage && (
