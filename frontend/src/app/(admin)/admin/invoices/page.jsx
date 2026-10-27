@@ -94,7 +94,6 @@ export default function InvoicesPage() {
 
   const { created_from, created_to, is_final } = draftFilters;
 
-  // Pencarian teks: tunggu user berhenti mengetik sebentar.
   useEffect(() => {
     setFilters((current) =>
       current.search === debouncedSearch
@@ -103,7 +102,6 @@ export default function InvoicesPage() {
     );
   }, [debouncedSearch]);
 
-  // Tanggal dan status: langsung diterapkan saat berubah.
   useEffect(() => {
     if (created_from && created_to && created_from > created_to) {
       notify.error("Tanggal awal tidak boleh melewati tanggal akhir.");
@@ -143,8 +141,6 @@ export default function InvoicesPage() {
     filters.is_final !== "",
   );
 
-  // Enter / tombol terapkan tetap jalan dan langsung menerapkan semuanya
-  // tanpa menunggu debounce.
   function handleApplyFilters(event) {
     event?.preventDefault();
 
@@ -179,39 +175,6 @@ export default function InvoicesPage() {
     }));
   }
 
-  if (isPending) {
-    return (
-      <div
-        className="flex min-h-64 items-center justify-center gap-3"
-        role="status"
-        aria-live="polite"
-      >
-        <FiLoader className="animate-spin text-second" size={22} />
-        <span className="text-sm text-second/60">Memuat data invoice...</span>
-      </div>
-    );
-  }
-
-  if (isError && !data) {
-    return (
-      <div className="space-y-4 rounded-2xl border border-second/30 p-6">
-        <h2 className="font-semibold text-second">Gagal memuat invoice</h2>
-
-        <p className="text-sm text-second/60">
-          Periksa koneksi atau sesi Anda, kemudian coba kembali.
-        </p>
-
-        <button
-          type="button"
-          onClick={() => refetch()}
-          className="rounded-xl bg-second px-4 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-second/80"
-        >
-          Coba lagi
-        </button>
-      </div>
-    );
-  }
-
   return (
     <div className="mx-auto w-full max-w-screen-2xl space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -230,7 +193,7 @@ export default function InvoicesPage() {
           </p>
         </div>
 
-        <div className="flex w-full gap-4 md:w-fit">
+        <div className="flex w-full flex-wrap gap-3 md:w-fit">
           <Link
             href="/admin/invoices/terms"
             className={`inline-flex items-center gap-2 rounded-full border border-second/30 px-4 py-2 text-sm font-semibold text-second transition-colors hover:bg-second/5 ${FOCUS_RING}`}
@@ -263,13 +226,12 @@ export default function InvoicesPage() {
         </div>
       </div>
 
-      {/* Bagian Filter: JANGAN dikasih isFetching supaya inputan search tetap fokus & aktif */}
       <InvoiceFilters
         draft={draftFilters}
         setDraft={setDraftFilters}
         onApply={handleApplyFilters}
         onReset={resetFilters}
-        isFetching={false}
+        isFetching={isFetching}
       />
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -283,29 +245,56 @@ export default function InvoicesPage() {
         </div>
       </div>
 
-      {/* Hanya area daftar invoice ini saja yang ada overlay loading-nya */}
-      <div className="relative min-h-40">
-        {isFetching && (
-          <div className="absolute inset-0 z-10 flex items-start justify-center rounded-2xl bg-primary/75 pt-10 backdrop-blur-[2px] transition-opacity duration-200">
+      <div className="relative min-h-64">
+        {(isPending || isFetching) && (
+          <div
+            className="absolute inset-0 z-10 flex items-start justify-center rounded-2xl bg-primary/75 pt-10 backdrop-blur-[2px] transition-opacity duration-200"
+            role="status"
+            aria-live="polite"
+          >
             <div className="flex items-center gap-3 rounded-full border border-second/30 bg-primary px-5 py-3 shadow-lg">
               <FiLoader className="animate-spin text-second" size={19} />
 
               <span className="text-sm font-medium text-second">
-                Memperbarui data...
+                {isPending ? "Memuat data invoice..." : "Memperbarui data..."}
               </span>
             </div>
           </div>
         )}
 
-        {invoices.length > 0 ? (
+        {isError && !data ? (
+          <div className="flex min-h-64 flex-col items-center justify-center rounded-2xl border border-second/30 p-6 text-center">
+            <FiFileText size={36} className="text-second/30" />
+
+            <h3 className="mt-4 font-semibold text-second">
+              Gagal memuat invoice
+            </h3>
+
+            <p className="mt-2 text-sm text-second/60">
+              Periksa koneksi atau sesi Anda, kemudian coba kembali.
+            </p>
+
+            <button
+              type="button"
+              onClick={() => refetch()}
+              className="mt-4 rounded-xl bg-second px-4 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-second/80"
+            >
+              Coba lagi
+            </button>
+          </div>
+        ) : invoices.length > 0 ? (
           <div
-            className={`grid grid-cols-1 gap-4 space-y-4 transition-opacity duration-200 md:grid-cols-3 ${
+            className={`grid grid-cols-1 gap-4 transition-opacity duration-200 md:grid-cols-3 ${
               isFetching ? "opacity-40" : "opacity-100"
             }`}
           >
             {invoices.map((invoice) => (
-              <Link key={invoice.id} href={`/admin/invoices/${invoice.id}`}>
-                <article className="rounded-2xl border border-second/30 p-4 transition-colors hover:border-second/50 sm:p-6">
+              <Link
+                key={invoice.id}
+                href={`/admin/invoices/${invoice.id}`}
+                className="block min-w-0"
+              >
+                <article className="h-full rounded-2xl border border-second/30 p-4 transition-colors hover:border-second/50 sm:p-6">
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
                       <p className="break-all text-sm font-bold text-second sm:text-base">
