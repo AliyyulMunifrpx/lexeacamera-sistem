@@ -263,12 +263,13 @@ export default function InvoicesPage() {
         </div>
       </div>
 
+      {/* Bagian Filter: JANGAN dikasih isFetching supaya inputan search tetap fokus & aktif */}
       <InvoiceFilters
         draft={draftFilters}
         setDraft={setDraftFilters}
         onApply={handleApplyFilters}
         onReset={resetFilters}
-        isFetching={isFetching}
+        isFetching={false}
       />
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -282,6 +283,7 @@ export default function InvoicesPage() {
         </div>
       </div>
 
+      {/* Hanya area daftar invoice ini saja yang ada overlay loading-nya */}
       <div className="relative min-h-40">
         {isFetching && (
           <div className="absolute inset-0 z-10 flex items-start justify-center rounded-2xl bg-primary/75 pt-10 backdrop-blur-[2px] transition-opacity duration-200">
