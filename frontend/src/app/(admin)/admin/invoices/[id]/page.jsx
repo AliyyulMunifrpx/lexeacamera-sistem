@@ -152,7 +152,6 @@ export default function InvoiceDetailPage() {
     isFetching,
     refetch,
   } = useGetInvoice(id);
-
   const { data: store } = useGetStore();
   const { data: currentUser } = useGetCurrentUser();
 
@@ -249,6 +248,7 @@ export default function InvoiceDetailPage() {
 
   const items = invoice.items ?? [];
   const isFinal = invoice.is_final === true;
+  const terms = (invoice.terms_and_condition ?? "").trim();
 
   const customerWhatsappHref = getWhatsappHref(invoice.customer_whatsapp);
   const customerInstagramHref = getInstagramHref(invoice.customer_instagram);
@@ -533,6 +533,20 @@ export default function InvoiceDetailPage() {
             </table>
           </div>
         </div>
+      </section>
+
+      <section className="no-print">
+        <DetailSection icon={FiFileText} title="Syarat dan Ketentuan">
+          {terms ? (
+            <p className="whitespace-pre-line break-words text-sm leading-relaxed">
+              {terms}
+            </p>
+          ) : (
+            <p className="text-sm text-second/60">
+              Invoice ini dibuat tanpa syarat dan ketentuan.
+            </p>
+          )}
+        </DetailSection>
       </section>
 
       <ThermalReceipt invoice={invoice} paperWidth={paperWidth} />

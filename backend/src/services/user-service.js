@@ -19,17 +19,21 @@ function emailLockKey(email) {
 }
 const register = async function (request) {
   const user = validate(registerUserValidation, request);
-  const lockKey = emailLockKey(user.email);
+
+  // Fast-fail murah sebelum menyentuh lock / Supabase
+  if (await prisma.user.findFirst({ select: { id: true } })) {
+    throw new ResponseError(400, "USER_ALREADY_EXIST");
+  }
 
   return await prisma.$transaction(
     async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKey})`;
+      // Lock global: semua register diserialkan, bukan per email
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('user_register_singleton'))`;
 
-      const existingUser = await tx.user.findFirst({
-        where: { email: user.email },
-      });
+      // Cek ulang di dalam lock, ini yang jadi acuan
+      const existingUser = await tx.user.findFirst({ select: { id: true } });
       if (existingUser) {
-        throw new ResponseError(400, "EMAIL_ALREADY_EXIST");
+        throw new ResponseError(400, "USER_ALREADY_EXIST");
       }
 
       let authData;
@@ -69,9 +73,12 @@ const register = async function (request) {
         logger.error("PRISMA CREATE ERROR:", e);
         try {
           await supabase.auth.admin.deleteUser(authData.user.id);
-        } catch {}
+        } catch (cleanupError) {
+          logger.error("SUPABASE CLEANUP FAILED:", cleanupError);
+        }
+        // Email duplikat atau index single-row: dua-duanya berarti sudah ada user
         if (e.code === "P2002") {
-          throw new ResponseError(400, "EMAIL_ALREADY_EXIST");
+          throw new ResponseError(400, "USER_ALREADY_EXIST");
         }
         throw e;
       }
@@ -79,7 +86,6 @@ const register = async function (request) {
     { timeout: 15000 },
   );
 };
-
 const login = async function (request) {
   const req = validate(loginUserValidation, request);
   const { data: authData, error: authError } =

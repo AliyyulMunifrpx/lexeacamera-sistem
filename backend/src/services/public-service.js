@@ -62,6 +62,10 @@ const DETAIL_SELECT = {
   promo: true,
   best_selling: true,
   created_at: true,
+  sku: true,
+  serial_number: true,
+  color: true,
+  shutter_count: true,
   category: { select: { id: true, name: true } },
   // Foto utama selalu pertama, sisanya urut waktu upload
   images: {

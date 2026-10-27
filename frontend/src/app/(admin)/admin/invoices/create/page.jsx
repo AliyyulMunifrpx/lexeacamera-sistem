@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link.js";
 import { useRouter } from "next/navigation.js";
 import {
@@ -15,11 +15,41 @@ import {
 
 import { useCreateInvoice } from "../../../../features/invoices/hooks.js";
 import { useGetCameras } from "../../../../features/cameras/hooks.js";
+import { useGetTerms } from "../../../../features/terms/hooks.js";
 import { normalizeApiError } from "../../../../../lib/api/errors.js";
 import notify from "../../../../../lib/notify.js";
 
 const INPUT_CLASS =
   "w-full rounded-xl border border-second/25 bg-primary px-3 py-3 text-sm text-second outline-none transition placeholder:text-second/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-second";
+
+const FOCUS_RING =
+  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-second";
+
+const TERMS_MAX_LENGTH = 5000;
+
+const TERMS_MODES = {
+  TEMPLATE: "template",
+  NONE: "none",
+  CUSTOM: "custom",
+};
+
+const TERMS_OPTIONS = [
+  {
+    value: TERMS_MODES.TEMPLATE,
+    title: "Pakai template",
+    description: "Salin S&K pembayaran yang tersimpan saat invoice dibuat.",
+  },
+  {
+    value: TERMS_MODES.NONE,
+    title: "Tanpa S&K",
+    description: "Invoice ini dibuat tanpa syarat dan ketentuan.",
+  },
+  {
+    value: TERMS_MODES.CUSTOM,
+    title: "Buat sendiri",
+    description: "Tulis S&K khusus hanya untuk invoice ini.",
+  },
+];
 
 const INITIAL_FORM = {
   customer_name: "",
@@ -44,7 +74,10 @@ function formatCurrency(value) {
     maximumFractionDigits: 0,
   }).format(amount);
 }
-
+function formatThousands(value) {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
 function Field({ label, htmlFor, children, required = false }) {
   return (
     <div className="min-w-0">
@@ -81,6 +114,11 @@ export default function CreateInvoicePage() {
   const [selectedItems, setSelectedItems] = useState([]);
   const [cameraSearch, setCameraSearch] = useState("");
   const [discountError, setDiscountError] = useState("");
+  const storeDiscountRef = useRef(null);
+  const customerDiscountRef = useRef(null);
+  const pendingDiscountCaret = useRef(null);
+  const [termsMode, setTermsMode] = useState(TERMS_MODES.TEMPLATE);
+  const [customTerms, setCustomTerms] = useState("");
 
   const {
     data: cameraResponse,
@@ -94,6 +132,12 @@ export default function CreateInvoicePage() {
     page: 1,
   });
 
+  const {
+    data: termsResponse,
+    isPending: isLoadingTerms,
+    isError: isTermsError,
+  } = useGetTerms();
+
   useEffect(() => {
     if (isCameraError) {
       const apiError = normalizeApiError(cameraError);
@@ -106,6 +150,13 @@ export default function CreateInvoicePage() {
     : Array.isArray(cameraResponse?.data)
       ? cameraResponse.data
       : [];
+
+  // Isi template S&K dari GET /terms (null kalau belum pernah diisi).
+  const templateTerms = (
+    termsResponse?.data?.value ??
+    termsResponse?.value ??
+    ""
+  ).trim();
 
   const subtotal = useMemo(
     () =>
@@ -136,6 +187,8 @@ export default function CreateInvoicePage() {
 
   const selectedIds = new Set(selectedItems.map((item) => item.camera.id));
 
+  const isCustomTooLong = customTerms.length > TERMS_MAX_LENGTH;
+
   function handleFormChange(event) {
     const { name, value, checked, type } = event.target;
 
@@ -143,26 +196,47 @@ export default function CreateInvoicePage() {
       ...current,
       [name]: type === "checkbox" ? checked : value,
     }));
-
-    if (name === "store_discount" || name === "customer_discount") {
-      setDiscountError("");
-    }
   }
-
   function handleDiscountChange(event) {
     const { name, value } = event.target;
+    const cursorPosition = event.target.selectionStart ?? value.length;
 
-    // Hanya izinkan maksimal 12 digit bulat rupiah.
-    if (value !== "" && !/^\d{1,12}$/.test(value)) {
-      return;
-    }
+    // Hitung jumlah digit sebelum kursor sebelum format diterapkan.
+    const digitsBeforeCursor = value
+      .slice(0, cursorPosition)
+      .replace(/\D/g, "").length;
+
+    // State tetap menyimpan angka mentah tanpa titik.
+    const digits = value.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
+
+    // Maksimal 12 digit, tanpa nol di depan.
+    if (digits.length > 12) return;
+
+    pendingDiscountCaret.current = {
+      name,
+      digitCount: Math.min(digitsBeforeCursor, digits.length),
+    };
 
     setForm((current) => ({
       ...current,
-      [name]: value,
+      [name]: digits,
     }));
 
     setDiscountError("");
+  }
+
+  function handleTermsModeChange(nextMode) {
+    setTermsMode(nextMode);
+
+    // Pertama kali pilih "Buat sendiri": mulai dari isi template supaya
+    // tinggal diedit, bukan mengetik dari nol.
+    if (
+      nextMode === TERMS_MODES.CUSTOM &&
+      customTerms === "" &&
+      templateTerms
+    ) {
+      setCustomTerms(templateTerms);
+    }
   }
 
   function addCamera(camera) {
@@ -255,6 +329,20 @@ export default function CreateInvoicePage() {
       return false;
     }
 
+    if (termsMode === TERMS_MODES.CUSTOM) {
+      if (!customTerms.trim()) {
+        notify.error(
+          "S&K khusus masih kosong. Isi teksnya atau pilih opsi lain.",
+        );
+        return false;
+      }
+
+      if (customTerms.length > TERMS_MAX_LENGTH) {
+        notify.error(`S&K maksimum ${TERMS_MAX_LENGTH} karakter.`);
+        return false;
+      }
+    }
+
     return true;
   }
 
@@ -291,6 +379,16 @@ export default function CreateInvoicePage() {
       payload.customer_discount = Number(form.customer_discount);
     }
 
+    // S&K:
+    // - template : field tidak dikirim, server menyalin dari GET /terms
+    // - none     : null, invoice dibuat tanpa terms
+    // - custom   : string apa adanya untuk invoice ini
+    if (termsMode === TERMS_MODES.NONE) {
+      payload.terms_and_condition = null;
+    } else if (termsMode === TERMS_MODES.CUSTOM) {
+      payload.terms_and_condition = customTerms.trim();
+    }
+
     try {
       await createMutation.mutateAsync(payload);
 
@@ -301,7 +399,37 @@ export default function CreateInvoicePage() {
       notify.error(apiError.message);
     }
   }
+  useLayoutEffect(() => {
+    const pending = pendingDiscountCaret.current;
 
+    if (!pending) return;
+
+    const input =
+      pending.name === "store_discount"
+        ? storeDiscountRef.current
+        : pending.name === "customer_discount"
+          ? customerDiscountRef.current
+          : null;
+
+    if (!input) return;
+
+    const formattedValue = formatThousands(form[pending.name]);
+    const targetDigitCount = pending.digitCount;
+
+    let position = 0;
+    let digitsFound = 0;
+
+    while (position < formattedValue.length && digitsFound < targetDigitCount) {
+      if (/\d/.test(formattedValue[position])) {
+        digitsFound++;
+      }
+
+      position++;
+    }
+
+    input.setSelectionRange(position, position);
+    pendingDiscountCaret.current = null;
+  }, [form.store_discount, form.customer_discount]);
   return (
     <div className="mx-auto max-w-5xl space-y-7 pb-8 text-second">
       <header>
@@ -316,8 +444,8 @@ export default function CreateInvoicePage() {
         <h1 className="mt-5 text-2xl font-bold">Buat Invoice</h1>
 
         <p className="mt-1 text-sm text-second/65">
-          Masukkan data pelanggan, pilih kamera, lalu atur diskon dan status
-          invoice.
+          Masukkan data pelanggan, pilih kamera, lalu atur diskon, S&K, dan
+          status invoice.
         </p>
       </header>
 
@@ -354,7 +482,8 @@ export default function CreateInvoicePage() {
                 required
                 minLength={8}
                 maxLength={15}
-                pattern="\+?[0-9]{7,14}"
+                pattern="\+?[0-9]+"
+                title="8–15 karakter, hanya angka, boleh diawali +"
                 placeholder="081234567890"
                 className={INPUT_CLASS}
               />
@@ -490,7 +619,8 @@ export default function CreateInvoicePage() {
 
           <p className="text-xs text-second/55">
             {selectedItems.length}/10 jenis kamera dipilih. Maksimal 10 jenis
-            kamera, masing-masing dengan kuantitas 1–10.
+            kamera, masing-masing dengan kuantitas 1–10. Stok tidak dicek dan
+            tidak dikurangi untuk invoice admin.
           </p>
 
           {selectedItems.length > 0 && (
@@ -585,17 +715,125 @@ export default function CreateInvoicePage() {
         </Section>
 
         <Section
+          title="Syarat dan Ketentuan"
+          description="Pilih S&K pembayaran untuk invoice ini. Invoice menyimpan salinannya sendiri, jadi perubahan template di kemudian hari tidak mengubah invoice yang sudah dibuat."
+        >
+          <fieldset className="space-y-3">
+            <legend className="sr-only">Pilihan syarat dan ketentuan</legend>
+
+            {TERMS_OPTIONS.map((option) => {
+              const isActive = termsMode === option.value;
+
+              return (
+                <label
+                  key={option.value}
+                  className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition ${
+                    isActive
+                      ? "border-second/60 bg-second/5"
+                      : "border-second/15 hover:border-second/30"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="terms_mode"
+                    value={option.value}
+                    checked={isActive}
+                    onChange={() => handleTermsModeChange(option.value)}
+                    className="mt-1 size-4 accent-second"
+                  />
+
+                  <span>
+                    <span className="block text-sm font-medium">
+                      {option.title}
+                    </span>
+                    <span className="mt-1 block text-xs leading-relaxed text-second/60">
+                      {option.description}
+                    </span>
+                  </span>
+                </label>
+              );
+            })}
+          </fieldset>
+
+          {termsMode === TERMS_MODES.TEMPLATE && (
+            <div className="rounded-xl bg-second/5 p-4">
+              <p className="text-xs font-medium text-second/60">
+                Preview template saat ini
+              </p>
+
+              {isLoadingTerms ? (
+                <p className="mt-2 text-sm text-second/60">
+                  Memuat template S&K...
+                </p>
+              ) : isTermsError ? (
+                <p className="mt-2 text-sm text-red-400">
+                  Gagal memuat template. Server tetap akan menyalin template
+                  saat invoice dibuat.
+                </p>
+              ) : templateTerms ? (
+                <p className="mt-2 max-h-48 overflow-y-auto whitespace-pre-line break-words text-sm">
+                  {templateTerms}
+                </p>
+              ) : (
+                <p className="mt-2 text-sm text-second/60">
+                  Template belum diisi, sehingga invoice dibuat tanpa S&K.{" "}
+                  <Link
+                    href="/admin/invoices/terms"
+                    className={`font-semibold text-second underline ${FOCUS_RING}`}
+                  >
+                    Isi template
+                  </Link>
+                </p>
+              )}
+            </div>
+          )}
+
+          {termsMode === TERMS_MODES.CUSTOM && (
+            <div className="space-y-2">
+              <label
+                htmlFor="custom-terms"
+                className="block text-sm font-medium"
+              >
+                S&K khusus invoice ini
+              </label>
+
+              <textarea
+                id="custom-terms"
+                value={customTerms}
+                onChange={(event) => setCustomTerms(event.target.value)}
+                rows={8}
+                placeholder="Tulis syarat dan ketentuan pembayaran..."
+                className={`${INPUT_CLASS} resize-y ${
+                  isCustomTooLong ? "border-red-500" : ""
+                }`}
+              />
+
+              <p
+                className={`text-right text-xs ${
+                  isCustomTooLong
+                    ? "font-semibold text-red-400"
+                    : "text-second/55"
+                }`}
+              >
+                {customTerms.length}/{TERMS_MAX_LENGTH}
+              </p>
+            </div>
+          )}
+        </Section>
+
+        <Section
           title="Diskon dan Total"
           description="Nilai di bawah adalah preview. Backend tetap menghitung subtotal dan total akhir."
         >
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <Field label="Diskon toko (Rp)" htmlFor="store-discount">
               <input
+                ref={storeDiscountRef}
                 id="store-discount"
                 name="store_discount"
                 type="text"
                 inputMode="numeric"
-                value={form.store_discount}
+                value={formatThousands(form.store_discount)}
                 onChange={handleDiscountChange}
                 maxLength={12}
                 placeholder="0"
@@ -605,11 +843,12 @@ export default function CreateInvoicePage() {
 
             <Field label="Diskon pelanggan (Rp)" htmlFor="customer-discount">
               <input
+                ref={customerDiscountRef}
                 id="customer-discount"
                 name="customer_discount"
                 type="text"
                 inputMode="numeric"
-                value={form.customer_discount}
+                value={formatThousands(form.customer_discount)}
                 onChange={handleDiscountChange}
                 maxLength={12}
                 placeholder="0"
@@ -642,10 +881,10 @@ export default function CreateInvoicePage() {
             </div>
           </div>
 
-          {discountError && (
+          {(discountError || totalAmount < 0) && (
             <p className="flex items-start gap-2 text-sm text-red-400">
               <FiAlertCircle className="mt-0.5 shrink-0" />
-              {discountError}
+              {discountError || "Total diskon tidak boleh melebihi subtotal."}
             </p>
           )}
 
@@ -684,7 +923,8 @@ export default function CreateInvoicePage() {
             disabled={
               createMutation.isPending ||
               selectedItems.length === 0 ||
-              hasInvalidPrice
+              hasInvalidPrice ||
+              isCustomTooLong
             }
             className="rounded-xl bg-second px-5 py-3 text-sm font-semibold text-primary transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >

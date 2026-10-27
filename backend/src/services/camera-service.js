@@ -164,6 +164,10 @@ const createCamera = async (request) => {
         category_id: req.category_id,
         promo: req.promo ?? false,
         best_selling: req.best_selling ?? false,
+        sku: req.sku,
+        serial_number: req.serial_number,
+        color: req.color,
+        shutter_count: req.shutter_count,
 
         images: {
           create: images,
@@ -212,6 +216,14 @@ const getAllCamera = async (request) => {
     throw new ResponseError(400, "INVALID_PRICE_RANGE");
   }
 
+  if (
+    req.min_stock !== undefined &&
+    req.max_stock !== undefined &&
+    req.min_stock > req.max_stock
+  ) {
+    throw new ResponseError(400, "INVALID_STOCK_RANGE");
+  }
+
   const where = { is_deleted: false };
 
   if (req.search) {
@@ -226,6 +238,22 @@ const getAllCamera = async (request) => {
     where.price = {};
     if (req.min_price !== undefined) where.price.gte = req.min_price;
     if (req.max_price !== undefined) where.price.lte = req.max_price;
+  }
+
+  // Filter admin. String kosong ("") dianggap nggak ada filter
+  if (req.sku) {
+    where.sku = { contains: req.sku, mode: "insensitive" };
+  }
+  if (req.serial_number) {
+    where.serial_number = { contains: req.serial_number, mode: "insensitive" };
+  }
+  if (req.color) {
+    where.color = { contains: req.color, mode: "insensitive" };
+  }
+  if (req.min_stock !== undefined || req.max_stock !== undefined) {
+    where.stock = {};
+    if (req.min_stock !== undefined) where.stock.gte = req.min_stock;
+    if (req.max_stock !== undefined) where.stock.lte = req.max_stock;
   }
 
   const [cameras, total] = await prisma.$transaction([
@@ -294,6 +322,10 @@ const CAMERA_SCALAR_FIELDS = [
   "category_id",
   "promo",
   "best_selling",
+  "sku",
+  "serial_number",
+  "color",
+  "shutter_count",
 ];
 
 const updateCamera = async (request) => {

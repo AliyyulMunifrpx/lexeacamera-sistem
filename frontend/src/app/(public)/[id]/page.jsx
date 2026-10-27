@@ -12,7 +12,6 @@ import {
   FiShoppingCart,
   FiX,
 } from "react-icons/fi";
-import { FaWhatsapp } from "react-icons/fa";
 
 import {
   useGetCamera,
@@ -120,39 +119,87 @@ function ExpandableText({ text }) {
   );
 }
 
-// Tombol pembelian. Dipakai dua kali: sebagai dock di HP dan sebagai blok di desktop.
 function BuyButtons({
   variant,
   cameraId,
   isOutOfStock,
-  hasMarketplaces,
+  marketplaces,
   hasWhatsapp,
   onOpenMarketplaces,
   onWhatsapp,
 }) {
   const isDock = variant === "dock";
+  const hasMultipleMarketplaces = marketplaces.length > 1;
 
-  const secondaryClass = `flex h-12 items-center justify-center gap-2  text-sm font-semibold px-4 text-second transition-colors hover:bg-second/5 disabled:cursor-not-allowed disabled:opacity-50 ${
+  const secondaryClass = `flex min-h-12 items-center justify-center gap-2  text-sm font-semibold text-second transition-colors hover:bg-second/5 disabled:cursor-not-allowed disabled:opacity-50 ${
     isDock ? "" : "w-full"
   }`;
 
-  const primaryClass = `flex h-12 items-center justify-center gap-2 bg-second  text-sm font-semibold px-4 text-primary transition-colors hover:bg-second/80 ${
+  const primaryClass = `flex min-h-12 items-center justify-center gap-2 bg-second px-4 py-2 text-sm font-semibold text-primary transition-colors hover:bg-second/80 ${
     isDock ? "flex-1" : "w-full"
   }`;
 
+  function MarketplaceLink({ marketplace }) {
+    return (
+      <a
+        href={marketplace.product_url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`${secondaryClass} rounded-md ${
+          isDock ? "min-w-0 flex-1" : ""
+        }`}
+      >
+        {marketplace.logo_url ? (
+          <Image
+            src={marketplace.logo_url}
+            alt=""
+            width={24}
+            height={24}
+            unoptimized
+            className="size-6 shrink-0 object-contain"
+          />
+        ) : (
+          <FiShoppingBag size={22} />
+        )}
+
+        <span className="truncate">{marketplace.name}</span>
+      </a>
+    );
+  }
+
   return (
-    <div className={isDock ? "flex items-center gap-2" : "flex flex-col gap-2"}>
-      {hasMarketplaces && (
+    <div
+      className={
+        isDock ? "flex flex-wrap items-center gap-2" : "flex flex-col gap-2"
+      }
+    >
+      {/* Satu marketplace: langsung tampil di semua ukuran layar. */}
+      {marketplaces.length === 1 && (
+        <MarketplaceLink marketplace={marketplaces[0]} />
+      )}
+
+      {/* Banyak marketplace: tampil langsung di bawah lg. */}
+      {hasMultipleMarketplaces && (
+        <div
+          className={`flex flex-wrap gap-2 lg:hidden ${
+            isDock ? "w-full" : "flex-col"
+          }`}
+        >
+          {marketplaces.map((marketplace) => (
+            <MarketplaceLink key={marketplace.id} marketplace={marketplace} />
+          ))}
+        </div>
+      )}
+
+      {/* Banyak marketplace: gunakan modal pada layar lg ke atas. */}
+      {hasMultipleMarketplaces && (
         <button
           type="button"
           onClick={onOpenMarketplaces}
-          aria-label="Beli lewat marketplace"
-          className={secondaryClass}
+          className={`${secondaryClass} hidden lg:flex`}
         >
-          <FiShoppingBag size={24} />
-          <span className={isDock ? "hidden min-[400px]:inline" : ""}>
-            Marketplace
-          </span>
+          <FiShoppingBag size={22} />
+          Pilih Marketplace
         </button>
       )}
 
@@ -161,13 +208,16 @@ function BuyButtons({
           type="button"
           onClick={onWhatsapp}
           disabled={isOutOfStock}
-          aria-label="Beli lewat WhatsApp"
-          className={secondaryClass}
+          className={`${secondaryClass} ${isDock ? "flex-1" : "w-full"}`}
         >
-          <FaWhatsapp size={24} />
-          <span className={isDock ? "hidden min-[400px]:inline" : ""}>
-            WhatsApp
-          </span>
+          <Image
+            src="/whatsapp.webp"
+            alt=""
+            width={24}
+            height={24}
+            className="size-6 shrink-0"
+          />
+          <span>Chat di WhatsApp</span>
         </button>
       )}
 
@@ -177,13 +227,13 @@ function BuyButtons({
           disabled
           className={`${primaryClass} cursor-not-allowed opacity-50`}
         >
-          <FiShoppingCart size={24} />
+          <FiShoppingCart size={22} />
           Stok habis
         </button>
       ) : (
         <Link href={`/pesan?camera_id=${cameraId}`} className={primaryClass}>
-          <FiShoppingCart size={24} />
-          Beli langsung
+          <FiShoppingCart size={22} />
+          Order
         </Link>
       )}
     </div>
@@ -215,7 +265,7 @@ function CameraDetailContent() {
   // Response API: { data: {...} }. Dua bentuk ditangani, tergantung hook mengembalikan apa.
   const camera = cameraQuery.data?.data ?? cameraQuery.data;
   const store = homeQuery.data?.store;
-
+  console.log(camera);
   // Rekomendasi: kamera lain di kategori yang sama. Baru jalan setelah kategori diketahui.
   const categoryId = camera?.category?.id ?? "";
   const relatedQuery = useGetCameras(
@@ -361,7 +411,7 @@ function CameraDetailContent() {
   const buyButtonProps = {
     cameraId: camera.id,
     isOutOfStock,
-    hasMarketplaces: marketplaces.length > 0,
+    marketplaces,
     hasWhatsapp: Boolean(whatsapp),
     onOpenMarketplaces: () => setShowMarketplaces(true),
     onWhatsapp: buyViaWhatsapp,
@@ -479,28 +529,35 @@ function CameraDetailContent() {
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
-              <span className="flex py-1 items-center rounded-full bg-second2 px-2 text-primary">
-                {CONDITION_LABEL[camera.condition] ?? camera.condition}
-              </span>
-
-              {camera.category?.name && (
-                <span className="flex py-1 items-center rounded-full border border-second/20 px-2 text-second/70">
-                  {camera.category.name}
-                </span>
-              )}
-
-              {camera.promo && (
-                <span className="flex h-8 items-center rounded-full bg-red-500 px-2 text-white">
-                  Promo
-                </span>
-              )}
-
-              {camera.best_selling && (
-                <span className="flex h-8 items-center rounded-full bg-yellow-500 px-2 text-black">
-                  Best seller
-                </span>
-              )}
+            <div className="grid grid-cols-2 gap-3 rounded-md ">
+              {[
+                { label: "SKU", value: camera.sku },
+                { label: "Serial Number", value: camera.serial_number },
+                { label: "Warna", value: camera.color },
+                {
+                  label: "Shutter Count",
+                  value:
+                    camera.shutter_count !== null &&
+                    camera.shutter_count !== undefined &&
+                    camera.shutter_count !== ""
+                      ? formatPrice(camera.shutter_count)
+                      : null,
+                },
+              ]
+                .filter(
+                  (item) =>
+                    item.value !== null &&
+                    item.value !== undefined &&
+                    String(item.value).trim() !== "",
+                )
+                .map((item) => (
+                  <div key={item.label} className="min-w-0">
+                    <p className="text-xs text-second/50">{item.label}</p>
+                    <p className="mt-1 break-words text-sm font-medium text-second">
+                      {item.value}
+                    </p>
+                  </div>
+                ))}
             </div>
 
             {/* Tombol beli versi desktop (di HP pakai dock di bawah layar) */}
@@ -557,7 +614,7 @@ function CameraDetailContent() {
       </div>
 
       {/* Modal kecil marketplace: melayang di atas dock */}
-      {showMarketplaces && (
+      {showMarketplaces && marketplaces.length > 1 && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center md:items-center backdrop-blur-md"
           role="dialog"

@@ -312,9 +312,25 @@ export default function CameraDetailPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
+          {/* Grid Informasi Spesifikasi Kamera */}
+          <div className="grid grid-cols-2 gap-5 sm:grid-cols-3">
             <DetailItem label="Kategori">
               {camera.category?.name ?? camera.category_id}
+            </DetailItem>
+
+            <DetailItem label="SKU">{camera.sku}</DetailItem>
+
+            <DetailItem label="Serial Number">
+              {camera.serial_number}
+            </DetailItem>
+
+            <DetailItem label="Warna">{camera.color}</DetailItem>
+
+            <DetailItem label="Shutter Count">
+              {camera.shutter_count !== undefined &&
+              camera.shutter_count !== null
+                ? formatNumber(Number(camera.shutter_count))
+                : "—"}
             </DetailItem>
 
             <DetailItem label="Tanggal ditambahkan">

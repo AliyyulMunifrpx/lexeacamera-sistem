@@ -349,7 +349,7 @@ export async function downloadInvoicePdf(
     align: "right",
   });
 
-  /* ---------- Footer: area tanda tangan + ucapan ---------- */
+  /* ---------- Footer: S&K (kiri bawah) + ucapan (kanan) ---------- */
   const footY = totalY + 22;
   const signCenterX = margin + 25;
 
@@ -374,6 +374,33 @@ export async function downloadInvoicePdf(
     put(`Instagram: ${invoice.instagram_store}`, rightColX, contactY, {
       size: 8,
       color: C.muted,
+    });
+  }
+
+  /* Syarat dan ketentuan: kiri bawah, lanjut ke halaman berikutnya
+     kalau teksnya panjang. Dilewati kalau invoice tanpa S&K. */
+  const terms = String(invoice.terms_and_condition ?? "").trim();
+
+  if (terms) {
+    const termsWidth = rightColX - margin - 8;
+    const termsLineHeight = 3.8;
+    let termsY = footY;
+
+    put("SYARAT & KETENTUAN:", margin, termsY, { size: 9, bold: true });
+    termsY += 5.5;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    const termsLines = doc.splitTextToSize(terms, termsWidth);
+
+    termsLines.forEach((line) => {
+      if (termsY > bottomLimit) {
+        doc.addPage();
+        termsY = 20;
+      }
+
+      put(line, margin, termsY, { size: 7.5, color: C.muted });
+      termsY += termsLineHeight;
     });
   }
 

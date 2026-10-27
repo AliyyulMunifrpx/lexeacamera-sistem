@@ -1,8 +1,10 @@
 import crypto from "node:crypto";
 
+import { Prisma } from "@prisma/client"; // sesuaikan kalau client Prisma-mu punya output custom
+
 import { ResponseError } from "../error/response-error.js";
 import { prisma } from "../lib/database.js";
-import { Prisma } from "@prisma/client"; // sesuaikan kalau client Prisma-mu punya output custom
+
 const INVOICE_PREFIX = "WAV";
 const MAX_NUMBER_ATTEMPTS = 5;
 // Tanpa karakter yang mirip (I, O, 0, 1) supaya mudah dibaca dan diketik
@@ -50,6 +52,7 @@ export const generateInvoiceNumber = () => {
 
   return `${INVOICE_PREFIX}-${date}-${suffix}`;
 };
+
 const buildLines = async (tx, items, checkStock) => {
   const ids = items.map((item) => item.camera_id);
 
@@ -120,6 +123,17 @@ export const createOrderWithInvoice = async ({
     throw new ResponseError(503, "STORE_NOT_READY");
   }
 
+  // Terms pembayaran disalin ke invoice (snapshot): kalau terms diubah kemudian,
+  // invoice yang sudah ada tidak ikut berubah. Admin boleh menimpa lewat extras;
+  // undefined = pakai terms saat ini, null atau "" = invoice tanpa terms.
+  const termsSnapshot =
+    extras.terms_and_condition !== undefined
+      ? blankToNull(extras.terms_and_condition)
+      : blankToNull(
+          (await prisma.termsandcondition.findFirst({ orderBy: { id: "asc" } }))
+            ?.value,
+        );
+
   const storeDiscount = toMoney(extras.store_discount);
   const customerDiscount = toMoney(extras.customer_discount);
 
@@ -156,6 +170,7 @@ export const createOrderWithInvoice = async ({
               store_discount: storeDiscount,
               customer_discount: customerDiscount,
               is_final: extras.is_final ?? false,
+              terms_and_condition: termsSnapshot,
               order: {
                 create: {
                   customer_name: customer.name,

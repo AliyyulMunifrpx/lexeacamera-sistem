@@ -1,19 +1,30 @@
 import api from "../../../lib/api/client.js";
-
 export async function getCameras({
   search,
   min_price,
   max_price,
   category_id,
   condition,
+  sku,
+  serial_number,
+  min_stock,
+  max_stock,
+  color,
   page = 1,
 }) {
+  const hasValue = (value) => value !== "" && value != null;
+
   const params = {
     ...(search && { search }),
-    ...(min_price !== "" && min_price != null && { min_price }),
-    ...(max_price !== "" && max_price != null && { max_price }),
+    ...(hasValue(min_price) && { min_price }),
+    ...(hasValue(max_price) && { max_price }),
     ...(category_id && { category_id }),
     ...(condition && { condition }),
+    ...(sku && { sku }),
+    ...(serial_number && { serial_number }),
+    ...(color && { color }),
+    ...(hasValue(min_stock) && { min_stock }),
+    ...(hasValue(max_stock) && { max_stock }),
     page,
   };
 

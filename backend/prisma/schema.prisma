@@ -24,6 +24,10 @@ model Camera {
   created_at       DateTime                @default(now())
   category_id      String?
   category         Category?               @relation(fields: [category_id], references: [id], onDelete: Restrict)
+  sku              String?
+  serial_number    String?
+  color            String?
+  shutter_count    String?
   is_deleted       Boolean                 @default(false)
   images           CameraImage[]
   marketplaceLinks CameraMarketplaceLink[]
@@ -118,27 +122,33 @@ model OrderItem {
 }
 
 model Invoice {
-  id                 String   @id @default(uuid())
-  no_invoice         String   @unique
-  store_name         String
-  store_address      String?  @db.Text
-  whatsapp_store     String?
-  instagram_store    String?
-  created_at         DateTime @default(now())
-  payment_method     String?
-  ship               String?
-  customer_name      String
-  customer_address   String   @db.Text
-  customer_whatsapp  String
-  customer_instagram String?
-  total_amount       String
-  order_id           String   @unique
-  store_discount     String?
-  customer_discount  String?
-  is_final           Boolean  @default(false)
-  order              Order    @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  id                  String   @id @default(uuid())
+  no_invoice          String   @unique
+  store_name          String
+  store_address       String?  @db.Text
+  whatsapp_store      String?
+  instagram_store     String?
+  created_at          DateTime @default(now())
+  payment_method      String?
+  ship                String?
+  customer_name       String
+  customer_address    String   @db.Text
+  customer_whatsapp   String
+  customer_instagram  String?
+  total_amount        String
+  order_id            String   @unique
+  store_discount      String?
+  customer_discount   String?
+  is_final            Boolean  @default(false)
+  order               Order    @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  terms_and_condition String?
 
   @@index([created_at])
+}
+
+model Termsandcondition {
+  id    String  @id @default(uuid())
+  value String? @db.Text
 }
 
 model User {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Image from "next/image.js";
 import Link from "next/link.js";
 import { useParams, useRouter } from "next/navigation";
@@ -8,7 +8,6 @@ import {
   FiArrowLeft,
   FiCamera,
   FiLoader,
-  FiPlus,
   FiShoppingBag,
   FiTrash2,
   FiUploadCloud,
@@ -33,6 +32,13 @@ const inputClass =
   "w-full rounded-xl border border-second/30 bg-primary px-4 py-3 text-sm text-second outline-none transition-colors placeholder:text-second/35 focus:border-second";
 
 const labelClass = "mb-2 block text-sm font-medium text-second";
+
+const SKU_PREFIX = "WAV-";
+const SKU_LENGTH = 4;
+
+function formatThousands(digits) {
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
 
 function ImagePreview({ file, alt }) {
   const [src, setSrc] = useState("");
@@ -75,10 +81,18 @@ export default function EditCameraPage() {
     description: "",
     inclusions: "",
     category_id: "",
+    sku: "",
+    serial_number: "",
+    color: "",
+    shutter_count: "",
     promo: false,
     best_selling: false,
   });
+  const priceInputRef = useRef(null);
+  const skuInputRef = useRef(null);
 
+  const pendingPriceCaret = useRef(null);
+  const pendingSkuCaret = useRef(null);
   const [keptImages, setKeptImages] = useState([]);
   const [newImages, setNewImages] = useState([]);
   const [primarySelection, setPrimarySelection] = useState(null);
@@ -92,6 +106,11 @@ export default function EditCameraPage() {
 
     initializedId.current = camera.id;
 
+    const rawSku = camera.sku ?? "";
+    const initialSku = rawSku.startsWith(SKU_PREFIX)
+      ? rawSku.slice(SKU_PREFIX.length)
+      : rawSku;
+
     setForm({
       name: camera.name ?? "",
       price: String(camera.price ?? ""),
@@ -100,6 +119,10 @@ export default function EditCameraPage() {
       description: camera.description ?? "",
       inclusions: camera.inclusions ?? "",
       category_id: camera.category_id ?? camera.category?.id ?? "",
+      sku: initialSku,
+      serial_number: camera.serial_number ?? "",
+      color: camera.color ?? "",
+      shutter_count: String(camera.shutter_count ?? ""),
       promo: Boolean(camera.promo),
       best_selling: Boolean(camera.best_selling),
     });
@@ -155,7 +178,81 @@ export default function EditCameraPage() {
       [name]: type === "checkbox" ? checked : value,
     }));
   }
+  function updatePrice(event) {
+    const input = event.target;
+    const cursorPosition = input.selectionStart ?? input.value.length;
 
+    const digitsBeforeCursor = input.value
+      .slice(0, cursorPosition)
+      .replace(/\D/g, "").length;
+
+    const digits = input.value.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
+
+    pendingPriceCaret.current = Math.min(digitsBeforeCursor, digits.length);
+
+    setForm((previous) => ({
+      ...previous,
+      price: digits,
+    }));
+  }
+
+  function updateShutterCount(event) {
+    const digits = event.target.value
+      .replace(/\D/g, "")
+      .replace(/^0+(?=\d)/, "");
+
+    setForm((previous) => ({ ...previous, shutter_count: digits }));
+  }
+
+  function updateSku(event) {
+    const input = event.target;
+    const cursorPosition = input.selectionStart ?? input.value.length;
+
+    const charactersBeforeCursor = input.value
+      .slice(0, cursorPosition)
+      .replace(/[^a-zA-Z0-9]/g, "").length;
+
+    const value = input.value
+      .replace(/[^a-zA-Z0-9]/g, "")
+      .toUpperCase()
+      .slice(0, SKU_LENGTH);
+
+    pendingSkuCaret.current = Math.min(charactersBeforeCursor, value.length);
+
+    setForm((previous) => ({
+      ...previous,
+      sku: value,
+    }));
+  }
+  useLayoutEffect(() => {
+    if (pendingPriceCaret.current !== null && priceInputRef.current) {
+      const input = priceInputRef.current;
+      const digitCount = pendingPriceCaret.current;
+      const formattedValue = formatThousands(form.price);
+
+      let position = 0;
+      let digitsFound = 0;
+
+      while (position < formattedValue.length && digitsFound < digitCount) {
+        if (/\d/.test(formattedValue[position])) {
+          digitsFound++;
+        }
+
+        position++;
+      }
+
+      input.setSelectionRange(position, position);
+      pendingPriceCaret.current = null;
+    }
+
+    if (pendingSkuCaret.current !== null && skuInputRef.current) {
+      const input = skuInputRef.current;
+      const position = Math.min(pendingSkuCaret.current, input.value.length);
+
+      input.setSelectionRange(position, position);
+      pendingSkuCaret.current = null;
+    }
+  }, [form.price, form.sku]);
   function handleImageChange(event) {
     const selectedFiles = Array.from(event.target.files ?? []);
     event.target.value = "";
@@ -291,6 +388,21 @@ export default function EditCameraPage() {
       return;
     }
 
+    const sku = form.sku;
+    const serialNumber = form.serial_number.trim();
+    const color = form.color.trim();
+    const shutterCount = form.shutter_count.trim();
+
+    if (sku.length !== SKU_LENGTH) {
+      notify.error(`SKU harus diisi ${SKU_LENGTH} karakter huruf atau angka.`);
+      return;
+    }
+
+    if (!serialNumber || !color || !shutterCount) {
+      notify.error("Serial number, warna, dan shutter count wajib diisi.");
+      return;
+    }
+
     const imageCount = keptImages.length + newImages.length;
 
     if (galleryDirty && imageCount === 0) {
@@ -328,6 +440,23 @@ export default function EditCameraPage() {
 
     if (Number(form.stock) !== Number(camera.stock)) {
       data.stock = Number(form.stock);
+    }
+
+    const fullSku = `${SKU_PREFIX}${sku}`;
+    if (fullSku !== (camera.sku ?? "")) {
+      data.sku = fullSku;
+    }
+
+    if (serialNumber !== (camera.serial_number ?? "")) {
+      data.serial_number = serialNumber;
+    }
+
+    if (color !== (camera.color ?? "")) {
+      data.color = color;
+    }
+
+    if (shutterCount !== String(camera.shutter_count ?? "")) {
+      data.shutter_count = shutterCount; // <-- Kirim sebagai string murni
     }
 
     if (form.description.trim() !== (camera.description ?? "")) {
@@ -498,7 +627,7 @@ export default function EditCameraPage() {
 
           <div>
             <label htmlFor="camera-name" className={labelClass}>
-              Nama kamera
+              Nama kamera <span className="text-red-500">*</span>
             </label>
 
             <input
@@ -508,6 +637,7 @@ export default function EditCameraPage() {
               onChange={updateField}
               maxLength={100}
               className={inputClass}
+              placeholder="Contoh: Canon EOS R50"
               required
               disabled={isSaving}
             />
@@ -516,26 +646,33 @@ export default function EditCameraPage() {
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <div>
               <label htmlFor="camera-price" className={labelClass}>
-                Harga jual
+                Harga jual <span className="text-red-500">*</span>
               </label>
 
-              <input
-                id="camera-price"
-                name="price"
-                type="number"
-                min="0"
-                step="any"
-                value={form.price}
-                onChange={updateField}
-                className={inputClass}
-                required
-                disabled={isSaving}
-              />
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm text-second/50">
+                  Rp
+                </span>
+                <input
+                  ref={priceInputRef}
+                  id="camera-price"
+                  name="price"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={formatThousands(form.price)}
+                  onChange={updatePrice}
+                  className={`${inputClass} pl-11`}
+                  placeholder="12.000.000"
+                  required
+                  disabled={isSaving}
+                />
+              </div>
             </div>
 
             <div>
               <label htmlFor="camera-stock" className={labelClass}>
-                Stok
+                Stok <span className="text-red-500">*</span>
               </label>
 
               <input
@@ -547,6 +684,7 @@ export default function EditCameraPage() {
                 value={form.stock}
                 onChange={updateField}
                 className={inputClass}
+                placeholder="3"
                 required
                 disabled={isSaving}
               />
@@ -554,7 +692,7 @@ export default function EditCameraPage() {
 
             <div>
               <label htmlFor="camera-condition" className={labelClass}>
-                Kondisi
+                Kondisi <span className="text-red-500">*</span>
               </label>
 
               <select
@@ -573,7 +711,7 @@ export default function EditCameraPage() {
 
             <div>
               <label htmlFor="camera-category" className={labelClass}>
-                Kategori
+                Kategori <span className="text-red-500">*</span>
               </label>
 
               <select
@@ -615,6 +753,92 @@ export default function EditCameraPage() {
                 </button>
               )}
             </div>
+
+            <div>
+              <label htmlFor="sku" className={labelClass}>
+                SKU <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm text-second/50">
+                  {SKU_PREFIX}
+                </span>
+                <input
+                  ref={skuInputRef}
+                  id="sku"
+                  name="sku"
+                  autoComplete="off"
+                  value={form.sku}
+                  onChange={updateSku}
+                  className={`${inputClass} pl-14 uppercase`}
+                  placeholder="A1B2"
+                  maxLength={SKU_LENGTH}
+                  minLength={SKU_LENGTH}
+                  required
+                  disabled={isSaving}
+                />
+              </div>
+              <p className="mt-1.5 text-xs text-second/50">
+                Isi {SKU_LENGTH} karakter huruf atau angka. Contoh: {SKU_PREFIX}
+                A1B2
+              </p>
+            </div>
+
+            <div>
+              <label htmlFor="serial_number" className={labelClass}>
+                Serial number <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="serial_number"
+                name="serial_number"
+                value={form.serial_number}
+                onChange={updateField}
+                className={inputClass}
+                placeholder="Nomor seri yang tertera di body kamera"
+                maxLength={100}
+                required
+                disabled={isSaving}
+              />
+            </div>
+
+            <div>
+              <label htmlFor="color" className={labelClass}>
+                Warna <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="color"
+                name="color"
+                value={form.color}
+                onChange={updateField}
+                className={inputClass}
+                placeholder="Contoh: Hitam"
+                maxLength={50}
+                required
+                disabled={isSaving}
+              />
+            </div>
+
+            <div>
+              <label htmlFor="shutter_count" className={labelClass}>
+                Shutter count <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="shutter_count"
+                name="shutter_count"
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                value={formatThousands(form.shutter_count)}
+                onChange={updateShutterCount}
+                className={inputClass}
+                placeholder="Contoh: 12.500"
+                maxLength={20}
+                required
+                disabled={isSaving}
+              />
+              <p className="mt-1.5 text-xs text-second/50">
+                Isi 0 jika kamera baru.
+              </p>
+            </div>
           </div>
 
           <div>
@@ -629,6 +853,7 @@ export default function EditCameraPage() {
               onChange={updateField}
               maxLength={1000}
               className={`${inputClass} min-h-28 resize-y`}
+              placeholder="Jelaskan spesifikasi dan keunggulan kamera..."
               disabled={isSaving}
             />
 
@@ -649,7 +874,7 @@ export default function EditCameraPage() {
               onChange={updateField}
               maxLength={1000}
               className={`${inputClass} min-h-24 resize-y`}
-              placeholder="Body, baterai, charger..."
+              placeholder="Body, baterai, charger, strap."
               disabled={isSaving}
             />
           </div>
@@ -813,7 +1038,7 @@ export default function EditCameraPage() {
               checked={form.promo}
               onChange={updateField}
               disabled={isSaving}
-              className="mt-1 size-4"
+              className="mt-1 size-4 accent-current"
             />
 
             <span>
@@ -833,7 +1058,7 @@ export default function EditCameraPage() {
               checked={form.best_selling}
               onChange={updateField}
               disabled={isSaving}
-              className="mt-1 size-4"
+              className="mt-1 size-4 accent-current"
             />
 
             <span>

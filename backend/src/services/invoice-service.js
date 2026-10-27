@@ -34,16 +34,10 @@ const NULLABLE_TEXT_FIELDS = [
   "payment_method",
   "ship",
   "customer_instagram",
+  "terms_and_condition",
 ];
 
 const createInvoice = async (request) => {
-  if (
-    !request ||
-    typeof request !== "object" ||
-    Object.keys(request).length === 0
-  ) {
-    throw new ResponseError(400, "REQUEST_BODY_REQUIRED");
-  }
   const req = validate(createInvoiceValidation, request);
 
   const invoice = await createOrderWithInvoice({
@@ -61,6 +55,8 @@ const createInvoice = async (request) => {
       ship: blankToNull(req.ship),
       store_discount: req.store_discount,
       customer_discount: req.customer_discount,
+      // Sengaja tanpa blankToNull: undefined berarti "pakai terms saat ini"
+      terms_and_condition: req.terms_and_condition,
       is_final: req.is_final ?? false,
     },
   });
@@ -124,7 +120,8 @@ const getAllInvoice = async (query) => {
   ]);
 
   return {
-    data: rows.map(({ order, ...invoice }) => ({
+    // Teks terms panjang dan tidak dibutuhkan di daftar: tersedia di GET /invoices/:id
+    data: rows.map(({ order, terms_and_condition: _terms, ...invoice }) => ({
       ...invoice,
       subtotal: order.total_amount,
       item_count: order._count.order_items,

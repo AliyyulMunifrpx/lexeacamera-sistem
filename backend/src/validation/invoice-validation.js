@@ -7,6 +7,7 @@ import {
   money,
   nullableText,
 } from "./order-validation.js";
+import { TERMS_MAX } from "./terms-validation.js";
 
 const id = Joi.string().uuid().required();
 
@@ -34,6 +35,8 @@ export const createInvoiceValidation = Joi.object({
   ship: nullableText(100),
   store_discount: money.allow(null),
   customer_discount: money.allow(null),
+  // Tidak dikirim = salin terms pembayaran saat ini. "" atau null = tanpa terms.
+  terms_and_condition: nullableText(TERMS_MAX),
   is_final: Joi.boolean(), // true = langsung final, kosong/false = masih bisa diedit sekali
 });
 
@@ -62,6 +65,7 @@ const EDITABLE_FIELDS = [
   "customer_instagram",
   "store_discount",
   "customer_discount",
+  "terms_and_condition",
 ];
 
 export const updateInvoiceValidation = Joi.object({
@@ -78,4 +82,5 @@ export const updateInvoiceValidation = Joi.object({
   customer_instagram: nullableText(100),
   store_discount: money.allow(null),
   customer_discount: money.allow(null),
+  terms_and_condition: nullableText(TERMS_MAX),
 }).or(...EDITABLE_FIELDS);

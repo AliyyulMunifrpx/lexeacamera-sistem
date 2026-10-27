@@ -10,6 +10,10 @@ export const createCameraValidation = Joi.object({
   category_id: Joi.string().uuid().required(),
   promo: Joi.boolean().optional(),
   best_selling: Joi.boolean().optional(),
+  sku: Joi.string().trim().max(50).required(),
+  serial_number: Joi.string().trim().max(100).required(),
+  color: Joi.string().trim().max(50).required(),
+  shutter_count: Joi.string().trim().max(20).required(),
 
   marketplace: Joi.array()
     .items(
@@ -30,6 +34,11 @@ export const getAllCameraValidation = Joi.object({
   condition: Joi.string().valid("NEW", "SECOND").optional(),
   min_price: Joi.number().min(0).optional(),
   max_price: Joi.number().min(0).optional(),
+  sku: Joi.string().trim().max(50).allow("").optional(),
+  serial_number: Joi.string().trim().max(100).allow("").optional(),
+  color: Joi.string().trim().max(50).allow("").optional(),
+  min_stock: Joi.number().integer().min(0).optional(),
+  max_stock: Joi.number().integer().min(0).optional(),
   page: Joi.number().integer().min(1).default(1),
 });
 export const getCameraValidation = Joi.object({
@@ -58,6 +67,10 @@ export const updateCameraValidation = Joi.object({
   category_id: Joi.string().uuid(),
   promo: Joi.boolean(),
   best_selling: Joi.boolean(),
+  sku: Joi.string().trim().max(50),
+  serial_number: Joi.string().trim().max(100),
+  color: Joi.string().trim().max(50),
+  shutter_count: Joi.string().trim().max(20),
   marketplace: marketplaceSchema,
 }).or(
   "name",
@@ -69,6 +82,10 @@ export const updateCameraValidation = Joi.object({
   "category_id",
   "promo",
   "best_selling",
+  "sku",
+  "serial_number",
+  "color",
+  "shutter_count",
   "marketplace",
 );
 export const deleteCameraValidation = Joi.object({

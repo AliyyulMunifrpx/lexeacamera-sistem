@@ -215,7 +215,7 @@ export default function InvoicesPage() {
   return (
     <div className="mx-auto w-full max-w-screen-2xl space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="">
+        <div>
           <div className="flex items-center gap-2">
             <FiFileText size={24} />
 
@@ -229,14 +229,22 @@ export default function InvoicesPage() {
             status final.
           </p>
         </div>
-        <div className="flex gap-4 w-full md:w-fit">
-          {" "}
+
+        <div className="flex w-full gap-4 md:w-fit">
+          <Link
+            href="/admin/invoices/terms"
+            className={`inline-flex items-center gap-2 rounded-full border border-second/30 px-4 py-2 text-sm font-semibold text-second transition-colors hover:bg-second/5 ${FOCUS_RING}`}
+          >
+            <FiFileText size={16} />
+            Template S&K
+          </Link>
+
           <button
             type="button"
             onClick={() => refetch()}
             disabled={isFetching}
-            aria-label="Perbarui data dashboard"
-            className={`inline-flex px-4 py-2 items-center gap-2 rounded-full border border-second/30 px-4 text-sm font-semibold text-second transition-colors hover:bg-second/5 disabled:opacity-60 ${FOCUS_RING}`}
+            aria-label="Perbarui data invoice"
+            className={`inline-flex items-center gap-2 rounded-full border border-second/30 px-4 py-2 text-sm font-semibold text-second transition-colors hover:bg-second/5 disabled:opacity-60 ${FOCUS_RING}`}
           >
             <FiRefreshCw
               size={16}
@@ -244,9 +252,10 @@ export default function InvoicesPage() {
             />
             {isFetching ? "Memperbarui..." : "Perbarui"}
           </button>
+
           <Link
             href="/admin/invoices/create"
-            className={`inline-flex items-center justify-center gap-2 rounded-full bg-second px-4 w-full md:w-fit py-2 text-sm font-semibold text-primary transition-colors hover:bg-second/80 ${FOCUS_RING}`}
+            className={`inline-flex w-full items-center justify-center gap-2 rounded-full bg-second px-4 py-2 text-sm font-semibold text-primary transition-colors hover:bg-second/80 md:w-fit ${FOCUS_RING}`}
           >
             <FiPlus size={18} />
             Buat Invoice
@@ -288,16 +297,13 @@ export default function InvoicesPage() {
 
         {invoices.length > 0 ? (
           <div
-            className={`space-y-4 transition-opacity duration-200 grid grid-cols-1 md:grid-cols-3 gap-4 ${
+            className={`grid grid-cols-1 gap-4 space-y-4 transition-opacity duration-200 md:grid-cols-3 ${
               isFetching ? "opacity-40" : "opacity-100"
             }`}
           >
             {invoices.map((invoice) => (
               <Link key={invoice.id} href={`/admin/invoices/${invoice.id}`}>
-                <article
-                  key={invoice.id}
-                  className="rounded-2xl border border-second/30 p-4 transition-colors hover:border-second/50 sm:p-6"
-                >
+                <article className="rounded-2xl border border-second/30 p-4 transition-colors hover:border-second/50 sm:p-6">
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
                       <p className="break-all text-sm font-bold text-second sm:text-base">

@@ -27,17 +27,30 @@ const inputClass =
 
 const labelClass = "mb-2 block text-sm font-medium text-second";
 
+// Admin hanya mengisi 4 karakter di belakang prefix. Dikirim ke backend sebagai "WAV-XXXX".
+const SKU_PREFIX = "WAV-";
+const SKU_LENGTH = 4;
+
 const initialForm = {
   name: "",
-  price: "",
+  price: "", // hanya digit, contoh "1000000". Tampilannya diformat di input.
   condition: "NEW",
   stock: "",
   description: "",
   inclusions: "",
   category_id: "",
+  sku: "",
+  serial_number: "",
+  color: "",
+  shutter_count: "",
   promo: false,
   best_selling: false,
 };
+
+// "1000000" -> "1.000.000"
+function formatThousands(digits) {
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
 
 function FormField({ label, htmlFor, required, children, description }) {
   return (
@@ -98,7 +111,14 @@ export default function CreateCameraPage() {
   const effectivePrimaryKey = images.some((image) => image.key === primaryKey)
     ? primaryKey
     : (images[0]?.key ?? null);
+  function updateShutterCount(event) {
+    // Buang semua selain digit, lalu buang nol di depan
+    const digits = event.target.value
+      .replace(/\D/g, "")
+      .replace(/^0+(?=\d)/, "");
 
+    setForm((previous) => ({ ...previous, shutter_count: digits }));
+  }
   function resetForm() {
     setForm(initialForm);
     setImages([]);
@@ -113,6 +133,25 @@ export default function CreateCameraPage() {
       ...previous,
       [name]: type === "checkbox" ? checked : value,
     }));
+  }
+
+  function updatePrice(event) {
+    // Buang semua selain digit (termasuk titik pemisah), lalu buang nol di depan.
+    const digits = event.target.value
+      .replace(/\D/g, "")
+      .replace(/^0+(?=\d)/, "");
+
+    setForm((previous) => ({ ...previous, price: digits }));
+  }
+
+  function updateSku(event) {
+    // Hanya huruf dan angka, otomatis huruf besar, maksimal 4 karakter.
+    const value = event.target.value
+      .replace(/[^a-zA-Z0-9]/g, "")
+      .toUpperCase()
+      .slice(0, SKU_LENGTH);
+
+    setForm((previous) => ({ ...previous, sku: value }));
   }
 
   function handleImageChange(event) {
@@ -178,6 +217,22 @@ export default function CreateCameraPage() {
       return;
     }
 
+    // Field ini wajib di backend, jadi cegah submit kalau isinya cuma spasi.
+    const sku = form.sku;
+    const serialNumber = form.serial_number.trim();
+    const color = form.color.trim();
+    const shutterCount = form.shutter_count.trim();
+
+    if (sku.length !== SKU_LENGTH) {
+      notify.error(`SKU harus diisi ${SKU_LENGTH} karakter huruf atau angka.`);
+      return;
+    }
+
+    if (!serialNumber || !color || !shutterCount) {
+      notify.error("Serial number, warna, dan shutter count wajib diisi.");
+      return;
+    }
+
     const marketplaceLinks = availableMarketplaces
       .map((marketplace) => ({
         marketplace_id: marketplace.id,
@@ -194,6 +249,10 @@ export default function CreateCameraPage() {
     formData.append("description", form.description.trim());
     formData.append("inclusions", form.inclusions.trim());
     formData.append("category_id", form.category_id);
+    formData.append("sku", `${SKU_PREFIX}${sku}`);
+    formData.append("serial_number", serialNumber);
+    formData.append("color", color);
+    formData.append("shutter_count", shutterCount);
     formData.append("promo", String(form.promo));
     formData.append("best_selling", String(form.best_selling));
 
@@ -283,13 +342,13 @@ export default function CreateCameraPage() {
                 <input
                   id="price"
                   name="price"
-                  type="number"
-                  min="0"
-                  step="any"
-                  value={form.price}
-                  onChange={updateField}
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={formatThousands(form.price)}
+                  onChange={updatePrice}
                   className={`${inputClass} pl-11`}
-                  placeholder="12000000"
+                  placeholder="12.000.000"
                   required
                   disabled={isSubmitting}
                 />
@@ -366,6 +425,81 @@ export default function CreateCameraPage() {
                   Gagal memuat kategori. Coba lagi.
                 </button>
               )}
+            </FormField>
+
+            <FormField
+              label="SKU"
+              htmlFor="sku"
+              required
+              description={`Isi ${SKU_LENGTH} karakter huruf atau angka. Contoh: ${SKU_PREFIX}A1B2`}
+            >
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm text-second/50">
+                  {SKU_PREFIX}
+                </span>
+                <input
+                  id="sku"
+                  name="sku"
+                  autoComplete="off"
+                  value={form.sku}
+                  onChange={updateSku}
+                  className={`${inputClass} pl-14 uppercase`}
+                  placeholder="A1B2"
+                  maxLength={SKU_LENGTH}
+                  minLength={SKU_LENGTH}
+                  required
+                  disabled={isSubmitting}
+                />
+              </div>
+            </FormField>
+
+            <FormField label="Serial number" htmlFor="serial_number" required>
+              <input
+                id="serial_number"
+                name="serial_number"
+                value={form.serial_number}
+                onChange={updateField}
+                className={inputClass}
+                placeholder="Nomor seri yang tertera di body kamera"
+                maxLength={100}
+                required
+                disabled={isSubmitting}
+              />
+            </FormField>
+
+            <FormField label="Warna" htmlFor="color" required>
+              <input
+                id="color"
+                name="color"
+                value={form.color}
+                onChange={updateField}
+                className={inputClass}
+                placeholder="Contoh: Hitam"
+                maxLength={50}
+                required
+                disabled={isSubmitting}
+              />
+            </FormField>
+
+            <FormField
+              label="Shutter count"
+              htmlFor="shutter_count"
+              required
+              description="Isi 0 jika kamera baru."
+            >
+              <input
+                id="shutter_count"
+                name="shutter_count"
+                type="text"
+                inputMode="numeric"
+                value={formatThousands(form.shutter_count)}
+                onChange={updateShutterCount}
+                className={inputClass}
+                placeholder="Contoh: 12500"
+                maxLength={20}
+                required
+                disabled={isSubmitting}
+              />
             </FormField>
           </div>
 

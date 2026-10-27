@@ -131,6 +131,11 @@ export default function CamerasPage() {
   const [condition, setCondition] = useState("");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
+  const [sku, setSku] = useState("");
+  const [serialNumber, setSerialNumber] = useState("");
+  const [minStock, setMinStock] = useState("");
+  const [maxStock, setMaxStock] = useState("");
+  const [color, setColor] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [showCategoryRequiredModal, setShowCategoryRequiredModal] =
     useState(false);
@@ -141,9 +146,13 @@ export default function CamerasPage() {
     max_price: maxPrice,
     category_id: category,
     condition,
+    sku: sku.trim(),
+    serial_number: serialNumber.trim(),
+    min_stock: minStock,
+    max_stock: maxStock,
+    color: color.trim(),
     page: currentPage,
   });
-
   const { data, isPending, isError, isFetching, error, refetch } = query;
 
   const categoriesQuery = useGetCategories();
@@ -178,7 +187,12 @@ export default function CamerasPage() {
     category !== "" ||
     condition !== "" ||
     minPrice !== "" ||
-    maxPrice !== "";
+    maxPrice !== "" ||
+    sku !== "" ||
+    serialNumber !== "" ||
+    minStock !== "" ||
+    maxStock !== "" ||
+    color !== "";
 
   function handleCreateCamera() {
     if (categoriesQuery.isPending) {
@@ -205,6 +219,11 @@ export default function CamerasPage() {
     setCondition("");
     setMinPrice("");
     setMaxPrice("");
+    setSku("");
+    setSerialNumber("");
+    setMinStock("");
+    setMaxStock("");
+    setColor("");
     setCurrentPage(1);
   }
 
@@ -309,6 +328,16 @@ export default function CamerasPage() {
         setMinPrice={(value) => updateFilter(setMinPrice, value)}
         maxPrice={maxPrice}
         setMaxPrice={(value) => updateFilter(setMaxPrice, value)}
+        sku={sku}
+        setSku={(value) => updateFilter(setSku, value)}
+        serialNumber={serialNumber}
+        setSerialNumber={(value) => updateFilter(setSerialNumber, value)}
+        minStock={minStock}
+        setMinStock={(value) => updateFilter(setMinStock, value)}
+        maxStock={maxStock}
+        setMaxStock={(value) => updateFilter(setMaxStock, value)}
+        color={color}
+        setColor={(value) => updateFilter(setColor, value)}
         categories={categories}
         onReset={resetFilters}
         hasFilters={hasFilters}

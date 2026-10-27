@@ -2,6 +2,23 @@
 
 import { FiSearch, FiSliders, FiX } from "react-icons/fi";
 
+const INPUT_CLASS =
+  "w-full rounded-xl border border-second/30 bg-primary px-3 py-3 text-sm text-second outline-none placeholder:text-second/40 focus:border-second";
+
+function Field({ id, label, children }) {
+  return (
+    <div>
+      <label
+        htmlFor={id}
+        className="mb-2 block text-sm font-medium text-second"
+      >
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}
+
 export default function CameraFilters({
   search,
   setSearch,
@@ -13,8 +30,17 @@ export default function CameraFilters({
   setMaxPrice,
   condition,
   setCondition,
+  sku,
+  setSku,
+  serialNumber,
+  setSerialNumber,
+  minStock,
+  setMinStock,
+  maxStock,
+  setMaxStock,
+  color,
+  setColor,
   categories,
-  conditions,
   onReset,
   hasFilters,
 }) {
@@ -40,107 +66,130 @@ export default function CameraFilters({
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <div className="sm:col-span-2 xl:col-span-1">
-          <label
-            htmlFor="camera-search"
-            className="mb-2 block text-sm font-medium text-second"
-          >
-            Cari nama kamera
-          </label>
-
-          <div className="flex items-center gap-2 rounded-xl border border-second/30 px-3 focus-within:border-second">
-            <FiSearch className="shrink-0 text-second/50" size={18} />
-            <input
-              id="camera-search"
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Contoh: Canon EOS R50"
-              className="w-full bg-transparent py-3 text-sm text-second outline-none placeholder:text-second/40"
-            />
-          </div>
+          <Field id="camera-search" label="Cari nama kamera">
+            <div className="flex items-center gap-2 rounded-xl border border-second/30 px-3 focus-within:border-second">
+              <FiSearch className="shrink-0 text-second/50" size={18} />
+              <input
+                id="camera-search"
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Contoh: Canon EOS R50"
+                className="w-full bg-transparent py-3 text-sm text-second outline-none placeholder:text-second/40"
+              />
+            </div>
+          </Field>
         </div>
 
-        <div>
-          <label
-            htmlFor="camera-category"
-            className="mb-2 block text-sm font-medium text-second"
-          >
-            Kategori
-          </label>
-
+        <Field id="camera-category" label="Kategori">
           <select
             id="camera-category"
             value={category}
-            onChange={(event) => setCategory(event.target.value)}
-            className="w-full rounded-xl border border-second/30 bg-primary px-3 py-3 text-sm text-second outline-none focus:border-second"
+            onChange={(e) => setCategory(e.target.value)}
+            className={INPUT_CLASS}
           >
             <option value="">Semua kategori</option>
-
             {categories.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.name}
               </option>
             ))}
           </select>
-        </div>
+        </Field>
 
-        <div>
-          <label
-            htmlFor="camera-condition"
-            className="mb-2 block text-sm font-medium text-second"
-          >
-            Kondisi
-          </label>
-
+        <Field id="camera-condition" label="Kondisi">
           <select
             id="camera-condition"
             value={condition}
-            onChange={(event) => setCondition(event.target.value)}
-            className="w-full rounded-xl border border-second/30 bg-primary px-3 py-3 text-sm text-second outline-none focus:border-second"
+            onChange={(e) => setCondition(e.target.value)}
+            className={INPUT_CLASS}
           >
             <option value="">Semua kondisi</option>
             <option value="NEW">Baru</option>
             <option value="SECOND">Bekas</option>
           </select>
-        </div>
+        </Field>
 
-        <div>
-          <label
-            htmlFor="camera-min-price"
-            className="mb-2 block text-sm font-medium text-second"
-          >
-            Harga minimum (Rp)
-          </label>
-
+        <Field id="camera-min-price" label="Harga minimum (Rp)">
           <input
             id="camera-min-price"
             type="number"
             min="0"
             value={minPrice}
-            onChange={(event) => setMinPrice(event.target.value)}
+            onChange={(e) => setMinPrice(e.target.value)}
             placeholder="0"
-            className="w-full rounded-xl border border-second/30 bg-primary px-3 py-3 text-sm text-second outline-none placeholder:text-second/40 focus:border-second"
+            className={INPUT_CLASS}
           />
-        </div>
+        </Field>
 
-        <div>
-          <label
-            htmlFor="camera-max-price"
-            className="mb-2 block text-sm font-medium text-second"
-          >
-            Harga maksimum (Rp)
-          </label>
-
+        <Field id="camera-max-price" label="Harga maksimum (Rp)">
           <input
             id="camera-max-price"
             type="number"
             min="0"
             value={maxPrice}
-            onChange={(event) => setMaxPrice(event.target.value)}
+            onChange={(e) => setMaxPrice(e.target.value)}
             placeholder="Tanpa batas"
-            className="w-full rounded-xl border border-second/30 bg-primary px-3 py-3 text-sm text-second outline-none placeholder:text-second/40 focus:border-second"
+            className={INPUT_CLASS}
           />
-        </div>
+        </Field>
+
+        <Field id="camera-sku" label="Nomor SKU">
+          <input
+            id="camera-sku"
+            type="text"
+            value={sku}
+            onChange={(e) => setSku(e.target.value)}
+            placeholder="Contoh: CAM-0012"
+            className={INPUT_CLASS}
+          />
+        </Field>
+
+        <Field id="camera-serial" label="Nomor seri">
+          <input
+            id="camera-serial"
+            type="text"
+            value={serialNumber}
+            onChange={(e) => setSerialNumber(e.target.value)}
+            placeholder="Contoh: 1234567890"
+            className={INPUT_CLASS}
+          />
+        </Field>
+
+        <Field id="camera-min-stock" label="Stok minimum">
+          <input
+            id="camera-min-stock"
+            type="number"
+            min="0"
+            value={minStock}
+            onChange={(e) => setMinStock(e.target.value)}
+            placeholder="0"
+            className={INPUT_CLASS}
+          />
+        </Field>
+
+        <Field id="camera-max-stock" label="Stok maksimum">
+          <input
+            id="camera-max-stock"
+            type="number"
+            min="0"
+            value={maxStock}
+            onChange={(e) => setMaxStock(e.target.value)}
+            placeholder="Tanpa batas"
+            className={INPUT_CLASS}
+          />
+        </Field>
+
+        <Field id="camera-color" label="Warna">
+          <input
+            id="camera-color"
+            type="text"
+            value={color}
+            onChange={(e) => setColor(e.target.value)}
+            placeholder="Contoh: Hitam"
+            className={INPUT_CLASS}
+          />
+        </Field>
       </div>
     </section>
   );
