@@ -120,8 +120,6 @@ export default function CreateInvoicePage() {
   const [termsMode, setTermsMode] = useState(TERMS_MODES.TEMPLATE);
   const [customTerms, setCustomTerms] = useState("");
   const trimmedSearch = cameraSearch.trim();
-  // Cek apakah diawali dengan kata WAV (tidak case-sensitive, walau belum diketik strip)
-  const isSkuSearch = /^WAV/i.test(trimmedSearch);
 
   const {
     data: cameraResponse,
@@ -131,10 +129,9 @@ export default function CreateInvoicePage() {
     isFetching: isFetchingCameras,
     refetch: refetchCameras,
   } = useGetCameras({
-    ...(isSkuSearch ? { sku: trimmedSearch } : { search: trimmedSearch }),
+    search: trimmedSearch,
     page: 1,
   });
-
   const {
     data: termsResponse,
     isPending: isLoadingTerms,
@@ -540,7 +537,7 @@ export default function CreateInvoicePage() {
               type="search"
               value={cameraSearch}
               onChange={(event) => setCameraSearch(event.target.value)}
-              placeholder="Cari berdasarkan nama atau SKU (misal: WAV-...) ..."
+              placeholder="Cari nama kamera atau 4 digit terakhir SKU..."
               className={`${INPUT_CLASS} pl-10`}
             />
           </div>

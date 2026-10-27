@@ -227,10 +227,22 @@ const getAllCamera = async (request) => {
   const where = { is_deleted: false };
 
   if (req.search) {
-    where.name = {
-      contains: req.search,
-      mode: "insensitive",
-    };
+    const search = req.search.trim();
+
+    where.OR = [
+      {
+        name: {
+          contains: search,
+          mode: "insensitive",
+        },
+      },
+      {
+        sku: {
+          contains: search,
+          mode: "insensitive",
+        },
+      },
+    ];
   }
   if (req.category_id) where.category_id = req.category_id;
   if (req.condition) where.condition = req.condition;
