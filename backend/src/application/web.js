@@ -11,7 +11,7 @@ export const web = express();
 
 web.use(cors({ origin: getAllowedOrigins(), credentials: true }));
 web.use(express.json());
-web.set("trust proxy", 2);
+web.set("trust proxy", 3);
 web.use(publicRouter);
 web.use(authMiddleware);
 web.use(adminRouter);
