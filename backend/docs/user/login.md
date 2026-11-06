@@ -1,59 +1,58 @@
-# 📝 Dokumentasi API: Login Pengguna
+### **POST /users/login**
 
-Endpoint ini digunakan untuk mengautentikasi pengguna yang sudah terdaftar. Jika autentikasi di Supabase Auth berhasil, data pengguna akan disinkronkan ke database lokal (Prisma) dan sistem akan mengembalikan token akses (JWT) beserta data profil.
+Masuk dengan email dan kata sandi. Berlaku untuk **OWNER dan ADMIN**. Tidak memerlukan autentikasi.
 
----
+Token **tidak** dikembalikan di body. Server memasang dua cookie `httpOnly` (`access_token` dan `refresh_token`) lewat header `Set-Cookie`. Lihat `auth-overview.md` untuk detail cookie. Klien harus mengirim request dengan `withCredentials: true` (atau lewat proxy same-origin).
 
-## 📌 Informasi Endpoint
+Hanya akun yang terdaftar di sistem (owner, atau admin yang diundang owner) yang bisa masuk. Login tidak pernah membuat user baru.
 
-- **URL Path:** `/users/login`
-- **Method:** `POST`
-- **Content-Type:** `application/json`
-- **Autentikasi:** Tidak Perlu (Public Endpoint)
+#### **Request Body (JSON)**
 
----
-
-## 📥 Request Body
-
-| Field      | Tipe Data | Wajib? | Keterangan / Aturan Validasi                                       |
-| ---------- | --------- | ------ | ------------------------------------------------------------------ |
-| `email`    | `string`  | Ya     | Wajib berupa format email yang valid (contoh: `user@example.com`). |
-| `password` | `string`  | Ya     | Minimal panjang **8 digit/karakter**.                              |
-
-### Contoh Request Body
+- `email` (string, **Required**): Email akun.
+- `password` (string, **Required**): Kata sandi.
 
 ```json
 {
-  "email": "aliyyul@example.com",
-  "password": "password123"
+  "email": "budi@example.com",
+  "password": "rahasia123"
 }
 ```
 
 ---
 
-## 📤 Respon Sukses (`200 OK`)
+#### **Response Sukses (200 OK)**
 
-Dikembalikan ketika email dan password valid, serta email telah dikonfirmasi/diverifikasi.
+Header:
+
+```
+Set-Cookie: access_token=<jwt>; Path=/; HttpOnly; SameSite=Lax; Max-Age=3600
+Set-Cookie: refresh_token=<token>; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000
+```
+
+Body:
 
 ```json
 {
   "data": {
-    "email": "aliyyul@example.com",
-    "name": "Aliyyul Munif",
-    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "refresh_token": "v1.mc28a...",
-    "access_token_expires": 3600
+    "email": "budi@example.com",
+    "name": "Budi",
+    "role": "OWNER"
   }
 }
 ```
 
+- `role`: `OWNER` atau `ADMIN`. Frontend memakainya untuk menentukan dashboard yang ditampilkan.
+- Kalau email akun diubah lewat verifikasi Supabase, email di database disinkronkan saat login ini.
+
 ---
 
-## ❌ Respon Error
+#### **Response Error**
 
-### 1. Kredensial Salah (`401 Unauthorized`)
+Pada semua error di bawah, **tidak ada cookie yang dipasang**.
 
-Terjadi ketika email tidak ditemukan atau password yang dimasukkan salah.
+1. **400 Bad Request** (Validasi gagal): `email` atau `password` tidak dikirim atau tidak valid.
+
+2. **401 Unauthorized**
 
 ```json
 {
@@ -61,29 +60,14 @@ Terjadi ketika email tidak ditemukan atau password yang dimasukkan salah.
 }
 ```
 
-### 2. Email Belum Diverifikasi (`403 Forbidden`)
+Email atau kata sandi salah. Pesan yang sama juga dikembalikan untuk akun Supabase yang tidak terdaftar di sistem (supaya tidak membocorkan akun mana yang ada).
 
-Terjadi jika pengguna mencoba login tetapi belum mengonfirmasi/menerapkan verifikasi email dari Supabase Auth.
+3. **403 Forbidden**
 
-```json
-{
-  "errors": "EMAIL_NOT_VERIVIED"
-}
-```
+- `EMAIL_NOT_VERIVIED`: Email belum diverifikasi.
+- `ACCOUNT_SUSPEND`: Akun dinonaktifkan (oleh owner) atau diblokir.
 
-### 3. Akun Di-suspend / Banned (`403 Forbidden`)
-
-Terjadi jika akun pengguna telah ditangguhkan atau di-banned di Supabase Auth.
-
-```json
-{
-  "errors": "ACCOUNT_SUSPEND"
-}
-```
-
-### 4. Email Conflict (`409 Conflict`)
-
-Terjadi pada kasus anomali data di mana email sudah digunakan oleh akun/ID lain di database lokal.
+4. **409 Conflict**
 
 ```json
 {
@@ -91,22 +75,6 @@ Terjadi pada kasus anomali data di mana email sudah digunakan oleh akun/ID lain 
 }
 ```
 
-### 5. Error Validasi Input Joi (`400 Bad Request`)
+Email baru dari Supabase sudah dipakai user lain di database.
 
-Terjadi jika payload request tidak sesuai dengan format yang ditentukan (misal email tidak valid atau password kependekan).
-
-```json
-{
-  "errors": "\"email\" must be a valid email"
-}
-```
-
-### 6. Internal Server Error (`500 Internal Server Error`)
-
-Terjadi jika terdapat kegagalan pada service Supabase atau server internal.
-
-```json
-{
-  "errors": "SUPABASE_EMAIL_MISSING"
-}
-```
+5. **500 Internal Server Error**: Kesalahan dari Supabase atau server.

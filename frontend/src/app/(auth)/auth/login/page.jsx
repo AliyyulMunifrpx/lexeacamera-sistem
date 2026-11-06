@@ -28,8 +28,8 @@ export default function LoginPage() {
       notify.success("Login berhasil");
 
       // Hard navigation: semua state client (cache query, Router Cache,
-      // nilai token basi) dibuang, lalu /admin dirender ulang dengan token baru.
-      window.location.assign("/admin");
+      // nilai token basi) dibuang, lalu /owner dirender ulang dengan token baru.
+      window.location.assign("/owner");
     } catch (err) {
       const apiError = normalizeApiError(err);
       notify.error(apiError.message);
@@ -47,7 +47,7 @@ export default function LoginPage() {
     <main className="flex min-h-dvh items-center justify-center bg-primary px-5 py-10 text-second">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-md space-y-5 rounded-2xl border border-second/15 p-8"
+        className="w-full max-w-md space-y-5 rounded-2xl border border-second/30 p-8"
       >
         <div>
           <h1 className="text-3xl font-bold">Selamat datang kembali</h1>
@@ -68,7 +68,7 @@ export default function LoginPage() {
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             placeholder="nama@email.com"
-            className="w-full rounded-xl border border-second/15 bg-transparent px-4 py-3 outline-none transition-colors placeholder:text-second/35 focus:border-second/50"
+            className="w-full rounded-xl border border-second/30 bg-transparent px-4 py-3 outline-none transition-colors placeholder:text-second/35 focus:border-second/50"
           />
         </div>
 
@@ -94,7 +94,7 @@ export default function LoginPage() {
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               placeholder="Masukkan kata sandi"
-              className="w-full rounded-xl border border-second/15 bg-transparent px-4 py-3 pr-12 outline-none transition-colors placeholder:text-second/35 focus:border-second/50"
+              className="w-full rounded-xl border border-second/30 bg-transparent px-4 py-3 pr-12 outline-none transition-colors placeholder:text-second/35 focus:border-second/50"
             />
 
             <button

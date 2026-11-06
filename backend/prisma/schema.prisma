@@ -1,3 +1,31 @@
+// =============================================================================
+// SCHEMA FINAL (WAV Camera)
+//
+// Aturan uang: SEMUA nominal rupiah disimpan sebagai Int (tanpa desimal).
+// Maksimal satu nilai = 2.147.483.647. SUM di SQL menghasilkan bigint/numeric.
+//
+// Setelah `prisma migrate dev --create-only`, tambahkan SQL manual ini ke
+// file migration (Prisma tidak bisa mengungkapkannya di schema):
+//
+//   -- satu karyawan hanya boleh punya satu absen yang masih terbuka
+//   -- (absen yang ditandai missed_checkout tidak dihitung terbuka)
+//   CREATE UNIQUE INDEX "Attendance_one_open_per_employee"
+//     ON "Attendance" ("employee_id")
+//     WHERE "check_out_at" IS NULL AND "missed_checkout" = false;
+//
+//   -- nominal tidak boleh negatif / pembayaran harus positif
+//   ALTER TABLE "Camera"    ADD CONSTRAINT "Camera_money_chk"
+//     CHECK ("price" >= 0 AND "modal" >= 0 AND "strikethrough_price" >= 0);
+//   ALTER TABLE "Order"     ADD CONSTRAINT "Order_money_chk"
+//     CHECK ("total_amount" >= 0);
+//   ALTER TABLE "OrderItem" ADD CONSTRAINT "OrderItem_money_chk"
+//     CHECK ("camera_price" >= 0 AND "camera_modal" >= 0 AND "quantity" > 0);
+//
+//   -- paid_at wajib terisi jika dan hanya jika status PAID
+//   ALTER TABLE "Order" ADD CONSTRAINT "Order_paid_at_chk"
+//     CHECK (("payment_status" = 'PAID') = ("paid_at" IS NOT NULL));
+// =============================================================================
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,27 +39,44 @@ enum Condition {
   SECOND
 }
 
+enum Role {
+  ADMIN
+  OWNER
+}
+
+enum PaymentStatuses {
+  PAID
+  UNPAID
+}
+
+enum OrderType {
+  SALE
+  REFUND
+}
+
 model Camera {
-  id               String                  @id @default(uuid())
-  name             String
-  price            Float
-  condition        Condition               @default(NEW)
-  stock            Int
-  description      String                  @default("") @db.Text
-  inclusions       String                  @default("") @db.Text
-  promo            Boolean                 @default(false)
-  best_selling     Boolean                 @default(false)
-  created_at       DateTime                @default(now())
-  category_id      String?
-  category         Category?               @relation(fields: [category_id], references: [id], onDelete: Restrict)
-  sku              String?
-  serial_number    String?
-  color            String?
-  shutter_count    String?
-  is_deleted       Boolean                 @default(false)
-  images           CameraImage[]
-  marketplaceLinks CameraMarketplaceLink[]
-  order_items      OrderItem[]
+  id                  String                  @id @default(uuid())
+  name                String
+  price               Int
+  condition           Condition               @default(NEW)
+  stock               Int
+  description         String                  @default("") @db.Text
+  inclusions          String                  @default("") @db.Text
+  promo               Boolean                 @default(false)
+  best_selling        Boolean                 @default(false)
+  created_at          DateTime                @default(now())
+  category_id         String?
+  category            Category?               @relation(fields: [category_id], references: [id], onDelete: Restrict)
+  sku                 String?
+  serial_number       String?
+  color               String?
+  shutter_count       String?
+  is_deleted          Boolean                 @default(false)
+  capital             Int
+  strikethrough_price Int? // harga coret, opsional. Laba kamera = price - modal, dihitung saat dikirim ke client (tidak disimpan)
+  images              CameraImage[]
+  marketplaceLinks    CameraMarketplaceLink[]
+  order_items         OrderItem[]
 }
 
 model CameraImage {
@@ -74,17 +119,19 @@ model CameraMarketplaceLink {
 }
 
 model Store {
-  id                  String  @id @default(uuid())
-  logo_url            String
-  name                String
-  instagram           String?
-  whatsapp            String?
-  tiktok              String?
-  facebook            String?
-  address             String?
-  map_url             String?
-  main_banner_url     String?
-  terms_and_condition String  @db.Text
+  id                         String  @id @default(uuid())
+  logo_url                   String
+  name                       String
+  instagram                  String?
+  whatsapp                   String?
+  tiktok                     String?
+  facebook                   String?
+  address                    String?
+  map_url                    String?
+  main_banner_url            String?
+  terms_and_condition        String  @db.Text
+  // false = absen boleh dari mana saja (saklar darurat kalau IP toko berubah)
+  attendance_require_network Boolean @default(true)
 }
 
 model Banner {
@@ -95,27 +142,57 @@ model Banner {
   is_best_seller Boolean  @default(false)
 }
 
+// -----------------------------------------------------------------------------
+// ORDER
+// Order bertipe SALE = penjualan. Order bertipe REFUND = pengembalian uang
+// (refund_of_id menunjuk order asli). Semua nominal POSITIF; arti uang masuk
+// atau keluar ditentukan oleh `type`.
+//
+// Pembayaran hanya dua status: UNPAID dan PAID (tanpa cicilan).
+//   paid_at = kapan order ditandai lunas (null selama UNPAID).
+// Status hanya boleh diubah oleh SATU fungsi service (setPaymentStatus),
+// di dalam transaksi yang mengunci baris order (SELECT ... FOR UPDATE):
+//   -> PAID   : paid_at = now() (kalau belum PAID)
+//   -> UNPAID : paid_at = null
+// Order REFUND dibuat langsung PAID dengan paid_at = tanggal uang dikembalikan.
+// total_amount adalah angka FINAL (setelah diskon, TANPA ongkir) dan harus ikut
+// diperbarui setiap kali invoice diedit.
+// -----------------------------------------------------------------------------
 model Order {
-  id            String      @id @default(uuid())
-  customer_name String // Nama pembeli
-  total_amount  String // Total harga
-  created_at    DateTime    @default(now())
-  address       String      @db.Text
-  whatsapp      String
-  instagram     String?
-  order_items   OrderItem[]
-  invoice       Invoice?
+  id             String          @id @default(uuid())
+  type           OrderType       @default(SALE)
+  refund_of_id   String?
+  refund_of      Order?          @relation("OrderRefunds", fields: [refund_of_id], references: [id], onDelete: Restrict)
+  refunds        Order[]         @relation("OrderRefunds")
+  customer_id    String?
+  customer       Customer?       @relation(fields: [customer_id], references: [id], onDelete: SetNull)
+  customer_name  String
+  total_amount   Int
+  payment_status PaymentStatuses @default(UNPAID)
+  paid_at        DateTime?
+  created_at     DateTime        @default(now())
+  address        String          @db.Text
+  whatsapp       String
+  instagram      String?
+  order_items    OrderItem[]
+  invoice        Invoice?
+
+  @@index([customer_id])
+  @@index([refund_of_id])
+  @@index([type, payment_status, paid_at])
 }
 
 model OrderItem {
-  id           String @id @default(uuid())
+  id           String  @id @default(uuid())
   order_id     String
   camera_id    String
-  quantity     Int    @default(1)
+  quantity     Int     @default(1)
   camera_name  String
-  camera_price String
-  order        Order  @relation(fields: [order_id], references: [id], onDelete: Cascade)
-  camera       Camera @relation(fields: [camera_id], references: [id], onDelete: Restrict) // sebelumnya Cascade
+  camera_price Int // snapshot harga jual saat order
+  camera_modal Int // snapshot modal saat order (dasar hitung laba)
+  restocked    Boolean @default(false) // hanya dipakai di order REFUND: barang kembali ke stok
+  order        Order   @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  camera       Camera  @relation(fields: [camera_id], references: [id], onDelete: Restrict)
 
   @@index([order_id])
   @@index([camera_id])
@@ -135,10 +212,10 @@ model Invoice {
   customer_address    String   @db.Text
   customer_whatsapp   String
   customer_instagram  String?
-  total_amount        String
+  total_amount        Int
   order_id            String   @unique
-  store_discount      String?
-  customer_discount   String?
+  store_discount      Int?
+  customer_discount   Int?
   is_final            Boolean  @default(false)
   order               Order    @relation(fields: [order_id], references: [id], onDelete: Cascade)
   terms_and_condition String?
@@ -151,10 +228,72 @@ model Termsandcondition {
   value String? @db.Text
 }
 
+// -----------------------------------------------------------------------------
+// USER (login dashboard) dan EMPLOYEE (absen)
+// Admin yang ikut absen = User + Employee (user_id terisi).
+// Karyawan biasa = Employee dengan user_id null (tanpa akun login).
+// -----------------------------------------------------------------------------
 model User {
-  id          String  @id @default(uuid())
-  supabase_id String  @unique
+  id          String    @id @default(uuid())
+  supabase_id String    @unique
   name        String
-  email       String  @unique
-  logo_url    String?
+  email       String    @unique
+  role        Role      @default(ADMIN)
+  is_active   Boolean   @default(true)
+  employee    Employee?
+}
+
+model Employee {
+  id                String       @id @default(uuid())
+  name              String
+  pin_hash          String? // null sampai karyawan membuat PIN lewat link verifikasi
+  is_active         Boolean      @default(true)
+  user_id           String?      @unique
+  user              User?        @relation(fields: [user_id], references: [id], onDelete: SetNull)
+  created_at        DateTime     @default(now())
+  attendances       Attendance[]
+  email             String       @unique
+  email_verified_at DateTime?
+  verify_token_hash String?
+  verify_expires_at DateTime?
+  verify_sent_at    DateTime?
+  verify_attempts   Int          @default(0)
+  pin_failed_count  Int          @default(0)
+  pin_locked_until  DateTime?
+}
+
+model Attendance {
+  id              String    @id @default(uuid())
+  employee_id     String
+  employee        Employee  @relation(fields: [employee_id], references: [id], onDelete: Restrict)
+  check_in_at     DateTime
+  check_out_at    DateTime?
+  // true = karyawan lupa absen pulang (ditandai otomatis saat absen masuk hari berikutnya).
+  // check_out_at tetap null; admin boleh mengisinya manual di rekap.
+  missed_checkout Boolean   @default(false)
+
+  @@index([employee_id, check_in_at])
+}
+
+// IP wifi toko yang boleh dipakai absen: IPv4 ("203.0.113.7") atau prefix
+// ("203.0.113.0/24", IPv6 "2001:db8:1234:5678::/64"). Dikelola owner.
+// Dicocokkan dengan req.ip di service (trust proxy harus diset PERSIS sesuai
+// jumlah proxy hosting, jangan `true`, supaya header X-Forwarded-For palsu tidak lolos).
+model AttendanceNetwork {
+  id         String   @id @default(uuid())
+  cidr       String   @unique
+  label      String
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+}
+
+// id dibuat di service: "cust-" + 5 karakter (A-Z tanpa I/O, angka 2-9)
+model Customer {
+  id         String   @id
+  name       String
+  whatsapp   String   @unique // dinormalkan dulu (0812.. / +62812.. / 62812.. = satu bentuk)
+  instagram  String?
+  address    String   @db.Text
+  created_at DateTime @default(now())
+  orders     Order[]
 }

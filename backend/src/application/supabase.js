@@ -22,3 +22,11 @@ export const supabaseAuth = createClient(
   process.env.SUPABASE_ANON_KEY,
   options,
 );
+export const createAuthClient = () =>
+  createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+  });

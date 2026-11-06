@@ -1,6 +1,11 @@
 /** @type {import('next').NextConfig} */
+const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "");
+
+if (!API_URL) {
+  throw new Error("NEXT_PUBLIC_API_URL belum diset");
+}
+
 const nextConfig = {
-  /* config options here */
   devIndicators: false,
   images: {
     remotePatterns: [
@@ -26,6 +31,10 @@ const nextConfig = {
     instantInsights: {
       validationLevel: "manual-warning",
     },
+    proxyClientMaxBodySize: "50mb",
+  },
+  async rewrites() {
+    return [{ source: "/api/:path*", destination: `${API_URL}/:path*` }];
   },
   reactCompiler: true,
   turbopack: {

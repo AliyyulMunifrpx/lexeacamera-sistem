@@ -3,7 +3,7 @@ import AuthGuard from "../../../components/auth/guard.jsx";
 
 export default function AdminLayout({ children }) {
   return (
-    <AuthGuard>
+    <AuthGuard role="ADMIN">
       <AdminShell>{children}</AdminShell>
     </AuthGuard>
   );

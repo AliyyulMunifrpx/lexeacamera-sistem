@@ -91,7 +91,7 @@ function VerifyEmailContent() {
 
   return (
     <main className="flex min-h-dvh items-center justify-center bg-primary px-5 py-10 text-second">
-      <section className="w-full max-w-md space-y-5 rounded-2xl border border-second/15 p-8">
+      <section className="w-full max-w-md space-y-5 rounded-2xl border border-second/30 p-8">
         <div>
           <h1 className="text-3xl font-bold">Verifikasi email</h1>
 
@@ -101,7 +101,7 @@ function VerifyEmailContent() {
           </p>
         </div>
 
-        <div className="rounded-xl border border-second/15 p-4">
+        <div className="rounded-xl border border-second/30 p-4">
           <p className="text-sm text-second/60">Email tujuan</p>
 
           <p className="mt-1 break-all font-medium">

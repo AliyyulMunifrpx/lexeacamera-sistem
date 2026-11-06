@@ -363,7 +363,7 @@ function CameraDetailContent() {
         <div className="flex gap-2">
           <Link
             href="/"
-            className="flex h-8 items-center rounded-full border border-second/15 px-4 text-sm font-semibold text-second"
+            className="flex h-8 items-center rounded-full border border-second/30 px-4 text-sm font-semibold text-second"
           >
             Ke beranda
           </Link>
@@ -516,10 +516,17 @@ function CameraDetailContent() {
           <div className="space-y-4">
             <div className="space-y-2">
               <h1 className="break-words text-base font-bold tracking-tight text-second">
+                <span className="bg-second2 text-primary px-2 py-1">
+                  {camera.condition}
+                </span>{" "}
                 {camera.name}
               </h1>
 
-              <p className="text-base font-semibold text-grad">
+              <p className="text-xs text-second/50 line-through">
+                <span>Rp</span>
+                {formatPrice(camera.strikethrough_price)}
+              </p>
+              <p className="text-base font-semibold text-grad md:text-xl">
                 <span className="text-base">Rp</span>
                 {formatPrice(camera.price)}
               </p>
@@ -609,7 +616,7 @@ function CameraDetailContent() {
       </div>
 
       {/* Dock tombol beli (HP). z-[60] supaya tetap di atas lapisan gelap modal. */}
-      <div className="fixed inset-x-0 bottom-0 z-[60] border-t border-second/10 bg-primary md:hidden">
+      <div className="fixed inset-x-0 bottom-0 z-[60] border-t border-second/30 bg-primary md:hidden">
         <BuyButtons variant="dock" {...buyButtonProps} />
       </div>
 

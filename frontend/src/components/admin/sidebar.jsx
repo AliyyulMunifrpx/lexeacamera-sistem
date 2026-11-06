@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -9,22 +9,15 @@ import {
   FiTag,
   FiFileText,
   FiImage,
-  FiShoppingBag,
-  FiSettings,
   FiUser,
-  FiExternalLink,
   FiMenu,
   FiX,
   FiChevronDown,
   FiLogOut,
   FiBox,
+  FiUsers,
 } from "react-icons/fi";
-import {
-  MdLocalGroceryStore,
-  MdOutlineLocalGroceryStore,
-  MdQrCode2,
-} from "react-icons/md";
-import { FaStore } from "react-icons/fa";
+
 import { useGetStore } from "../../app/features/store/hooks.js";
 import Image from "next/image.js";
 import { useGetCurrentUser } from "../../app/features/users/hooks.js";
@@ -33,57 +26,70 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useLogoutCurrentUser } from "../../app/features/users/hooks.js";
 import { normalizeApiError } from "../../lib/api/errors.js";
 import notify from "../../lib/notify.js";
+
+/*
+  Hanya 4 menu, jadi tidak perlu dikelompokkan. Urutan mengikuti frekuensi
+  pemakaian dan sama dengan owner: Dashboard, lalu penjualan (Invoice,
+  Pelanggan), lalu katalog (Produk).
+*/
 const navigation = [
   { label: "Dashboard", href: "/admin", icon: FiHome },
-  { label: "Produk", href: "/admin/cameras", icon: FiBox },
-  { label: "Kategori", href: "/admin/categories", icon: FiTag },
   { label: "Invoice", href: "/admin/invoices", icon: FiFileText },
-  {
-    label: "Toko Online",
-    href: "/admin/marketplaces",
-    icon: MdOutlineLocalGroceryStore,
-  },
-  { label: "QR Code", href: "/admin/qr-code", icon: MdQrCode2 },
-  { label: "Banner", href: "/admin/banners", icon: FiImage },
-  { label: "Toko", href: "/admin/store", icon: FaStore },
+  { label: "Pelanggan", href: "/admin/customers", icon: FiUsers },
+  { label: "Produk", href: "/admin/cameras", icon: FiBox },
 ];
 
 const pageTitles = {
   "/admin": "Dashboard",
-  "/admin/cameras": "Produk",
-  "/admin/categories": "Kategori",
   "/admin/invoices": "Invoice",
-  "/admin/marketplaces": "Toko Online",
-  "/admin/qr-code": "QR Code",
-  "/admin/banners": "Banner",
-  "/admin/store": "Toko",
-  "/admin/profile": "Edit Profil",
-  "/admin/settings": "Pengaturan",
-  "/admin/account": "Akun Saya",
+  "/admin/customers": "Pelanggan",
+  "/admin/cameras": "Produk",
 };
 
-function SidebarLink({ item, active, onClick }) {
+/* Hindari warning useLayoutEffect saat render di server */
+const useIsomorphicLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
+
+function isItemActive(item, pathname) {
+  return item.href === "/admin"
+    ? pathname === "/admin"
+    : pathname === item.href || pathname.startsWith(`${item.href}/`);
+}
+
+/*
+  Semua item punya tinggi yang sama (wrapper ikon selalu p-2), jadi
+  perpindahan active tidak menggeser layout. Latar putih active adalah
+  SATU indikator yang meluncur (transform + height), bukan background
+  per item, sehingga animasinya ringan dan tidak lompat.
+*/
+function SidebarLink({ item, active, onClick, linkRef }) {
   const Icon = item.icon;
 
   return (
     <Link
+      ref={linkRef}
       href={item.href}
       onClick={onClick}
       aria-current={active ? "page" : undefined}
-      className={`group flex items-center gap-4 rounded-full px-4 py-2.5 text-sm font-medium transition-colors ${
-        active ? "bg-primary text-second" : "text-primary hover:bg-primary/20 "
+      className={`group relative z-10 flex items-center gap-4 rounded-full px-2 py-1.5 text-sm font-medium transition-colors duration-300 motion-reduce:transition-none ${
+        active ? "text-second" : "text-primary hover:bg-primary/20"
       }`}
     >
-      <Icon
-        size={19}
-        className={
-          active ? "text-second" : "text-primary group-hover:text-primary"
-        }
-      />
+      <span className="relative flex shrink-0 items-center justify-center rounded-full p-2">
+        <span
+          aria-hidden="true"
+          className={`absolute inset-0 rounded-full bg-grad transition-opacity duration-300 motion-reduce:transition-none ${
+            active ? "opacity-100" : "opacity-0"
+          }`}
+        />
+        <Icon size={19} className="relative text-primary" />
+      </span>
+
       <span>{item.label}</span>
     </Link>
   );
 }
+
 function ProfileMenu({ onClose }) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -152,8 +158,38 @@ function ProfileMenu({ onClose }) {
 function Sidebar({ mobileOpen, onClose }) {
   const pathname = usePathname();
   const [profileOpen, setProfileOpen] = useState(false);
-  const { data: store, isLoading } = useGetStore();
+  const { data: store } = useGetStore();
   const { data: currentUser, isLoading: isUserLoading } = useGetCurrentUser();
+
+  const linkRefs = useRef({});
+  const [indicator, setIndicator] = useState({
+    top: 0,
+    height: 0,
+    visible: false,
+    animate: false,
+  });
+
+  const activeHref =
+    navigation.find((item) => isItemActive(item, pathname))?.href ?? null;
+
+  /* Ukur posisi item active, lalu geser indikator ke sana. */
+  useIsomorphicLayoutEffect(() => {
+    const element = activeHref ? linkRefs.current[activeHref] : null;
+
+    if (!element) {
+      setIndicator((prev) => ({ ...prev, visible: false }));
+      return;
+    }
+
+    setIndicator((prev) => ({
+      top: element.offsetTop,
+      height: element.offsetHeight,
+      visible: true,
+      // Tampilan pertama langsung di posisi, tanpa meluncur dari atas.
+      animate: prev.visible,
+    }));
+  }, [activeHref]);
+
   return (
     <aside
       className={`fixed inset-y-0 left-0 z-50 flex h-dvh w-64 flex-col   bg-grad transition-transform duration-300 ease-in-out lg:sticky lg:top-0 lg:translate-x-0 ${
@@ -194,28 +230,39 @@ function Sidebar({ mobileOpen, onClose }) {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-8">
+      <div className="sidebar-scroll flex-1 overflow-y-auto px-4 py-8">
+        {" "}
         <p className="mb-4 px-4 text-xs font-semibold uppercase tracking-wider text-primary">
           Menu utama
         </p>
+        <nav
+          aria-label="Navigasi admin"
+          className="relative flex flex-col gap-2"
+        >
+          <span
+            aria-hidden="true"
+            className={`pointer-events-none absolute inset-x-0 top-0 rounded-full bg-primary will-change-transform motion-reduce:transition-none ${
+              indicator.animate
+                ? "transition-[transform,height,opacity] duration-300 ease-out"
+                : ""
+            } ${indicator.visible ? "opacity-100" : "opacity-0"}`}
+            style={{
+              height: indicator.height,
+              transform: `translateY(${indicator.top}px)`,
+            }}
+          />
 
-        <nav aria-label="Navigasi admin" className="flex flex-col gap-2">
-          {navigation.map((item) => {
-            const active =
-              item.href === "/admin"
-                ? pathname === "/admin"
-                : pathname === item.href ||
-                  pathname.startsWith(`${item.href}/`);
-
-            return (
-              <SidebarLink
-                key={item.href}
-                item={item}
-                active={active}
-                onClick={onClose}
-              />
-            );
-          })}
+          {navigation.map((item) => (
+            <SidebarLink
+              key={item.href}
+              item={item}
+              active={item.href === activeHref}
+              onClick={onClose}
+              linkRef={(node) => {
+                linkRefs.current[item.href] = node;
+              }}
+            />
+          ))}
         </nav>
       </div>
 

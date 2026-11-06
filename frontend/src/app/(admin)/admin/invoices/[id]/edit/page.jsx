@@ -1,31 +1,46 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link.js";
 import { useParams, useRouter } from "next/navigation.js";
-import { FiAlertCircle, FiArrowLeft, FiLock, FiSave } from "react-icons/fi";
+import {
+  FiAlertCircle,
+  FiArrowLeft,
+  FiCheck,
+  FiFileText,
+  FiLock,
+  FiLoader,
+  FiSave,
+} from "react-icons/fi";
 
 import {
   useGetInvoice,
   useUpdateInvoice,
-} from "../../../../../features/invoices/hooks.js";
+} from "../../../../../features/admin-invoices/hooks.js";
 import { useGetTerms } from "../../../../../features/terms/hooks.js";
+import { useGetCustomers } from "../../../../../features/customer/hooks.js";
 
 import { normalizeApiError } from "../../../../../../lib/api/errors.js";
 import notify from "../../../../../../lib/notify.js";
+import PrimaryButton from "./../../../../../../components/primary-button";
+import CancelButton from "./../../../../../../components/cancel-button";
 
-const INPUT_CLASS =
-  "w-full rounded-xl border border-second/25 bg-primary px-3 py-3 text-sm text-second outline-none transition placeholder:text-second/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-second";
-
-const FOCUS_RING =
-  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-second";
+/* -------------------------------------------------------------------------- */
+/*  Design rules (SAMAKAN DENGAN CREATE)                                      */
+/* -------------------------------------------------------------------------- */
 
 const TERMS_MAX_LENGTH = 5000;
+const CUSTOMER_LOOKUP_DEBOUNCE = 500;
 
 const TERMS_MODES = {
   TEMPLATE: "template",
   NONE: "none",
   CUSTOM: "custom",
+};
+
+const CUSTOMER_CHOICE = {
+  EXISTING: "existing",
+  NEW: "new",
 };
 
 const TERMS_OPTIONS = [
@@ -84,160 +99,343 @@ const INITIAL_FORM = Object.fromEntries(
   EDITABLE_FIELDS.map((field) => [field, ""]),
 );
 
+const FOCUS_RING =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-second4/40";
+
+const BTN_BASE =
+  "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition touch-manipulation";
+
+const labelClass = "mb-2 block text-sm font-semibold text-second";
+
+/* ------------------------------ Helpers ---------------------------------- */
+
+/* Kode error backend (err.response.data.errors) -> pesan Indonesia */
+function describeError(error) {
+  const data = error?.response?.data;
+  const code = data?.errors;
+
+  switch (code) {
+    case "INVOICE_ALREADY_FINAL":
+      return "Invoice sudah final dan tidak bisa diedit lagi.";
+    case "INVOICE_NOT_FOUND":
+      return "Invoice tidak ditemukan atau sudah dihapus.";
+    case "DISCOUNT_EXCEEDS_TOTAL":
+      return "Total diskon tidak boleh melebihi subtotal.";
+    case "TOTAL_BELOW_REFUNDED":
+      return `Total baru tidak boleh lebih kecil dari jumlah refund${
+        Number.isFinite(Number(data?.refunded))
+          ? ` (${formatCurrency(data.refunded)})`
+          : ""
+      }.`;
+    case "AMOUNT_TOO_LARGE":
+      return "Nominal terlalu besar.";
+    default:
+      return normalizeApiError(error).message;
+  }
+}
+
 function formatCurrency(value) {
   const amount = Number(value);
-
   if (!Number.isFinite(amount)) return "-";
-
-  return new Intl.NumberFormat("id-ID", {
+  const sign = amount < 0 ? "-" : "";
+  return `${sign}${new Intl.NumberFormat("id-ID", {
     style: "currency",
     currency: "IDR",
     maximumFractionDigits: 0,
-  }).format(amount);
+  }).format(Math.abs(amount))}`;
 }
+
 function formatThousands(value) {
   const digits = String(value ?? "").replace(/\D/g, "");
   return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 }
-function FormSection({ title, description, children }) {
+
+function normalizeWhatsapp(input) {
+  let digits = String(input ?? "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("0")) digits = digits.slice(1);
+  if (!digits.startsWith("62")) digits = `62${digits}`;
+  return digits;
+}
+
+function inputClass(hasError) {
+  return [
+    "w-full min-w-0 rounded-xl border bg-primary px-4 py-2 text-base text-second",
+    "placeholder:text-second/35 transition-colors duration-150",
+    "outline-none focus:ring-4",
+    "disabled:cursor-not-allowed disabled:bg-second/5 disabled:text-second/50",
+    hasError
+      ? "border-second2 focus:border-second2 focus:ring-second2/15"
+      : "border-second/30 hover:border-second/30 focus:border-second4 focus:ring-second4/15",
+  ].join(" ");
+}
+
+/* ------------------------------ Small pieces ----------------------------- */
+
+function Tag({ children, tone = "outline" }) {
+  const tones = {
+    outline: "border border-second/20 text-second/60",
+    strong: "border border-second4 text-second4",
+    soft: "bg-second/10 text-second",
+    solid: "bg-second text-primary",
+    grad: "bg-grad text-primary",
+    failure: "bg-second2 text-primary",
+  };
   return (
-    <section className="space-y-5 rounded-2xl border border-second/15 p-5 sm:p-6">
-      <div>
-        <h2 className="font-semibold">{title}</h2>
-
-        {description && (
-          <p className="mt-1 text-sm leading-relaxed text-second/60">
-            {description}
-          </p>
-        )}
-      </div>
-
+    <span
+      className={`inline-flex h-4 shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-2 text-xs font-semibold leading-none ${tones[tone]}`}
+    >
       {children}
+    </span>
+  );
+}
+
+function ErrorText({ id, children }) {
+  return (
+    <p
+      id={id}
+      role="alert"
+      className="mt-2 flex items-start gap-2 text-sm text-second2"
+    >
+      <FiAlertCircle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+      {children}
+    </p>
+  );
+}
+
+function FormSection({ title, description, aside, children, sectionRef }) {
+  return (
+    <section
+      ref={sectionRef}
+      className="flex min-w-0 scroll-mt-16 flex-col gap-8 rounded-2xl border border-second/30 bg-primary p-4 shadow-xl shadow-second/5 sm:p-8"
+    >
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+        <div>
+          <h2 className="text-lg font-bold text-second">{title}</h2>
+          {description && (
+            <p className="mt-2 text-pretty text-sm text-second/60">
+              {description}
+            </p>
+          )}
+        </div>
+        {aside}
+      </div>
+      <div className="flex flex-col gap-4">{children}</div>
     </section>
   );
 }
 
-function TextField({
-  name,
-  label,
-  value,
-  onChange,
-  maxLength,
-  required = false,
-  placeholder,
-  type = "text",
-  inputMode,
-}) {
+function FieldGrid({ children }) {
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{children}</div>
+  );
+}
+
+function FormField({ label, htmlFor, required, children, description, error }) {
+  const descId = `${htmlFor}-desc`;
   return (
     <div className="min-w-0">
-      <label
-        htmlFor={`edit-invoice-${name}`}
-        className="mb-2 block text-sm font-medium"
-      >
+      <label htmlFor={htmlFor} className={labelClass}>
         {label}
-        {required && <span className="ml-1 text-red-400">*</span>}
+        {required ? (
+          <span className="ml-2 text-second2" aria-hidden="true">
+            *
+          </span>
+        ) : (
+          <span className="ml-2 text-xs font-normal text-second/50">
+            Opsional
+          </span>
+        )}
       </label>
+      {children}
+      {error ? (
+        <ErrorText id={descId}>{error}</ErrorText>
+      ) : (
+        description && (
+          <p id={descId} className="mt-2 text-sm text-second/60">
+            {description}
+          </p>
+        )
+      )}
+    </div>
+  );
+}
 
+function PrefixedInput({ prefix, children }) {
+  return (
+    <div className="flex">
+      <span
+        aria-hidden="true"
+        className="inline-flex shrink-0 items-center rounded-l-xl border border-r-0 border-second/30 bg-second/5 px-4 text-sm font-medium text-second/60"
+      >
+        {prefix}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+function RadioCard({
+  name,
+  value,
+  checked,
+  onChange,
+  disabled,
+  title,
+  description,
+}) {
+  return (
+    <label
+      className={`flex cursor-pointer items-center gap-4 rounded-xl border p-4 transition-colors ${
+        checked ? "border-second4 bg-second4/5" : "border-second/30"
+      } ${disabled ? "pointer-events-none opacity-50" : ""}`}
+    >
       <input
-        id={`edit-invoice-${name}`}
+        type="radio"
         name={name}
-        type={type}
-        inputMode={inputMode}
         value={value}
+        checked={checked}
         onChange={onChange}
-        maxLength={maxLength}
-        required={required}
-        placeholder={placeholder}
-        className={INPUT_CLASS}
+        disabled={disabled}
+        className={`size-4 shrink-0 cursor-pointer accent-second4 ${FOCUS_RING}`}
       />
+      <span className="min-w-0">
+        <span className="block text-sm font-semibold text-second">{title}</span>
+        <span className="mt-2 block text-sm text-second/60">{description}</span>
+      </span>
+    </label>
+  );
+}
 
-      {typeof maxLength === "number" && (
-        <p className="mt-1 text-right text-xs text-second/45">
-          {value.length}/{maxLength}
-        </p>
-      )}
+function ToggleCard({ name, checked, onChange, disabled, title, description }) {
+  return (
+    <div
+      className={`rounded-xl border p-4 transition-colors ${
+        checked ? "border-second4 bg-second4/5" : "border-second/30"
+      }`}
+    >
+      <label className="flex cursor-pointer items-center gap-4">
+        <input
+          type="checkbox"
+          name={name}
+          checked={checked}
+          onChange={onChange}
+          disabled={disabled}
+          className={`size-4 shrink-0 cursor-pointer accent-second4 ${FOCUS_RING}`}
+        />
+        <span className="min-w-0">
+          <span className="block text-sm font-semibold text-second">
+            {title}
+          </span>
+          <span className="mt-2 block text-sm text-second/60">
+            {description}
+          </span>
+        </span>
+      </label>
     </div>
   );
 }
 
-function TextAreaField({
-  name,
-  label,
-  value,
-  onChange,
-  maxLength,
-  required = false,
-  placeholder,
+/* --------------------------------- Summary -------------------------------- */
+
+function SummaryRow({ label, children }) {
+  return (
+    <div className="flex items-start justify-between gap-4 py-2">
+      <dt className="text-xs text-second/60">{label}</dt>
+      <dd className="min-w-0 text-right text-sm font-semibold tabular-nums text-second">
+        {children}
+      </dd>
+    </div>
+  );
+}
+
+function InvoiceSummary({
+  invoiceNumber,
+  customerName,
+  matchedCustomerName,
+  customerChoice,
+  isFinal,
+  subtotal,
+  storeDiscount,
+  customerDiscount,
+  totalAmount,
 }) {
   return (
-    <div className="min-w-0">
-      <label
-        htmlFor={`edit-invoice-${name}`}
-        className="mb-2 block text-sm font-medium"
-      >
-        {label}
-        {required && <span className="ml-1 text-red-400">*</span>}
-      </label>
+    <section className="flex min-w-0 flex-col gap-4 rounded-2xl border border-second/30 bg-primary p-4 shadow-xl shadow-second/5 sm:p-8">
+      <h2 className="text-lg font-bold text-second">Ringkasan</h2>
 
-      <textarea
-        id={`edit-invoice-${name}`}
-        name={name}
-        value={value}
-        onChange={onChange}
-        maxLength={maxLength}
-        required={required}
-        rows={3}
-        placeholder={placeholder}
-        className={`${INPUT_CLASS} resize-y`}
-      />
+      <div className="flex min-w-0 items-center gap-4">
+        <div
+          aria-hidden="true"
+          className="flex size-16 shrink-0 items-center justify-center rounded-xl bg-second/5 text-second/40"
+        >
+          <FiFileText size={16} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="line-clamp-2 break-words text-sm font-semibold text-second">
+            {customerName.trim() || "Nama pelanggan"}
+          </p>
+          <p className="mt-1 break-all text-xs text-second/60">
+            {invoiceNumber}
+          </p>
 
-      {typeof maxLength === "number" && (
-        <p className="mt-1 text-right text-xs text-second/45">
-          {value.length}/{maxLength}
-        </p>
-      )}
-    </div>
-  );
-}
+          {matchedCustomerName && (
+            <p className="mt-2 line-clamp-1 break-words text-xs text-second/60">
+              {customerChoice === CUSTOMER_CHOICE.EXISTING ? (
+                <>
+                  Tertaut ke pelanggan lama:{" "}
+                  <span className="font-semibold text-second4">
+                    {matchedCustomerName}
+                  </span>
+                </>
+              ) : (
+                <>
+                  Tertaut ke pelanggan lama{" "}
+                  <span className="font-semibold text-second4">
+                    {matchedCustomerName}
+                  </span>{" "}
+                  (data baru)
+                </>
+              )}
+            </p>
+          )}
 
-function LoadingState() {
-  return (
-    <div className="animate-pulse space-y-5">
-      <div className="h-10 w-64 rounded-lg bg-second/10" />
-      <div className="h-48 rounded-2xl bg-second/10" />
-      <div className="h-64 rounded-2xl bg-second/10" />
-      <div className="h-48 rounded-2xl bg-second/10" />
-    </div>
-  );
-}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {isFinal ? <Tag tone="grad">Final</Tag> : <Tag>Draft</Tag>}
+          </div>
+        </div>
+      </div>
 
-function ErrorState({ onRetry, isFetching }) {
-  return (
-    <div className="flex flex-col items-center justify-center rounded-2xl border border-red-500/20 px-5 py-12 text-center">
-      <FiAlertCircle size={32} className="text-red-400" />
+      <dl className="divide-y divide-second/10 border-y border-second/30">
+        <SummaryRow label="Subtotal">{formatCurrency(subtotal)}</SummaryRow>
+        <SummaryRow label="Diskon toko">
+          {storeDiscount > 0 ? `- ${formatCurrency(storeDiscount)}` : "—"}
+        </SummaryRow>
+        <SummaryRow label="Diskon pelanggan">
+          {customerDiscount > 0 ? `- ${formatCurrency(customerDiscount)}` : "—"}
+        </SummaryRow>
+        <SummaryRow label="Estimasi total">
+          <span className="flex flex-col items-end gap-2">
+            <span>{formatCurrency(totalAmount)}</span>
+            {totalAmount < 0 && <Tag tone="failure">Melebihi subtotal</Tag>}
+          </span>
+        </SummaryRow>
+      </dl>
 
-      <h2 className="mt-4 font-semibold">Gagal Memuat Invoice</h2>
-
-      <p className="mt-2 max-w-md text-sm text-second/65">
-        Periksa koneksi atau sesi Anda, lalu coba kembali.
+      <p className="text-xs text-second/50">
+        Preview saja. Backend tetap menghitung total akhir.
       </p>
-
-      <button
-        type="button"
-        onClick={onRetry}
-        disabled={isFetching}
-        className="mt-5 rounded-xl border border-second/25 px-4 py-2.5 text-sm font-medium transition hover:bg-second/10 disabled:opacity-50"
-      >
-        {isFetching ? "Memuat..." : "Coba Lagi"}
-      </button>
-    </div>
+    </section>
   );
 }
+
+/* ---------------------------------- Page ---------------------------------- */
 
 export default function EditInvoicePage() {
   const params = useParams();
   const router = useRouter();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
+  const formRef = useRef(null);
 
   const {
     data: invoice,
@@ -259,53 +457,56 @@ export default function EditInvoicePage() {
   const [form, setForm] = useState(INITIAL_FORM);
   const [initialForm, setInitialForm] = useState(null);
   const [confirmedFinalization, setConfirmedFinalization] = useState(false);
-
   const [termsMode, setTermsMode] = useState(TERMS_MODES.NONE);
   const [customTerms, setCustomTerms] = useState("");
   const [termsInitialized, setTermsInitialized] = useState(false);
+
+  // ── Deteksi pelanggan via nomor WhatsApp ──
+  const { data: customersResponse } = useGetCustomers();
+  const [matchedCustomer, setMatchedCustomer] = useState(null);
+  const [customerChoice, setCustomerChoice] = useState(
+    CUSTOMER_CHOICE.EXISTING,
+  );
+  const [isLookingUpCustomer, setIsLookingUpCustomer] = useState(false);
+  const lookupTimerRef = useRef(null);
+
   const storeDiscountRef = useRef(null);
   const customerDiscountRef = useRef(null);
   const pendingDiscountCaret = useRef(null);
   const isSaving = updateMutation.isPending;
 
-  // Template S&K saat ini dari GET /terms (null kalau belum diisi).
+  const customersList = useMemo(() => {
+    if (Array.isArray(customersResponse)) return customersResponse;
+    return customersResponse?.data ?? customersResponse?.items ?? [];
+  }, [customersResponse]);
+
   const templateTerms = (
     termsResponse?.data?.value ??
     termsResponse?.value ??
     ""
   ).trim();
 
-  // Isi S&K yang tersimpan di invoice saat ini.
   const originalTerms = (invoice?.terms_and_condition ?? "").trim();
-
   const isCustomTooLong = customTerms.length > TERMS_MAX_LENGTH;
 
   useEffect(() => {
-    if (isError) {
-      const apiError = normalizeApiError(error);
-      notify.error(apiError.message);
-    }
+    if (isError) notify.error(describeError(error));
   }, [isError, error]);
 
   useEffect(() => {
     if (!invoice) return;
-
     const initial = Object.fromEntries(
       EDITABLE_FIELDS.map((field) => [
         field,
         String(invoice[field] ?? "").trim(),
       ]),
     );
-
     setInitialForm(initial);
     setForm(initial);
   }, [invoice]);
 
-  // Tentukan pilihan S&K awal dari isi invoice, sekali saja setelah
-  // invoice dan template sama-sama selesai dimuat.
   useEffect(() => {
     if (termsInitialized || !invoice || isLoadingTerms) return;
-
     if (originalTerms === "") {
       setTermsMode(TERMS_MODES.NONE);
     } else if (templateTerms && originalTerms === templateTerms) {
@@ -314,68 +515,132 @@ export default function EditInvoicePage() {
       setTermsMode(TERMS_MODES.CUSTOM);
       setCustomTerms(originalTerms);
     }
-
     setTermsInitialized(true);
   }, [termsInitialized, invoice, isLoadingTerms, originalTerms, templateTerms]);
 
+  // Lookup pelanggan dari nomor WA (debounce). Hanya jalankan setelah
+  // form terisi dari invoice agar tidak auto-isi saat load awal.
+  useEffect(() => {
+    if (!initialForm) return;
+
+    if (lookupTimerRef.current) {
+      clearTimeout(lookupTimerRef.current);
+      lookupTimerRef.current = null;
+    }
+
+    const raw = form.customer_whatsapp.trim();
+    const digits = raw.replace(/\D/g, "");
+
+    if (digits.length < 8) {
+      setMatchedCustomer(null);
+      setCustomerChoice(CUSTOMER_CHOICE.EXISTING);
+      setIsLookingUpCustomer(false);
+      return;
+    }
+
+    setIsLookingUpCustomer(true);
+
+    lookupTimerRef.current = setTimeout(() => {
+      const normalizedQuery = normalizeWhatsapp(digits);
+      const found =
+        customersList.find(
+          (customer) =>
+            normalizeWhatsapp(customer.whatsapp) === normalizedQuery,
+        ) ?? null;
+
+      setMatchedCustomer(found);
+      setIsLookingUpCustomer(false);
+
+      if (found) {
+        setCustomerChoice(CUSTOMER_CHOICE.EXISTING);
+        setForm((current) => ({
+          ...current,
+          customer_instagram:
+            current.customer_instagram.trim() === ""
+              ? (found.instagram ?? "")
+              : current.customer_instagram,
+          customer_address:
+            current.customer_address.trim() === ""
+              ? (found.address ?? "")
+              : current.customer_address,
+        }));
+      }
+    }, CUSTOMER_LOOKUP_DEBOUNCE);
+
+    return () => {
+      if (lookupTimerRef.current) {
+        clearTimeout(lookupTimerRef.current);
+        lookupTimerRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.customer_whatsapp, customersList, initialForm]);
+
   function handleChange(event) {
     const { name, value } = event.target;
-
-    setForm((current) => ({
-      ...current,
-      [name]: value,
-    }));
+    setForm((current) => ({ ...current, [name]: value }));
   }
 
   function handleDiscountChange(event) {
     const { name, value } = event.target;
     const cursorPosition = event.target.selectionStart ?? value.length;
-
     const digitsBeforeCursor = value
       .slice(0, cursorPosition)
       .replace(/\D/g, "").length;
-
     const digits = value.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
-
-    // Maksimal 12 digit rupiah.
     if (digits.length > 12) return;
-
     pendingDiscountCaret.current = {
       name,
       digitCount: Math.min(digitsBeforeCursor, digits.length),
     };
-
-    setForm((current) => ({
-      ...current,
-      [name]: digits,
-    }));
+    setForm((current) => ({ ...current, [name]: digits }));
   }
+
   function handleTermsModeChange(nextMode) {
     setTermsMode(nextMode);
-
-    // Pertama kali pilih "Buat sendiri": mulai dari S&K yang sekarang ada
-    // (atau template) supaya tinggal diedit.
     if (nextMode === TERMS_MODES.CUSTOM && customTerms === "") {
       setCustomTerms(originalTerms || templateTerms);
     }
   }
 
+  function handleCustomerChoiceChange(nextChoice) {
+    setCustomerChoice(nextChoice);
+
+    if (!matchedCustomer) return;
+
+    if (nextChoice === CUSTOMER_CHOICE.EXISTING) {
+      setForm((current) => ({
+        ...current,
+        customer_instagram:
+          current.customer_instagram.trim() === ""
+            ? (matchedCustomer.instagram ?? "")
+            : current.customer_instagram,
+        customer_address:
+          current.customer_address.trim() === ""
+            ? (matchedCustomer.address ?? "")
+            : current.customer_address,
+      }));
+    } else {
+      setForm((current) => ({
+        ...current,
+        customer_instagram: "",
+        customer_address: "",
+      }));
+    }
+  }
+
   function buildPayload() {
     if (!initialForm) return null;
-
     const payload = {};
 
     for (const field of EDITABLE_FIELDS) {
       const value = form[field].trim();
       const originalValue = initialForm[field];
-
       if (value === originalValue) continue;
-
       if (REQUIRED_FIELDS.includes(field) && !value) {
         notify.error(`${field.replaceAll("_", " ")} wajib diisi.`);
         return null;
       }
-
       if (NULLABLE_FIELDS.includes(field)) {
         payload[field] = value === "" ? null : value;
       } else {
@@ -383,42 +648,31 @@ export default function EditInvoicePage() {
       }
     }
 
-    // S&K: hanya dikirim kalau berubah dari isi invoice saat ini.
-    // - template : isi template saat ini
-    // - none     : null
-    // - custom   : string apa adanya
     let desiredTerms = "";
-
     if (termsMode === TERMS_MODES.TEMPLATE) {
       desiredTerms = templateTerms;
     } else if (termsMode === TERMS_MODES.CUSTOM) {
       desiredTerms = customTerms.trim();
-
       if (!desiredTerms) {
         notify.error(
           "S&K khusus masih kosong. Isi teksnya atau pilih opsi lain.",
         );
         return null;
       }
-
       if (customTerms.length > TERMS_MAX_LENGTH) {
         notify.error(`S&K maksimum ${TERMS_MAX_LENGTH} karakter.`);
         return null;
       }
     }
-
     if (desiredTerms !== originalTerms) {
       payload.terms_and_condition = desiredTerms === "" ? null : desiredTerms;
     }
 
     if (Object.keys(payload).length === 0) {
-      // Finalisasi tanpa mengubah data lain.
-      // Jangan kirim is_final karena field itu ditolak API.
       payload.payment_method = invoice.payment_method ?? null;
     }
 
     const whatsapp = form.customer_whatsapp.trim();
-
     if (
       !/^\+?\d+$/.test(whatsapp) ||
       whatsapp.length < 8 ||
@@ -432,7 +686,6 @@ export default function EditInvoicePage() {
 
     for (const field of ["store_discount", "customer_discount"]) {
       const value = form[field].trim();
-
       if (value !== "" && !/^(0|[1-9]\d{0,11})$/.test(value)) {
         notify.error(
           "Diskon harus berupa bilangan bulat rupiah 0–12 digit tanpa nol di depan.",
@@ -446,7 +699,6 @@ export default function EditInvoicePage() {
       form.store_discount === "" ? 0 : Number(form.store_discount);
     const customerDiscount =
       form.customer_discount === "" ? 0 : Number(form.customer_discount);
-
     if (
       !Number.isFinite(subtotal) ||
       subtotal - storeDiscount - customerDiscount < 0
@@ -454,501 +706,734 @@ export default function EditInvoicePage() {
       notify.error("Total diskon tidak boleh melebihi subtotal.");
       return null;
     }
-
     return payload;
   }
+
   useLayoutEffect(() => {
     const pending = pendingDiscountCaret.current;
-
     if (!pending) return;
-
     const input =
       pending.name === "store_discount"
         ? storeDiscountRef.current
         : pending.name === "customer_discount"
           ? customerDiscountRef.current
           : null;
-
     if (!input) return;
-
     const formattedValue = formatThousands(form[pending.name]);
     const targetDigitCount = pending.digitCount;
-
     let position = 0;
     let digitsFound = 0;
-
     while (position < formattedValue.length && digitsFound < targetDigitCount) {
-      if (/\d/.test(formattedValue[position])) {
-        digitsFound++;
-      }
-
+      if (/\d/.test(formattedValue[position])) digitsFound++;
       position++;
     }
-
     input.setSelectionRange(position, position);
     pendingDiscountCaret.current = null;
   }, [form.store_discount, form.customer_discount]);
+
   async function handleSubmit(event) {
     event.preventDefault();
-
     if (invoice?.is_final) {
       notify.error("Invoice sudah final dan tidak bisa diedit lagi.");
       return;
     }
-
     if (!confirmedFinalization) {
       notify.error(
         "Konfirmasi bahwa Anda memahami invoice akan dikunci setelah disimpan.",
       );
       return;
     }
-
     const payload = buildPayload();
-
     if (!payload) return;
-
     try {
-      await updateMutation.mutateAsync({
-        id,
-        payload,
-      });
-
+      await updateMutation.mutateAsync({ id, data: payload });
       notify.success(
         "Invoice berhasil diperbarui dan sekarang berstatus final.",
       );
-
       router.replace(`/admin/invoices/${id}`);
     } catch (error) {
-      const apiError = normalizeApiError(error);
-      notify.error(apiError.message);
+      notify.error(describeError(error));
     }
   }
 
+  /* ------------------------------ Loading ------------------------------ */
+
   if (isLoading || (!invoice && !isError)) {
-    return <LoadingState />;
-  }
-
-  if (isError) {
     return (
-      <div className="space-y-5 text-second">
-        <Link
-          href="/admin/invoices"
-          className="inline-flex items-center gap-2 text-sm text-second/65 hover:text-second"
-        >
-          <FiArrowLeft size={16} />
-          Kembali ke Invoice
-        </Link>
-
-        <ErrorState onRetry={() => refetch()} isFetching={isFetching} />
+      <div className="mx-auto flex min-h-dvh w-full max-w-screen-xl flex-col gap-8 bg-primary pb-16">
+        <header className="flex flex-col gap-4">
+          <div className="h-8 w-40 animate-pulse rounded-full bg-second/10" />
+          <div className="flex items-center gap-4">
+            <div className="size-8 shrink-0 animate-pulse rounded-xl bg-second/10" />
+            <div className="min-w-0 space-y-2">
+              <div className="h-8 w-64 animate-pulse rounded-lg bg-second/10" />
+              <div className="h-4 w-80 animate-pulse rounded bg-second/10" />
+            </div>
+          </div>
+        </header>
+        <div className="grid grid-cols-1 items-start gap-8 xl:grid-cols-3">
+          <div className="flex min-w-0 flex-col gap-8 xl:col-span-2">
+            <div className="h-48 animate-pulse rounded-2xl bg-second/10" />
+            <div className="h-64 animate-pulse rounded-2xl bg-second/10" />
+            <div className="h-48 animate-pulse rounded-2xl bg-second/10" />
+          </div>
+          <div className="h-64 animate-pulse rounded-2xl bg-second/10" />
+        </div>
       </div>
     );
   }
 
+  if (isError) {
+    return (
+      <div className="mx-auto flex min-h-dvh w-full max-w-screen-xl flex-col gap-8 bg-primary pb-16">
+        <header>
+          <Link
+            href="/admin/invoices"
+            className={`inline-flex h-8 w-fit items-center gap-2 rounded-full pr-4 text-sm font-medium text-second/60 transition-colors hover:text-second4 touch-manipulation ${FOCUS_RING}`}
+          >
+            <FiArrowLeft size={16} aria-hidden="true" />
+            Kembali ke invoice
+          </Link>
+        </header>
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-second2/30 bg-second2/5 px-4 py-16 text-center">
+          <FiAlertCircle
+            size={32}
+            className="text-second2"
+            aria-hidden="true"
+          />
+          <h2 className="mt-4 text-lg font-bold text-second">
+            Gagal memuat invoice
+          </h2>
+          <p className="mt-2 max-w-md text-sm text-second/60">
+            {error?.response?.status === 404
+              ? "Invoice tidak ditemukan atau sudah dihapus."
+              : "Periksa koneksi atau sesi Anda, lalu coba kembali."}
+          </p>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className={`${BTN_BASE} mt-4 bg-grad text-primary shadow-lg shadow-second4/25 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING}`}
+          >
+            {isFetching ? (
+              <>
+                <FiLoader
+                  className="animate-spin motion-reduce:animate-none"
+                  size={16}
+                  aria-hidden="true"
+                />
+                Memuat…
+              </>
+            ) : (
+              "Coba lagi"
+            )}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  /* ------------------------------ Final lock ------------------------------ */
+
   if (invoice.is_final) {
     return (
-      <div className="space-y-5 text-second">
-        <Link
-          href={`/admin/invoices/${id}`}
-          className="inline-flex items-center gap-2 text-sm text-second/65 hover:text-second"
-        >
-          <FiArrowLeft size={16} />
-          Kembali ke Detail Invoice
-        </Link>
-
-        <section className="rounded-2xl border border-second/15 p-6 sm:p-8">
-          <FiLock size={30} />
-
-          <h1 className="mt-4 text-xl font-bold">Invoice Sudah Final</h1>
-
-          <p className="mt-2 text-sm leading-relaxed text-second/65">
+      <div className="mx-auto flex min-h-dvh w-full max-w-screen-xl flex-col gap-8 bg-primary pb-16">
+        <header>
+          <Link
+            href={`/admin/invoices/${id}`}
+            className={`inline-flex h-8 w-fit items-center gap-2 rounded-full pr-4 text-sm font-medium text-second/60 transition-colors hover:text-second4 touch-manipulation ${FOCUS_RING}`}
+          >
+            <FiArrowLeft size={16} aria-hidden="true" />
+            Kembali ke detail invoice
+          </Link>
+        </header>
+        <section className="flex flex-col gap-4 rounded-2xl border border-second/30 bg-primary p-4 shadow-xl shadow-second/5 sm:p-8">
+          <div
+            aria-hidden="true"
+            className="flex size-16 shrink-0 items-center justify-center rounded-xl bg-second/5 text-second/40"
+          >
+            <FiLock size={24} />
+          </div>
+          <h1 className="text-balance text-2xl font-bold tracking-tight text-second">
+            Invoice sudah <span className="text-grad">final</span>
+          </h1>
+          <p className="text-pretty text-sm text-second/60">
             Invoice {invoice.no_invoice} sudah dikunci dan tidak dapat diedit
             lagi.
           </p>
-
           <Link
             href={`/admin/invoices/${id}`}
-            className="mt-5 inline-flex rounded-xl bg-second px-5 py-3 text-sm font-semibold text-primary hover:opacity-90"
+            className={`${BTN_BASE} w-fit bg-grad text-primary shadow-lg shadow-second4/25 hover:opacity-90 ${FOCUS_RING}`}
           >
-            Lihat Invoice
+            Lihat invoice
           </Link>
         </section>
       </div>
     );
   }
 
+  /* ------------------------------ Form ------------------------------ */
+
   const isTemplateUnavailable =
     isLoadingTerms || isTermsError || !templateTerms;
+  const storeDiscount =
+    form.store_discount === "" ? 0 : Number(form.store_discount);
+  const customerDiscount =
+    form.customer_discount === "" ? 0 : Number(form.customer_discount);
+  const totalAmount =
+    Number(invoice.subtotal) - storeDiscount - customerDiscount;
+  const discountLiveError =
+    Number.isFinite(totalAmount) && totalAmount < 0
+      ? "Total diskon tidak boleh melebihi subtotal."
+      : "";
+
+  const whatsappDigits = form.customer_whatsapp.replace(/\D/g, "");
+  const whatsappLongEnough = whatsappDigits.length >= 8;
+  const nameDiffersFromMatch =
+    matchedCustomer?.name &&
+    form.customer_name.trim() &&
+    form.customer_name.trim().toLowerCase() !==
+      matchedCustomer.name.trim().toLowerCase();
 
   return (
-    <div className="mx-auto max-w-5xl space-y-7 pb-8 text-second">
-      <header>
+    <div className="mx-auto flex min-h-dvh w-full max-w-screen-xl flex-col gap-8 bg-primary pb-16">
+      <header className="flex flex-col gap-4">
         <Link
           href={`/admin/invoices/${id}`}
-          className="inline-flex items-center gap-2 text-sm text-second/65 transition hover:text-second"
+          className={`inline-flex h-8 w-fit items-center gap-2 rounded-full pr-4 text-sm font-medium text-second/60 transition-colors hover:text-second4 touch-manipulation ${FOCUS_RING}`}
         >
-          <FiArrowLeft size={17} />
-          Kembali ke Detail Invoice
+          <FiArrowLeft size={16} aria-hidden="true" />
+          Kembali ke detail invoice
         </Link>
 
-        <h1 className="mt-5 text-2xl font-bold">Edit Invoice</h1>
-
-        <p className="mt-1 break-all text-sm text-second/65">
-          {invoice.no_invoice}
-        </p>
+        <div className="flex items-center gap-4">
+          <div
+            aria-hidden="true"
+            className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-grad text-primary shadow-lg shadow-second4/20"
+          >
+            <FiFileText size={16} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-balance text-2xl font-bold tracking-tight text-second sm:text-3xl">
+              Edit <span className="text-grad">invoice</span>
+            </h1>
+            <p className="mt-2 text-pretty text-sm text-second/60">
+              Invoice {invoice.no_invoice} hanya dapat diedit satu kali. Setelah
+              disimpan, invoice otomatis final dan terkunci.
+            </p>
+          </div>
+        </div>
       </header>
 
-      <div className="flex items-start gap-3 rounded-xl border border-second/20 bg-second/5 p-4">
-        <FiAlertCircle size={20} className="mt-0.5 shrink-0" />
+      <form
+        ref={formRef}
+        onSubmit={handleSubmit}
+        noValidate
+        className="grid grid-cols-1 items-start gap-8 xl:grid-cols-3"
+      >
+        <div className="flex min-w-0 flex-col gap-8 xl:col-span-2">
+          {/* Informasi Toko */}
+          <FormSection
+            title="Informasi toko"
+            description="Perubahan di bagian ini hanya mengubah snapshot toko pada invoice ini, bukan profil toko."
+          >
+            <FieldGrid>
+              <FormField label="Nama toko" htmlFor="store_name" required>
+                <input
+                  id="store_name"
+                  name="store_name"
+                  value={form.store_name}
+                  onChange={handleChange}
+                  className={inputClass(false)}
+                  maxLength={100}
+                  disabled={isSaving}
+                />
+              </FormField>
+              <FormField label="WhatsApp toko" htmlFor="whatsapp_store">
+                <input
+                  id="whatsapp_store"
+                  name="whatsapp_store"
+                  value={form.whatsapp_store}
+                  onChange={handleChange}
+                  className={inputClass(false)}
+                  maxLength={100}
+                  disabled={isSaving}
+                />
+              </FormField>
+              <FormField label="Instagram toko" htmlFor="instagram_store">
+                <input
+                  id="instagram_store"
+                  name="instagram_store"
+                  value={form.instagram_store}
+                  onChange={handleChange}
+                  className={inputClass(false)}
+                  maxLength={100}
+                  disabled={isSaving}
+                  placeholder="@username"
+                />
+              </FormField>
+            </FieldGrid>
 
-        <p className="text-sm leading-relaxed text-second/75">
-          Invoice hanya dapat diedit satu kali. Setelah perubahan berhasil
-          disimpan, invoice otomatis menjadi final dan terkunci. Item, nomor
-          invoice, subtotal, serta Order asli tidak dapat diubah.
-        </p>
-      </div>
+            <FormField label="Alamat toko" htmlFor="store_address">
+              <textarea
+                id="store_address"
+                name="store_address"
+                value={form.store_address}
+                onChange={handleChange}
+                className={`${inputClass(false)} resize-y`}
+                rows={3}
+                maxLength={500}
+                disabled={isSaving}
+                placeholder="Alamat toko pada invoice"
+              />
+            </FormField>
+          </FormSection>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <FormSection
-          title="Informasi Toko"
-          description="Perubahan di bagian ini hanya mengubah snapshot toko pada invoice ini, bukan profil toko."
-        >
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-            <TextField
-              name="store_name"
-              label="Nama toko"
-              value={form.store_name}
-              onChange={handleChange}
-              maxLength={100}
-              required
-            />
+          {/* Informasi Pelanggan */}
+          <FormSection
+            title="Informasi pelanggan"
+            description="Informasi ini akan disimpan sebagai bagian dari invoice."
+          >
+            <FieldGrid>
+              <FormField
+                label="Nama pelanggan"
+                htmlFor="customer_name"
+                required
+              >
+                <input
+                  id="customer_name"
+                  name="customer_name"
+                  value={form.customer_name}
+                  onChange={handleChange}
+                  className={inputClass(false)}
+                  maxLength={100}
+                  disabled={isSaving}
+                  placeholder="Nama lengkap pelanggan…"
+                />
+              </FormField>
 
-            <TextField
-              name="whatsapp_store"
-              label="WhatsApp toko"
-              value={form.whatsapp_store}
-              onChange={handleChange}
-              maxLength={100}
-            />
+              <FormField
+                label="WhatsApp pelanggan"
+                htmlFor="customer_whatsapp"
+                required
+              >
+                <input
+                  id="customer_whatsapp"
+                  name="customer_whatsapp"
+                  type="tel"
+                  inputMode="tel"
+                  value={form.customer_whatsapp}
+                  onChange={handleChange}
+                  className={`${inputClass(false)} tabular-nums`}
+                  maxLength={15}
+                  disabled={isSaving}
+                  placeholder="081234567890"
+                />
 
-            <TextField
-              name="instagram_store"
-              label="Instagram toko"
-              value={form.instagram_store}
-              onChange={handleChange}
-              maxLength={100}
-            />
+                {isLookingUpCustomer && (
+                  <p
+                    className="mt-2 flex items-center gap-2 text-xs text-second/60"
+                    role="status"
+                  >
+                    <FiLoader
+                      className="animate-spin motion-reduce:animate-none"
+                      size={12}
+                      aria-hidden="true"
+                    />
+                    Mencari pelanggan…
+                  </p>
+                )}
 
-            <TextAreaField
-              name="store_address"
-              label="Alamat toko"
-              value={form.store_address}
-              onChange={handleChange}
-              maxLength={500}
-              placeholder="Alamat toko pada invoice"
-            />
-          </div>
-        </FormSection>
+                {!isLookingUpCustomer && matchedCustomer && (
+                  <div className="mt-2 flex flex-col gap-2 rounded-xl border border-second4/30 bg-second4/5 p-4">
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <FiCheck
+                        size={14}
+                        className="shrink-0 text-second4"
+                        aria-hidden="true"
+                      />
+                      <span className="text-second/80">
+                        Nomor ini terdaftar atas nama{" "}
+                        <span className="font-semibold text-second">
+                          {matchedCustomer.name || "(tanpa nama)"}
+                        </span>
+                        .
+                      </span>
+                      {nameDiffersFromMatch && (
+                        <Tag tone="strong">Nama berbeda</Tag>
+                      )}
+                    </div>
 
-        <FormSection title="Informasi Pelanggan">
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-            <TextField
-              name="customer_name"
-              label="Nama pelanggan"
-              value={form.customer_name}
-              onChange={handleChange}
-              maxLength={100}
-              required
-            />
+                    <p className="text-xs text-second/70">
+                      Mau pakai data pelanggan ini, atau pakai data berbeda
+                      dengan nomor WA yang sama?
+                    </p>
 
-            <TextField
-              name="customer_whatsapp"
-              label="WhatsApp pelanggan"
-              value={form.customer_whatsapp}
-              onChange={handleChange}
-              maxLength={15}
-              required
-              placeholder="081234567890"
-              type="tel"
-            />
+                    <div className="flex flex-col gap-2">
+                      <label
+                        className={`flex flex-1 cursor-pointer items-start gap-2 rounded-xl border p-4 transition-colors ${
+                          customerChoice === CUSTOMER_CHOICE.EXISTING
+                            ? "border-second4 bg-second4/10"
+                            : "border-second/30 hover:border-second/30"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="customer_choice"
+                          value={CUSTOMER_CHOICE.EXISTING}
+                          checked={customerChoice === CUSTOMER_CHOICE.EXISTING}
+                          onChange={() =>
+                            handleCustomerChoiceChange(CUSTOMER_CHOICE.EXISTING)
+                          }
+                          disabled={isSaving}
+                          className={`mt-0.5 size-4 shrink-0 cursor-pointer accent-second4 ${FOCUS_RING}`}
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-second">
+                            Pakai data pelanggan ini
+                          </span>
+                          <span className="mt-2 block text-xs text-second/60">
+                            Instagram dan alamat diisi otomatis dari data
+                            pelanggan. Nama tetap bisa diedit.
+                          </span>
+                        </span>
+                      </label>
 
-            <TextAreaField
-              name="customer_address"
+                      <label
+                        className={`flex flex-1 cursor-pointer items-start gap-2 rounded-xl border p-4 transition-colors ${
+                          customerChoice === CUSTOMER_CHOICE.NEW
+                            ? "border-second4 bg-second4/10"
+                            : "border-second/30 hover:border-second/30"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="customer_choice"
+                          value={CUSTOMER_CHOICE.NEW}
+                          checked={customerChoice === CUSTOMER_CHOICE.NEW}
+                          onChange={() =>
+                            handleCustomerChoiceChange(CUSTOMER_CHOICE.NEW)
+                          }
+                          disabled={isSaving}
+                          className={`mt-0.5 size-4 shrink-0 cursor-pointer accent-second4 ${FOCUS_RING}`}
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-second">
+                            Pakai data berbeda
+                          </span>
+                          <span className="mt-2 block text-xs text-second/60">
+                            Instagram dan alamat dikosongkan. Invoice tetap
+                            tertaut ke pelanggan lama.
+                          </span>
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {!isLookingUpCustomer &&
+                  !matchedCustomer &&
+                  whatsappLongEnough && (
+                    <p className="mt-2 text-xs text-second/60">
+                      Nomor belum terdaftar. Pelanggan baru akan dibuat otomatis
+                      saat invoice disimpan.
+                    </p>
+                  )}
+              </FormField>
+            </FieldGrid>
+
+            <FormField
               label="Alamat pelanggan"
-              value={form.customer_address}
-              onChange={handleChange}
-              maxLength={500}
+              htmlFor="customer_address"
               required
-            />
+            >
+              <textarea
+                id="customer_address"
+                name="customer_address"
+                value={form.customer_address}
+                onChange={handleChange}
+                className={`${inputClass(false)} resize-y`}
+                rows={3}
+                maxLength={500}
+                disabled={isSaving}
+              />
+            </FormField>
 
-            <TextField
-              name="customer_instagram"
-              label="Instagram pelanggan"
-              value={form.customer_instagram}
-              onChange={handleChange}
-              maxLength={100}
-              placeholder="@username"
-            />
-          </div>
-        </FormSection>
+            <FormField label="Instagram pelanggan" htmlFor="customer_instagram">
+              <input
+                id="customer_instagram"
+                name="customer_instagram"
+                value={form.customer_instagram}
+                onChange={handleChange}
+                className={inputClass(false)}
+                maxLength={100}
+                disabled={isSaving}
+                placeholder="@username"
+              />
+            </FormField>
+          </FormSection>
 
-        <FormSection title="Pembayaran dan Pengiriman">
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-            <TextField
-              name="payment_method"
-              label="Metode pembayaran"
-              value={form.payment_method}
-              onChange={handleChange}
-              maxLength={100}
-              placeholder="Transfer BCA"
-            />
+          {/* Pembayaran & Pengiriman */}
+          <FormSection
+            title="Pembayaran dan pengiriman"
+            description="Metode pembayaran dan ekspedisi yang dipakai untuk invoice ini."
+          >
+            <FieldGrid>
+              <FormField label="Metode pembayaran" htmlFor="payment_method">
+                <input
+                  id="payment_method"
+                  name="payment_method"
+                  value={form.payment_method}
+                  onChange={handleChange}
+                  className={inputClass(false)}
+                  maxLength={100}
+                  disabled={isSaving}
+                  placeholder="Contoh: Transfer BCA…"
+                />
+              </FormField>
+              <FormField label="Pengiriman" htmlFor="ship">
+                <input
+                  id="ship"
+                  name="ship"
+                  value={form.ship}
+                  onChange={handleChange}
+                  className={inputClass(false)}
+                  maxLength={100}
+                  disabled={isSaving}
+                  placeholder="Contoh: JNE…"
+                />
+              </FormField>
+            </FieldGrid>
+          </FormSection>
 
-            <TextField
-              name="ship"
-              label="Metode pengiriman"
-              value={form.ship}
-              onChange={handleChange}
-              maxLength={100}
-              placeholder="JNE"
-            />
-          </div>
-        </FormSection>
-
-        <FormSection
-          title="Syarat dan Ketentuan"
-          description="Pilihan di sini menggantikan S&K yang tersimpan di invoice ini. Template pembayaran di pengaturan tidak ikut berubah."
-        >
-          {!termsInitialized ? (
-            <div className="rounded-xl border border-second/15 p-5 text-sm text-second/60">
-              Memuat S&K...
-            </div>
-          ) : (
-            <>
-              <fieldset className="space-y-3">
-                <legend className="sr-only">
-                  Pilihan syarat dan ketentuan
-                </legend>
-
-                {TERMS_OPTIONS.map((option) => {
-                  const isActive = termsMode === option.value;
-                  const isDisabled =
-                    option.value === TERMS_MODES.TEMPLATE &&
-                    isTemplateUnavailable &&
-                    !isActive;
-
-                  return (
-                    <label
-                      key={option.value}
-                      className={`flex items-start gap-3 rounded-xl border p-4 transition ${
-                        isDisabled
-                          ? "cursor-not-allowed opacity-50"
-                          : "cursor-pointer"
-                      } ${
-                        isActive
-                          ? "border-second/60 bg-second/5"
-                          : "border-second/15 hover:border-second/30"
-                      }`}
-                    >
-                      <input
-                        type="radio"
+          {/* S&K */}
+          <FormSection
+            title="Syarat dan ketentuan"
+            description="Pilihan di sini menggantikan S&K yang tersimpan di invoice ini. Template pembayaran di pengaturan tidak ikut berubah."
+          >
+            {!termsInitialized ? (
+              <p
+                className="flex items-center gap-2 text-sm text-second/60"
+                role="status"
+              >
+                <FiLoader
+                  className="animate-spin motion-reduce:animate-none"
+                  size={16}
+                  aria-hidden="true"
+                />
+                Memuat S&K…
+              </p>
+            ) : (
+              <>
+                <fieldset className="flex flex-col gap-4">
+                  <legend className="sr-only">
+                    Pilihan syarat dan ketentuan
+                  </legend>
+                  {TERMS_OPTIONS.map((option) => {
+                    const isDisabled =
+                      option.value === TERMS_MODES.TEMPLATE &&
+                      isTemplateUnavailable &&
+                      termsMode !== option.value;
+                    return (
+                      <RadioCard
+                        key={option.value}
                         name="terms_mode"
                         value={option.value}
-                        checked={isActive}
-                        disabled={isDisabled}
+                        checked={termsMode === option.value}
                         onChange={() => handleTermsModeChange(option.value)}
-                        className="mt-1 size-4 accent-second"
+                        disabled={isSaving || isDisabled}
+                        title={option.title}
+                        description={option.description}
                       />
+                    );
+                  })}
+                </fieldset>
 
-                      <span>
-                        <span className="block text-sm font-medium">
-                          {option.title}
-                        </span>
-                        <span className="mt-1 block text-xs leading-relaxed text-second/60">
-                          {option.description}
-                        </span>
-                      </span>
-                    </label>
-                  );
-                })}
-              </fieldset>
-
-              {isTemplateUnavailable && (
-                <p className="text-xs text-second/60">
-                  {isTermsError
-                    ? "Template S&K gagal dimuat, jadi opsi template dinonaktifkan."
-                    : "Template S&K belum diisi, jadi opsi template dinonaktifkan."}{" "}
-                  <Link
-                    href="/admin/invoices/terms"
-                    className={`font-semibold text-second underline ${FOCUS_RING}`}
-                  >
-                    Kelola template
-                  </Link>
-                </p>
-              )}
-
-              {termsMode === TERMS_MODES.TEMPLATE && (
-                <div className="rounded-xl bg-second/5 p-4">
-                  <p className="text-xs font-medium text-second/60">
-                    Preview template saat ini
+                {isTemplateUnavailable && (
+                  <p className="text-sm text-second/60">
+                    {isTermsError
+                      ? "Template S&K gagal dimuat, jadi opsi template dinonaktifkan."
+                      : "Template S&K belum diisi, jadi opsi template dinonaktifkan."}
                   </p>
+                )}
 
-                  <p className="mt-2 max-h-48 overflow-y-auto whitespace-pre-line break-words text-sm">
-                    {templateTerms}
-                  </p>
-                </div>
-              )}
+                {termsMode === TERMS_MODES.TEMPLATE && (
+                  <div className="rounded-xl bg-second/5 p-4">
+                    <p className="text-xs font-semibold text-second/60">
+                      Preview template saat ini
+                    </p>
+                    <p className="mt-2 max-h-80 overflow-y-auto whitespace-pre-line break-words text-sm text-second">
+                      {templateTerms}
+                    </p>
+                  </div>
+                )}
 
-              {termsMode === TERMS_MODES.CUSTOM && (
-                <div className="space-y-2">
-                  <label
-                    htmlFor="custom-terms"
-                    className="block text-sm font-medium"
-                  >
-                    S&K khusus invoice ini
-                  </label>
-
-                  <textarea
-                    id="custom-terms"
-                    value={customTerms}
-                    onChange={(event) => setCustomTerms(event.target.value)}
-                    rows={8}
-                    placeholder="Tulis syarat dan ketentuan pembayaran..."
-                    className={`${INPUT_CLASS} resize-y ${
-                      isCustomTooLong ? "border-red-500" : ""
-                    }`}
-                  />
-
-                  <p
-                    className={`text-right text-xs ${
+                {termsMode === TERMS_MODES.CUSTOM && (
+                  <FormField
+                    label="S&K khusus invoice ini"
+                    htmlFor="custom_terms"
+                    required
+                    error={
                       isCustomTooLong
-                        ? "font-semibold text-red-400"
-                        : "text-second/55"
-                    }`}
+                        ? `S&K maksimum ${TERMS_MAX_LENGTH} karakter.`
+                        : ""
+                    }
                   >
-                    {customTerms.length}/{TERMS_MAX_LENGTH}
-                  </p>
-                </div>
-              )}
-            </>
-          )}
-        </FormSection>
+                    <textarea
+                      id="custom_terms"
+                      name="custom_terms"
+                      value={customTerms}
+                      onChange={(event) => setCustomTerms(event.target.value)}
+                      className={`${inputClass(isCustomTooLong)} resize-y`}
+                      rows={8}
+                      placeholder="Tulis syarat dan ketentuan pembayaran…"
+                      disabled={isSaving}
+                    />
+                    <p
+                      className={`mt-2 text-right text-xs tabular-nums ${
+                        isCustomTooLong
+                          ? "font-semibold text-second2"
+                          : "text-second/50"
+                      }`}
+                    >
+                      {customTerms.length}/{TERMS_MAX_LENGTH}
+                    </p>
+                  </FormField>
+                )}
+              </>
+            )}
+          </FormSection>
 
-        <FormSection
-          title="Diskon"
-          description={`Subtotal item terkunci: ${formatCurrency(invoice.subtotal)}. Total akan dihitung ulang oleh server.`}
-        >
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-            <div className="min-w-0">
-              <label
-                htmlFor="edit-invoice-store_discount"
-                className="mb-2 block text-sm font-medium"
-              >
-                Diskon toko (Rp)
-              </label>
+          {/* Diskon */}
+          <FormSection
+            title="Diskon"
+            description={`Subtotal item terkunci: ${formatCurrency(invoice.subtotal)}. Total akan dihitung ulang oleh server.`}
+          >
+            <FieldGrid>
+              <FormField label="Diskon toko" htmlFor="store_discount">
+                <PrefixedInput prefix="Rp">
+                  <input
+                    ref={storeDiscountRef}
+                    id="store_discount"
+                    name="store_discount"
+                    type="text"
+                    inputMode="numeric"
+                    value={formatThousands(form.store_discount)}
+                    onChange={handleDiscountChange}
+                    className={`${inputClass(Boolean(discountLiveError))} rounded-l-none tabular-nums`}
+                    placeholder="0"
+                    maxLength={16}
+                    disabled={isSaving}
+                    aria-invalid={discountLiveError ? true : undefined}
+                    aria-describedby={
+                      discountLiveError ? "discount-desc" : undefined
+                    }
+                  />
+                </PrefixedInput>
+              </FormField>
 
-              <input
-                ref={storeDiscountRef}
-                id="edit-invoice-store_discount"
-                name="store_discount"
-                type="text"
-                inputMode="numeric"
-                value={formatThousands(form.store_discount)}
-                onChange={handleDiscountChange}
-                maxLength={15}
-                placeholder="0"
-                className={INPUT_CLASS}
-              />
-            </div>
+              <FormField label="Diskon pelanggan" htmlFor="customer_discount">
+                <PrefixedInput prefix="Rp">
+                  <input
+                    ref={customerDiscountRef}
+                    id="customer_discount"
+                    name="customer_discount"
+                    type="text"
+                    inputMode="numeric"
+                    value={formatThousands(form.customer_discount)}
+                    onChange={handleDiscountChange}
+                    className={`${inputClass(Boolean(discountLiveError))} rounded-l-none tabular-nums`}
+                    placeholder="0"
+                    maxLength={16}
+                    disabled={isSaving}
+                    aria-invalid={discountLiveError ? true : undefined}
+                    aria-describedby={
+                      discountLiveError ? "discount-desc" : undefined
+                    }
+                  />
+                </PrefixedInput>
+              </FormField>
+            </FieldGrid>
 
-            <div className="min-w-0">
-              <label
-                htmlFor="edit-invoice-customer_discount"
-                className="mb-2 block text-sm font-medium"
-              >
-                Diskon pelanggan (Rp)
-              </label>
+            {discountLiveError && (
+              <ErrorText id="discount-desc">{discountLiveError}</ErrorText>
+            )}
+          </FormSection>
 
-              <input
-                ref={customerDiscountRef}
-                id="edit-invoice-customer_discount"
-                name="customer_discount"
-                type="text"
-                inputMode="numeric"
-                value={formatThousands(form.customer_discount)}
-                onChange={handleDiscountChange}
-                maxLength={15}
-                placeholder="0"
-                className={INPUT_CLASS}
-              />
-            </div>
-          </div>
+          {/* Konfirmasi final */}
+          <FormSection
+            title="Konfirmasi finalisasi"
+            description="Invoice hanya dapat diedit satu kali. Setelah disimpan, invoice otomatis final dan terkunci."
+          >
+            <ToggleCard
+              name="confirmed_finalization"
+              checked={confirmedFinalization}
+              onChange={(event) =>
+                setConfirmedFinalization(event.target.checked)
+              }
+              disabled={isSaving}
+              title="Saya memahami invoice akan langsung terkunci"
+              description="Setelah disimpan, jatah edit habis dan status invoice otomatis menjadi final. Pastikan seluruh data sudah benar."
+            />
+          </FormSection>
+        </div>
 
-          <div className="rounded-xl bg-second/5 p-4">
-            <p className="text-sm text-second/60">
-              Estimasi total setelah edit
-            </p>
-
-            <p className="mt-1 text-xl font-bold">
-              {formatCurrency(
-                Number(invoice.subtotal) -
-                  (form.store_discount === ""
-                    ? 0
-                    : Number(form.store_discount)) -
-                  (form.customer_discount === ""
-                    ? 0
-                    : Number(form.customer_discount)),
-              )}
-            </p>
-
-            <p className="mt-2 text-xs leading-relaxed text-second/55">
-              Ini hanya preview. Nilai resmi invoice akan dihitung ulang oleh
-              backend saat request berhasil.
-            </p>
-          </div>
-        </FormSection>
-
-        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-second/20 p-4">
-          <input
-            type="checkbox"
-            checked={confirmedFinalization}
-            onChange={(event) => setConfirmedFinalization(event.target.checked)}
-            className="mt-1 size-4 accent-second"
+        {/* Sidebar sticky */}
+        <aside className="flex min-w-0 flex-col gap-4 xl:sticky xl:top-16 xl:-mt-4 xl:pt-4">
+          <InvoiceSummary
+            invoiceNumber={invoice.no_invoice}
+            customerName={form.customer_name}
+            matchedCustomerName={matchedCustomer?.name ?? null}
+            customerChoice={customerChoice}
+            isFinal={invoice.is_final}
+            subtotal={Number(invoice.subtotal)}
+            storeDiscount={storeDiscount}
+            customerDiscount={customerDiscount}
+            totalAmount={totalAmount}
           />
 
-          <span>
-            <span className="block text-sm font-semibold">
-              Saya memahami invoice akan langsung terkunci
-            </span>
+          <div className="flex flex-col gap-2">
+            <PrimaryButton
+              type="submit"
+              disabled={
+                isSaving ||
+                !confirmedFinalization ||
+                !initialForm ||
+                !termsInitialized ||
+                isCustomTooLong
+              }
+              aria-busy={isSaving}
+              className={`${BTN_BASE} w-full bg-grad text-primary shadow-lg shadow-second4/25 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING}`}
+            >
+              {isSaving ? (
+                <>
+                  <FiLoader
+                    className="animate-spin motion-reduce:animate-none"
+                    size={16}
+                    aria-hidden="true"
+                  />
+                  Menyimpan…
+                </>
+              ) : (
+                <>
+                  <FiSave size={16} aria-hidden="true" />
+                  Simpan dan finalkan invoice
+                </>
+              )}
+            </PrimaryButton>
 
-            <span className="mt-1 block text-xs leading-relaxed text-second/60">
-              Setelah disimpan, jatah edit habis dan status invoice otomatis
-              menjadi final. Pastikan seluruh data sudah benar.
-            </span>
-          </span>
-        </label>
-
-        <div className="flex flex-col-reverse gap-3 border-t border-second/15 pt-5 sm:flex-row sm:justify-end">
-          <Link
-            href={`/admin/invoices/${id}`}
-            className="rounded-xl border border-second/25 px-5 py-3 text-center text-sm font-medium transition hover:bg-second/10"
-          >
-            Batal
-          </Link>
-
-          <button
-            type="submit"
-            disabled={
-              isSaving ||
-              !confirmedFinalization ||
-              !initialForm ||
-              !termsInitialized ||
-              isCustomTooLong
-            }
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-second px-5 py-3 text-sm font-semibold text-primary transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <FiSave size={17} />
-            {isSaving ? "Menyimpan..." : "Simpan dan Finalkan Invoice"}
-          </button>
-        </div>
+            <CancelButton
+              href={`/admin/invoices/${id}`}
+              aria-disabled={isSaving}
+              tabIndex={isSaving ? -1 : undefined}
+              className={`${BTN_BASE} w-full border border-second/30 text-second hover:border-second2 hover:text-second2 ${FOCUS_RING} ${
+                isSaving ? "pointer-events-none opacity-50" : ""
+              }`}
+            >
+              Batal
+            </CancelButton>
+          </div>
+        </aside>
       </form>
     </div>
   );

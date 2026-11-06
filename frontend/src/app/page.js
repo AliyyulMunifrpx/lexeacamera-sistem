@@ -195,7 +195,7 @@ export default function Home() {
       <div
         ref={navRef}
         role="tablist"
-        className="sticky top-0 z-30 mt-4 flex h-fit w-full justify-between border-b border-second/10 bg-primary pt-4 text-sm font-normal text-second"
+        className="sticky top-0 z-30 mt-4 flex h-fit w-full justify-between border-b border-second/30 bg-primary pt-4 text-sm font-normal text-second"
       >
         {TABS.map((tab, index) => {
           const isActive = activeIndex === index;

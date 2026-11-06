@@ -1,8 +1,9 @@
-import { createClient } from "@supabase/supabase-js";
 import logger from "../application/logging.js";
-import { supabase, supabaseAuth } from "../application/supabase.js";
+import { createAuthClient, supabase } from "../application/supabase.js";
 import { ResponseError } from "../error/response-error.js";
 import { prisma } from "../lib/database.js";
+import { hashPin } from "../utils/secret.js";
+import { setPinValidation } from "../validation/pin-validation.js";
 import {
   getUserValidation,
   loginUserValidation,
@@ -38,11 +39,11 @@ const register = async function (request) {
 
       let authData;
       try {
-        const result = await supabaseAuth.auth.signUp({
+        const result = await createAuthClient().auth.signUp({
           email: user.email,
           password: user.password,
           options: {
-            emailRedirectTo: `${process.env.FRONTEND_URL}/auth/verify-email`,
+            emailRedirectTo: `${process.env.FRONTEND_URL}/auth/login`,
           },
         });
         if (result.error) {
@@ -66,6 +67,8 @@ const register = async function (request) {
             supabase_id: authData.user.id,
             email: user.email,
             name: user.name,
+            // Register publik hanya untuk pemilik pertama. Admin dibuat oleh owner.
+            role: "OWNER",
           },
           select: { email: true, name: true },
         });
@@ -86,10 +89,19 @@ const register = async function (request) {
     { timeout: 15000 },
   );
 };
+// Mencabut sesi Supabase yang baru dibuat tapi tidak jadi diberikan ke klien.
+const revokeSession = async (accessToken) => {
+  try {
+    const { error } = await supabase.auth.admin.signOut(accessToken, "local");
+    if (error) logger.error("SUPABASE REVOKE ERROR", error);
+  } catch (e) {
+    logger.error("SUPABASE REVOKE THREW", e);
+  }
+};
 const login = async function (request) {
   const req = validate(loginUserValidation, request);
   const { data: authData, error: authError } =
-    await supabaseAuth.auth.signInWithPassword({
+    await createAuthClient().auth.signInWithPassword({
       email: req.email,
       password: req.password,
     });
@@ -113,39 +125,66 @@ const login = async function (request) {
   if (!supabaseEmail) {
     throw new ResponseError(500, "SUPABASE_EMAIL_MISSING");
   }
-  let user;
-  try {
-    user = await prisma.user.upsert({
-      where: {
-        supabase_id: supabaseId,
-      },
-      update: {
-        email: supabaseEmail,
-      },
-      create: {
-        supabase_id: supabaseId,
-        email: supabaseEmail,
-        name: "User",
-      },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-      },
-    });
-  } catch (e) {
-    if (e.code === "P2002") {
-      throw new ResponseError(409, "EMAIL_CONFLICT");
-    }
-    throw e;
+  const session = authData.session;
+
+  // Hanya akun yang sudah terdaftar di sistem (owner / admin undangan) yang boleh
+  // masuk. Login TIDAK lagi membuat user baru, supaya akun Supabase sembarang
+  // tidak otomatis jadi admin.
+  let user = await prisma.user.findUnique({
+    where: { supabase_id: supabaseId },
+    select: { id: true, email: true, name: true, role: true, is_active: true },
+  });
+
+  if (!user) {
+    await revokeSession(session.access_token);
+    throw new ResponseError(401, "INCORRECT_EMAIL_OR_PASSWORD");
   }
 
+  if (!user.is_active) {
+    await revokeSession(session.access_token);
+    throw new ResponseError(403, "ACCOUNT_SUSPEND");
+  }
+
+  // Sinkronkan email kalau diubah lewat Supabase (verifikasi ganti email)
+  if (user.email !== supabaseEmail) {
+    try {
+      user = await prisma.$transaction(async (tx) => {
+        const updated = await tx.user.update({
+          where: { id: user.id },
+          data: { email: supabaseEmail },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            role: true,
+            is_active: true,
+          },
+        });
+
+        await tx.employee.updateMany({
+          where: { user_id: user.id },
+          data: { email: supabaseEmail },
+        });
+
+        return updated;
+      });
+    } catch (e) {
+      await revokeSession(session.access_token);
+      if (e.code === "P2002") {
+        throw new ResponseError(409, "EMAIL_CONFLICT");
+      }
+      throw e;
+    }
+  }
+
+  // Token TIDAK dikembalikan di body. Controller menaruhnya di cookie httpOnly.
   return {
-    email: user.email,
-    name: user.name,
-    access_token: authData.session.access_token,
-    refresh_token: authData.session.refresh_token,
-    access_token_expires: authData.session.expires_in,
+    user: { email: user.email, name: user.name, role: user.role },
+    session: {
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+      expires_in: session.expires_in,
+    },
   };
 };
 
@@ -158,12 +197,21 @@ const get = async function (request) {
     select: {
       email: true,
       name: true,
+      role: true,
+      employee: { select: { is_active: true, pin_hash: true } },
     },
   });
   if (!user) {
     throw new ResponseError(404, "USER_NOT_FOUND");
   }
-  return user;
+  const { employee, ...profile } = user;
+  return {
+    ...profile,
+    attendance: {
+      enabled: employee !== null && employee.is_active,
+      pin_set: employee !== null && employee.pin_hash !== null,
+    },
+  };
 };
 const updatePassword = async function (request) {
   const req = validate(updatePasswordValidation, request);
@@ -177,17 +225,7 @@ const updatePassword = async function (request) {
   }
 
   // 1. Verifikasi password lama menggunakan client terpisah
-  const verifyClient = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_ANON_KEY,
-    {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-        detectSessionInUrl: false,
-      },
-    },
-  );
+  const verifyClient = createAuthClient();
 
   const { error: verifyError } = await verifyClient.auth.signInWithPassword({
     email: user.email,
@@ -211,6 +249,48 @@ const updatePassword = async function (request) {
   return {
     message: "PASSWORD_UPDATED",
   };
+};
+const setPin = async function (request) {
+  const req = validate(setPinValidation, request);
+
+  const user = await prisma.user.findUnique({
+    where: { id: req.id },
+    select: {
+      email: true,
+      employee: { select: { id: true, is_active: true } },
+    },
+  });
+
+  if (!user) {
+    throw new ResponseError(404, "USER_NOT_FOUND");
+  }
+  if (!user.employee || !user.employee.is_active) {
+    throw new ResponseError(409, "ATTENDANCE_NOT_ENABLED");
+  }
+
+  const { error } = await createAuthClient().auth.signInWithPassword({
+    email: user.email,
+    password: req.current_password,
+  });
+
+  if (error) {
+    throw new ResponseError(400, "CURRENT_PASSWORD_INVALID");
+  }
+
+  const { count } = await prisma.employee.updateMany({
+    where: { id: user.employee.id, user_id: req.id, is_active: true },
+    data: {
+      pin_hash: await hashPin(req.pin),
+      pin_failed_count: 0,
+      pin_locked_until: null,
+    },
+  });
+
+  if (count === 0) {
+    throw new ResponseError(409, "ATTENDANCE_NOT_ENABLED");
+  }
+
+  return { message: "PIN_UPDATED" };
 };
 const updateName = async function (request) {
   const req = validate(updateNameValidation, request);
@@ -263,6 +343,15 @@ const updateEmail = async (request, access_token) => {
     throw new ResponseError(409, "EMAIL_ALREADY_EXIST");
   }
 
+  const existingEmployee = await prisma.employee.findUnique({
+    where: { email: req.email },
+    select: { user_id: true },
+  });
+
+  if (existingEmployee && existingEmployee.user_id !== user.id) {
+    throw new ResponseError(409, "EMAIL_ALREADY_EXIST");
+  }
+
   const response = await fetch(`${process.env.SUPABASE_URL}/auth/v1/user`, {
     method: "PUT",
     headers: {
@@ -310,6 +399,7 @@ export default {
   login,
   get,
   updatePassword,
+  setPin,
   updateName,
   updateEmail,
   logout,

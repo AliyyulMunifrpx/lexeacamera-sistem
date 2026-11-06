@@ -1,19 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { getAccessToken } from "../../lib/auth/token-storage.js";
 import { useCurrentUser } from "../../app/features/auth/hooks.js";
 
-export default function AuthGuard({ children }) {
+const HOME = { OWNER: "/owner", ADMIN: "/admin" };
+
+// role: "OWNER" atau "ADMIN" = area yang dijaga. User dengan role lain
+// dikirim ke area miliknya sendiri.
+export default function AuthGuard({ role, children }) {
   const router = useRouter();
-
-  // null = belum dicek. Token dibaca setelah mount, bukan saat render pertama.
-  const [hasToken, setHasToken] = useState(null);
-
-  useEffect(() => {
-    setHasToken(Boolean(getAccessToken()));
-  }, []);
 
   const {
     data: user,
@@ -26,21 +22,19 @@ export default function AuthGuard({ children }) {
 
   const isUnauthorized =
     isError && !isFetching && error?.response?.status === 401;
+  const isWrongRole = Boolean(user && role && user.role !== role);
 
   useEffect(() => {
-    if (hasToken === false || isUnauthorized) {
+    if (isUnauthorized) {
       router.replace("/auth/login");
+    } else if (isWrongRole) {
+      router.replace(HOME[user.role] ?? "/auth/login");
     }
-  }, [hasToken, isUnauthorized, router]);
+  }, [isUnauthorized, isWrongRole, user, router]);
 
-  if (
-    hasToken === null ||
-    hasToken === false ||
-    isUnauthorized ||
-    (!user && (isPending || isFetching))
-  ) {
+  if (isUnauthorized || isWrongRole || (!user && (isPending || isFetching))) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-neutral-950 text-sm text-neutral-400">
+      <div className="flex min-h-screen items-center justify-center bg-primary text-sm text-second">
         Memeriksa sesi...
       </div>
     );

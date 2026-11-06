@@ -4,28 +4,36 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link.js";
 import { useRouter } from "next/navigation.js";
 import {
-  FiArrowLeft,
   FiAlertCircle,
+  FiArrowLeft,
   FiCheck,
+  FiFileText,
+  FiLoader,
   FiMinus,
   FiPlus,
   FiSearch,
   FiTrash2,
 } from "react-icons/fi";
 
-import { useCreateInvoice } from "../../../../features/invoices/hooks.js";
-import { useGetCameras } from "../../../../features/cameras/hooks.js";
+import { useCreateInvoice } from "../../../../features/admin-invoices/hooks.js";
 import { useGetTerms } from "../../../../features/terms/hooks.js";
+import { useGetCustomers } from "../../../../features/customer/hooks.js";
 import { normalizeApiError } from "../../../../../lib/api/errors.js";
 import notify from "../../../../../lib/notify.js";
+import PrimaryButton from "../../../../../components/primary-button.jsx";
+import CancelButton from "./../../../../../components/cancel-button";
+import { useGetAdminCameras } from "../../../../features/admin-cameras/hooks.js";
 
-const INPUT_CLASS =
-  "w-full rounded-xl border border-second/25 bg-primary px-3 py-3 text-sm text-second outline-none transition placeholder:text-second/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-second";
-
-const FOCUS_RING =
-  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-second";
+/* -------------------------------------------------------------------------- */
+/*  Design rules                                                              */
+/*  Spacing : only 2, 4, 8, 16                                                */
+/*  Color   : primary + second (+ second2 error, second3 sukses, second4 fokus) */
+/* -------------------------------------------------------------------------- */
 
 const TERMS_MAX_LENGTH = 5000;
+const MAX_ITEMS = 10;
+const MAX_QUANTITY = 10;
+const CUSTOMER_LOOKUP_DEBOUNCE = 500;
 
 const TERMS_MODES = {
   TEMPLATE: "template",
@@ -63,63 +71,378 @@ const INITIAL_FORM = {
   is_final: false,
 };
 
+const FIELD_ORDER = [
+  "customer_name",
+  "customer_whatsapp",
+  "customer_address",
+  "items",
+  "discount",
+  "custom_terms",
+];
+const CUSTOMER_CHOICE = {
+  EXISTING: "existing",
+  NEW: "new",
+};
+
+const FOCUS_RING =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-second4/40";
+
+const BTN_BASE =
+  "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition touch-manipulation";
+
+const labelClass = "mb-2 block text-sm font-semibold text-second";
+
+function inputClass(hasError) {
+  return [
+    "w-full min-w-0 rounded-xl border bg-primary px-4 py-2 text-base text-second",
+    "placeholder:text-second/35 transition-colors duration-150",
+    "outline-none focus:ring-4",
+    "disabled:cursor-not-allowed disabled:bg-second/5 disabled:text-second/50",
+    hasError
+      ? "border-second2 focus:border-second2 focus:ring-second2/15"
+      : "border-second/30 hover:border-second/30 focus:border-second4 focus:ring-second4/15",
+  ].join(" ");
+}
+
 function formatCurrency(value) {
   const amount = Number(value);
-
   if (!Number.isFinite(amount)) return "-";
-
-  return new Intl.NumberFormat("id-ID", {
+  const sign = amount < 0 ? "-" : "";
+  return `${sign}${new Intl.NumberFormat("id-ID", {
     style: "currency",
     currency: "IDR",
     maximumFractionDigits: 0,
-  }).format(amount);
+  }).format(Math.abs(amount))}`;
 }
+
 function formatThousands(value) {
   const digits = String(value ?? "").replace(/\D/g, "");
   return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 }
-function Field({ label, htmlFor, children, required = false }) {
+
+function normalizeWhatsapp(input) {
+  let digits = String(input ?? "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("0")) digits = digits.slice(1);
+  if (!digits.startsWith("62")) digits = `62${digits}`;
+  return digits;
+}
+
+/* ------------------------------ Small pieces ------------------------------ */
+
+function Tag({ children, tone = "outline" }) {
+  const tones = {
+    outline: "border border-second/20 text-second/60",
+    strong: "border border-second4 text-second4",
+    soft: "bg-second/10 text-second",
+    solid: "bg-second text-primary",
+    grad: "bg-grad text-primary",
+    failure: "bg-second2 text-primary",
+  };
+
+  return (
+    <span
+      className={`inline-flex h-4 shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-2 text-xs font-semibold leading-none ${tones[tone]}`}
+    >
+      {children}
+    </span>
+  );
+}
+
+function ErrorText({ id, children }) {
+  return (
+    <p
+      id={id}
+      role="alert"
+      className="mt-2 flex items-start gap-2 text-sm text-second2"
+    >
+      <FiAlertCircle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+      {children}
+    </p>
+  );
+}
+
+function FormSection({ title, description, aside, children, sectionRef }) {
+  return (
+    <section
+      ref={sectionRef}
+      className="flex min-w-0 scroll-mt-16 flex-col gap-8 rounded-2xl border border-second/30 bg-primary p-4 shadow-xl shadow-second/5 sm:p-8"
+    >
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+        <div>
+          <h2 className="text-lg font-bold text-second">{title}</h2>
+          {description && (
+            <p className="mt-2 text-pretty text-sm text-second/60">
+              {description}
+            </p>
+          )}
+        </div>
+        {aside}
+      </div>
+      <div className="flex flex-col gap-4">{children}</div>
+    </section>
+  );
+}
+
+function FieldGrid({ children }) {
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{children}</div>
+  );
+}
+
+function FormField({ label, htmlFor, required, children, description, error }) {
+  const descId = `${htmlFor}-desc`;
   return (
     <div className="min-w-0">
-      <label htmlFor={htmlFor} className="mb-2 block text-sm font-medium">
+      <label htmlFor={htmlFor} className={labelClass}>
         {label}
-        {required && <span className="ml-1 text-red-400">*</span>}
+        {required ? (
+          <span className="ml-2 text-second2" aria-hidden="true">
+            *
+          </span>
+        ) : (
+          <span className="ml-2 text-xs font-normal text-second/50">
+            Opsional
+          </span>
+        )}
       </label>
+      {children}
+      {error ? (
+        <ErrorText id={descId}>{error}</ErrorText>
+      ) : (
+        description && (
+          <p id={descId} className="mt-2 text-sm text-second/60">
+            {description}
+          </p>
+        )
+      )}
+    </div>
+  );
+}
 
+function PrefixedInput({ prefix, children }) {
+  return (
+    <div className="flex">
+      <span
+        aria-hidden="true"
+        className="inline-flex shrink-0 items-center rounded-l-xl border border-r-0 border-second/30 bg-second/5 px-4 text-sm font-medium text-second/60"
+      >
+        {prefix}
+      </span>
       {children}
     </div>
   );
 }
 
-function Section({ title, description, children }) {
+function ToggleCard({
+  name,
+  checked,
+  onChange,
+  disabled,
+  title,
+  description,
+  children,
+}) {
   return (
-    <section className="space-y-5 rounded-2xl border border-second/15 p-5 sm:p-6">
-      <div>
-        <h2 className="font-semibold">{title}</h2>
-        {description && (
-          <p className="mt-1 text-sm text-second/60">{description}</p>
-        )}
+    <div
+      className={`rounded-xl border p-4 transition-colors ${
+        checked ? "border-second4 bg-second4/5" : "border-second/30"
+      }`}
+    >
+      <label className="flex cursor-pointer items-center gap-4">
+        <input
+          type="checkbox"
+          name={name}
+          checked={checked}
+          onChange={onChange}
+          disabled={disabled}
+          className={`size-4 shrink-0 cursor-pointer accent-second4 ${FOCUS_RING}`}
+        />
+        <span className="min-w-0">
+          <span className="block text-sm font-semibold text-second">
+            {title}
+          </span>
+          <span className="mt-2 block text-sm text-second/60">
+            {description}
+          </span>
+        </span>
+      </label>
+      {checked && children && <div className="mt-4">{children}</div>}
+    </div>
+  );
+}
+
+function RadioCard({
+  name,
+  value,
+  checked,
+  onChange,
+  disabled,
+  title,
+  description,
+}) {
+  return (
+    <label
+      className={`flex cursor-pointer items-center gap-4 rounded-xl border p-4 transition-colors ${
+        checked ? "border-second4 bg-second4/5" : "border-second/30"
+      } ${disabled ? "pointer-events-none opacity-50" : ""}`}
+    >
+      <input
+        type="radio"
+        name={name}
+        value={value}
+        checked={checked}
+        onChange={onChange}
+        disabled={disabled}
+        className={`size-4 shrink-0 cursor-pointer accent-second4 ${FOCUS_RING}`}
+      />
+      <span className="min-w-0">
+        <span className="block text-sm font-semibold text-second">{title}</span>
+        <span className="mt-2 block text-sm text-second/60">{description}</span>
+      </span>
+    </label>
+  );
+}
+
+function QuantityButton({ label, onClick, disabled, children }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={onClick}
+      disabled={disabled}
+      className={`inline-flex size-8 items-center justify-center rounded-full border border-second/30 text-second shadow transition-colors hover:border-second4 hover:text-second4 disabled:opacity-50 touch-manipulation ${FOCUS_RING}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+/* --------------------------------- Summary -------------------------------- */
+
+function SummaryRow({ label, children }) {
+  return (
+    <div className="flex items-start justify-between gap-4 py-2">
+      <dt className="text-xs text-second/60">{label}</dt>
+      <dd className="min-w-0 text-right text-sm font-semibold tabular-nums text-second">
+        {children}
+      </dd>
+    </div>
+  );
+}
+
+function InvoiceSummary({
+  customerName,
+  matchedCustomerName,
+  itemCount,
+  isFinal,
+  subtotal,
+  customerChoice,
+  storeDiscount,
+  customerDiscount,
+  totalAmount,
+}) {
+  return (
+    <section className="flex min-w-0 flex-col gap-4 rounded-2xl border border-second/30 bg-primary p-4 shadow-xl shadow-second/5 sm:p-8">
+      <h2 className="text-lg font-bold text-second">Ringkasan</h2>
+
+      <div className="flex min-w-0 items-center gap-4">
+        <div
+          aria-hidden="true"
+          className="flex size-16 shrink-0 items-center justify-center rounded-xl bg-second/5 text-second/40"
+        >
+          <FiFileText size={16} />
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <p className="line-clamp-2 break-words text-sm font-semibold text-second">
+            {customerName.trim() || "Nama pelanggan"}
+          </p>
+
+          {matchedCustomerName && (
+            <p className="mt-2 line-clamp-1 break-words text-xs text-second/60">
+              {customerChoice === CUSTOMER_CHOICE.EXISTING ? (
+                <>
+                  Tertaut ke pelanggan lama:{" "}
+                  <span className="font-semibold text-second4">
+                    {matchedCustomerName}
+                  </span>
+                </>
+              ) : (
+                <>
+                  Tertaut ke pelanggan lama{" "}
+                  <span className="font-semibold text-second4">
+                    {matchedCustomerName}
+                  </span>{" "}
+                  (data baru)
+                </>
+              )}
+            </p>
+          )}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Tag>{itemCount} item</Tag>
+            {isFinal ? <Tag tone="grad">Final</Tag> : <Tag>Draft</Tag>}
+          </div>
+        </div>
       </div>
 
-      {children}
+      <dl className="divide-y divide-second/10 border-y border-second/30">
+        <SummaryRow label="Subtotal">{formatCurrency(subtotal)}</SummaryRow>
+        <SummaryRow label="Diskon toko">
+          {storeDiscount > 0 ? `- ${formatCurrency(storeDiscount)}` : "—"}
+        </SummaryRow>
+        <SummaryRow label="Diskon pelanggan">
+          {customerDiscount > 0 ? `- ${formatCurrency(customerDiscount)}` : "—"}
+        </SummaryRow>
+        <SummaryRow label="Estimasi total">
+          <span className="flex flex-col items-end gap-2">
+            <span>{formatCurrency(totalAmount)}</span>
+            {totalAmount < 0 && <Tag tone="failure">Melebihi subtotal</Tag>}
+          </span>
+        </SummaryRow>
+      </dl>
+
+      <p className="text-xs text-second/50">
+        Preview saja. Backend tetap menghitung subtotal dan total akhir.
+      </p>
     </section>
   );
 }
 
+/* ---------------------------------- Page ---------------------------------- */
+
 export default function CreateInvoicePage() {
   const router = useRouter();
   const createMutation = useCreateInvoice();
+  const formRef = useRef(null);
+  const itemsRef = useRef(null);
 
   const [form, setForm] = useState(INITIAL_FORM);
+  const [errors, setErrors] = useState({});
   const [selectedItems, setSelectedItems] = useState([]);
   const [cameraSearch, setCameraSearch] = useState("");
-  const [discountError, setDiscountError] = useState("");
   const storeDiscountRef = useRef(null);
   const customerDiscountRef = useRef(null);
   const pendingDiscountCaret = useRef(null);
   const [termsMode, setTermsMode] = useState(TERMS_MODES.TEMPLATE);
   const [customTerms, setCustomTerms] = useState("");
   const trimmedSearch = cameraSearch.trim();
+
+  // ── Deteksi pelanggan via nomor WhatsApp ──
+  const { data: customersResponse } = useGetCustomers();
+  const [matchedCustomer, setMatchedCustomer] = useState(null);
+  const [customerChoice, setCustomerChoice] = useState(
+    CUSTOMER_CHOICE.EXISTING,
+  );
+  const [isLookingUpCustomer, setIsLookingUpCustomer] = useState(false);
+  const lookupTimerRef = useRef(null);
+
+  const customersList = useMemo(() => {
+    if (Array.isArray(customersResponse)) return customersResponse;
+    return customersResponse?.data ?? customersResponse?.items ?? [];
+  }, [customersResponse]);
+
+  const isSubmitting = createMutation.isPending;
 
   const {
     data: cameraResponse,
@@ -128,10 +451,8 @@ export default function CreateInvoicePage() {
     error: cameraError,
     isFetching: isFetchingCameras,
     refetch: refetchCameras,
-  } = useGetCameras({
-    search: trimmedSearch,
-    page: 1,
-  });
+  } = useGetAdminCameras({ search: trimmedSearch, page: 1 });
+
   const {
     data: termsResponse,
     isPending: isLoadingTerms,
@@ -145,13 +466,66 @@ export default function CreateInvoicePage() {
     }
   }, [isCameraError, cameraError]);
 
+  // Lookup pelanggan dari nomor WA (debounce).
+  useEffect(() => {
+    if (lookupTimerRef.current) {
+      clearTimeout(lookupTimerRef.current);
+      lookupTimerRef.current = null;
+    }
+
+    const raw = form.customer_whatsapp.trim();
+    const digits = raw.replace(/\D/g, "");
+
+    if (digits.length < 8) {
+      setMatchedCustomer(null);
+      setCustomerChoice(CUSTOMER_CHOICE.EXISTING);
+      setIsLookingUpCustomer(false);
+      return;
+    }
+
+    setIsLookingUpCustomer(true);
+
+    lookupTimerRef.current = setTimeout(() => {
+      const normalizedQuery = normalizeWhatsapp(digits);
+      const found =
+        customersList.find(
+          (customer) =>
+            normalizeWhatsapp(customer.whatsapp) === normalizedQuery,
+        ) ?? null;
+
+      setMatchedCustomer(found);
+      setIsLookingUpCustomer(false);
+
+      if (found) {
+        setCustomerChoice(CUSTOMER_CHOICE.EXISTING);
+        setForm((current) => ({
+          ...current,
+          customer_instagram:
+            current.customer_instagram.trim() === ""
+              ? (found.instagram ?? "")
+              : current.customer_instagram,
+          customer_address:
+            current.customer_address.trim() === ""
+              ? (found.address ?? "")
+              : current.customer_address,
+        }));
+      }
+    }, CUSTOMER_LOOKUP_DEBOUNCE);
+
+    return () => {
+      if (lookupTimerRef.current) {
+        clearTimeout(lookupTimerRef.current);
+        lookupTimerRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.customer_whatsapp, customersList]);
   const cameras = Array.isArray(cameraResponse)
     ? cameraResponse
     : Array.isArray(cameraResponse?.data)
       ? cameraResponse.data
       : [];
 
-  // Isi template S&K dari GET /terms (null kalau belum pernah diisi).
   const templateTerms = (
     termsResponse?.data?.value ??
     termsResponse?.value ??
@@ -162,11 +536,7 @@ export default function CreateInvoicePage() {
     () =>
       selectedItems.reduce((total, item) => {
         const price = Number(item.camera.price);
-
-        if (!Number.isFinite(price) || price < 0) {
-          return total;
-        }
-
+        if (!Number.isFinite(price) || price < 0) return total;
         return total + price * item.quantity;
       }, 0),
     [selectedItems],
@@ -179,57 +549,88 @@ export default function CreateInvoicePage() {
 
   const storeDiscount =
     form.store_discount === "" ? 0 : Number(form.store_discount);
-
   const customerDiscount =
     form.customer_discount === "" ? 0 : Number(form.customer_discount);
-
   const totalAmount = subtotal - storeDiscount - customerDiscount;
 
   const selectedIds = new Set(selectedItems.map((item) => item.camera.id));
-
   const isCustomTooLong = customTerms.length > TERMS_MAX_LENGTH;
+
+  const discountLiveError =
+    totalAmount < 0 ? "Total diskon tidak boleh melebihi subtotal." : "";
+
+  const errorOf = (name) =>
+    name === "discount" ? errors.discount || discountLiveError : errors[name];
+
+  function fieldProps(name, { hasDescription = false, required = true } = {}) {
+    const error = errorOf(name);
+    return {
+      "aria-invalid": error ? true : undefined,
+      "aria-describedby": error || hasDescription ? `${name}-desc` : undefined,
+      "aria-required": required || undefined,
+    };
+  }
+
+  function clearError(name) {
+    setErrors((previous) =>
+      previous[name] ? { ...previous, [name]: undefined } : previous,
+    );
+  }
 
   function handleFormChange(event) {
     const { name, value, checked, type } = event.target;
-
     setForm((current) => ({
       ...current,
       [name]: type === "checkbox" ? checked : value,
     }));
+    clearError(name);
+  }
+  function handleCustomerChoiceChange(nextChoice) {
+    setCustomerChoice(nextChoice);
+
+    if (!matchedCustomer) return;
+
+    if (nextChoice === CUSTOMER_CHOICE.EXISTING) {
+      // Isi ulang IG & alamat dari data lama jika masih kosong.
+      setForm((current) => ({
+        ...current,
+        customer_instagram:
+          current.customer_instagram.trim() === ""
+            ? (matchedCustomer.instagram ?? "")
+            : current.customer_instagram,
+        customer_address:
+          current.customer_address.trim() === ""
+            ? (matchedCustomer.address ?? "")
+            : current.customer_address,
+      }));
+    } else {
+      // "Pakai data berbeda": kosongkan IG & alamat supaya user isi sendiri.
+      setForm((current) => ({
+        ...current,
+        customer_instagram: "",
+        customer_address: "",
+      }));
+    }
   }
   function handleDiscountChange(event) {
     const { name, value } = event.target;
     const cursorPosition = event.target.selectionStart ?? value.length;
-
-    // Hitung jumlah digit sebelum kursor sebelum format diterapkan.
     const digitsBeforeCursor = value
       .slice(0, cursorPosition)
       .replace(/\D/g, "").length;
-
-    // State tetap menyimpan angka mentah tanpa titik.
     const digits = value.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
-
-    // Maksimal 12 digit, tanpa nol di depan.
     if (digits.length > 12) return;
-
     pendingDiscountCaret.current = {
       name,
       digitCount: Math.min(digitsBeforeCursor, digits.length),
     };
-
-    setForm((current) => ({
-      ...current,
-      [name]: digits,
-    }));
-
-    setDiscountError("");
+    setForm((current) => ({ ...current, [name]: digits }));
+    clearError("discount");
   }
 
   function handleTermsModeChange(nextMode) {
     setTermsMode(nextMode);
-
-    // Pertama kali pilih "Buat sendiri": mulai dari isi template supaya
-    // tinggal diedit, bukan mengetik dari nol.
+    clearError("custom_terms");
     if (
       nextMode === TERMS_MODES.CUSTOM &&
       customTerms === "" &&
@@ -244,13 +645,12 @@ export default function CreateInvoicePage() {
       notify.error("Kamera tersebut sudah ditambahkan.");
       return;
     }
-
-    if (selectedItems.length >= 10) {
-      notify.error("Maksimal 10 jenis kamera dalam satu invoice.");
+    if (selectedItems.length >= MAX_ITEMS) {
+      notify.error(`Maksimal ${MAX_ITEMS} jenis kamera dalam satu invoice.`);
       return;
     }
-
     setSelectedItems((current) => [...current, { camera, quantity: 1 }]);
+    clearError("items");
   }
 
   function removeCamera(cameraId) {
@@ -263,11 +663,10 @@ export default function CreateInvoicePage() {
     if (
       !Number.isInteger(nextQuantity) ||
       nextQuantity < 1 ||
-      nextQuantity > 10
+      nextQuantity > MAX_QUANTITY
     ) {
       return;
     }
-
     setSelectedItems((current) =>
       current.map((item) =>
         item.camera.id === cameraId
@@ -277,79 +676,80 @@ export default function CreateInvoicePage() {
     );
   }
 
-  function validateForm() {
-    if (!form.customer_name.trim()) {
-      notify.error("Nama pelanggan wajib diisi.");
-      return false;
-    }
+  function validate() {
+    const found = {};
 
-    if (!form.customer_address.trim()) {
-      notify.error("Alamat pelanggan wajib diisi.");
-      return false;
+    if (!form.customer_name.trim()) {
+      found.customer_name = "Nama pelanggan wajib diisi.";
     }
 
     const whatsapp = form.customer_whatsapp.trim();
-
     if (
       !/^\+?\d+$/.test(whatsapp) ||
       whatsapp.length < 8 ||
       whatsapp.length > 15
     ) {
-      notify.error(
-        "WhatsApp harus terdiri dari 8–15 karakter, hanya angka, dan boleh diawali tanda +.",
-      );
-      return false;
+      found.customer_whatsapp =
+        "WhatsApp harus 8–15 karakter, hanya angka, dan boleh diawali tanda +.";
     }
 
-    if (selectedItems.length < 1 || selectedItems.length > 10) {
-      notify.error("Pilih 1–10 jenis kamera untuk invoice.");
-      return false;
+    if (!form.customer_address.trim()) {
+      found.customer_address = "Alamat pelanggan wajib diisi.";
     }
 
-    if (
+    if (selectedItems.length < 1 || selectedItems.length > MAX_ITEMS) {
+      found.items = `Pilih 1–${MAX_ITEMS} jenis kamera untuk invoice.`;
+    } else if (
       selectedItems.some(
         (item) =>
           !Number.isInteger(item.quantity) ||
           item.quantity < 1 ||
-          item.quantity > 10,
+          item.quantity > MAX_QUANTITY,
       )
     ) {
-      notify.error("Kuantitas setiap kamera harus antara 1–10.");
-      return false;
-    }
-
-    if (hasInvalidPrice) {
-      notify.error("Ada kamera dengan harga yang tidak valid.");
-      return false;
+      found.items = `Kuantitas setiap kamera harus antara 1–${MAX_QUANTITY}.`;
+    } else if (hasInvalidPrice) {
+      found.items = "Ada kamera dengan harga yang tidak valid.";
     }
 
     if (totalAmount < 0) {
-      setDiscountError("Total diskon tidak boleh melebihi subtotal.");
-      notify.error("Total diskon tidak boleh melebihi subtotal.");
-      return false;
+      found.discount = "Total diskon tidak boleh melebihi subtotal.";
     }
 
     if (termsMode === TERMS_MODES.CUSTOM) {
       if (!customTerms.trim()) {
-        notify.error(
-          "S&K khusus masih kosong. Isi teksnya atau pilih opsi lain.",
-        );
-        return false;
-      }
-
-      if (customTerms.length > TERMS_MAX_LENGTH) {
-        notify.error(`S&K maksimum ${TERMS_MAX_LENGTH} karakter.`);
-        return false;
+        found.custom_terms =
+          "S&K khusus masih kosong. Isi teksnya atau pilih opsi lain.";
+      } else if (customTerms.length > TERMS_MAX_LENGTH) {
+        found.custom_terms = `S&K maksimum ${TERMS_MAX_LENGTH} karakter.`;
       }
     }
 
-    return true;
+    return found;
+  }
+
+  function focusFirstError(found) {
+    const first = FIELD_ORDER.find((name) => found[name]);
+    if (!first) return;
+    if (first === "items") {
+      itemsRef.current?.scrollIntoView({ block: "center" });
+      return;
+    }
+    const target = first === "discount" ? "store_discount" : first;
+    formRef.current?.elements?.namedItem(target)?.focus();
   }
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (isSubmitting) return;
 
-    if (!validateForm()) return;
+    const found = validate();
+    setErrors(found);
+
+    if (Object.keys(found).length > 0) {
+      focusFirstError(found);
+      return;
+    }
 
     const payload = {
       customer_name: form.customer_name.trim(),
@@ -366,23 +766,16 @@ export default function CreateInvoicePage() {
     if (form.payment_method.trim()) {
       payload.payment_method = form.payment_method.trim();
     }
-
     if (form.ship.trim()) {
       payload.ship = form.ship.trim();
     }
-
     if (form.store_discount !== "") {
       payload.store_discount = Number(form.store_discount);
     }
-
     if (form.customer_discount !== "") {
       payload.customer_discount = Number(form.customer_discount);
     }
 
-    // S&K:
-    // - template : field tidak dikirim, server menyalin dari GET /terms
-    // - none     : null, invoice dibuat tanpa terms
-    // - custom   : string apa adanya untuk invoice ini
     if (termsMode === TERMS_MODES.NONE) {
       payload.terms_and_condition = null;
     } else if (termsMode === TERMS_MODES.CUSTOM) {
@@ -391,545 +784,716 @@ export default function CreateInvoicePage() {
 
     try {
       await createMutation.mutateAsync(payload);
-
       notify.success("Invoice berhasil dibuat.");
       router.push("/admin/invoices");
     } catch (error) {
-      const apiError = normalizeApiError(error);
-      notify.error(apiError.message);
+      const code = error?.response?.data?.errors;
+      const knownErrors = {
+        DISCOUNT_EXCEEDS_TOTAL: "Total diskon tidak boleh melebihi subtotal.",
+        AMOUNT_TOO_LARGE: "Nominal terlalu besar. Periksa jumlah dan diskon.",
+        STORE_NOT_READY:
+          "Data toko belum lengkap. Hubungi owner untuk melengkapinya.",
+        CAMERA_PRICE_INVALID: "Ada kamera dengan harga yang tidak valid.",
+        CAMERA_NOT_FOUND:
+          "Ada kamera yang tidak ditemukan. Muat ulang daftar kamera lalu pilih lagi.",
+      };
+
+      if (code === "CAMERA_NOT_FOUND") {
+        const missingIds = new Set(error?.response?.data?.camera_ids ?? []);
+        if (missingIds.size > 0) {
+          setSelectedItems((current) =>
+            current.filter((item) => !missingIds.has(item.camera.id)),
+          );
+        }
+      }
+
+      notify.error(knownErrors[code] ?? normalizeApiError(error).message);
     }
   }
+
   useLayoutEffect(() => {
     const pending = pendingDiscountCaret.current;
-
     if (!pending) return;
-
     const input =
       pending.name === "store_discount"
         ? storeDiscountRef.current
         : pending.name === "customer_discount"
           ? customerDiscountRef.current
           : null;
-
     if (!input) return;
-
     const formattedValue = formatThousands(form[pending.name]);
     const targetDigitCount = pending.digitCount;
-
     let position = 0;
     let digitsFound = 0;
-
     while (position < formattedValue.length && digitsFound < targetDigitCount) {
-      if (/\d/.test(formattedValue[position])) {
-        digitsFound++;
-      }
-
+      if (/\d/.test(formattedValue[position])) digitsFound++;
       position++;
     }
-
     input.setSelectionRange(position, position);
     pendingDiscountCaret.current = null;
   }, [form.store_discount, form.customer_discount]);
+
+  const discountError = errorOf("discount");
+
+  const whatsappDigits = form.customer_whatsapp.replace(/\D/g, "");
+  const whatsappLongEnough = whatsappDigits.length >= 8;
+  const nameDiffersFromMatch =
+    matchedCustomer?.name &&
+    form.customer_name.trim() &&
+    form.customer_name.trim().toLowerCase() !==
+      matchedCustomer.name.trim().toLowerCase();
+
   return (
-    <div className="mx-auto max-w-5xl space-y-7 pb-8 text-second">
-      <header>
+    <div className="mx-auto flex min-h-dvh w-full max-w-screen-xl flex-col gap-8 bg-primary pb-16">
+      <header className="flex flex-col gap-4">
         <Link
           href="/admin/invoices"
-          className="inline-flex items-center gap-2 text-sm text-second/65 transition hover:text-second"
+          className={`inline-flex h-8 w-fit items-center gap-2 rounded-full pr-4 text-sm font-medium text-second/60 transition-colors hover:text-second4 touch-manipulation ${FOCUS_RING}`}
         >
-          <FiArrowLeft size={17} />
-          Kembali ke Invoice
+          <FiArrowLeft size={16} aria-hidden="true" />
+          Kembali ke invoice
         </Link>
 
-        <h1 className="mt-5 text-2xl font-bold">Buat Invoice</h1>
+        <div className="flex items-center gap-4">
+          <div
+            aria-hidden="true"
+            className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-grad text-primary shadow-lg shadow-second4/20"
+          >
+            <FiFileText size={16} />
+          </div>
 
-        <p className="mt-1 text-sm text-second/65">
-          Masukkan data pelanggan, pilih kamera, lalu atur diskon, S&K, dan
-          status invoice.
-        </p>
+          <div className="min-w-0">
+            <h1 className="text-balance text-2xl font-bold tracking-tight text-second sm:text-3xl">
+              Buat <span className="text-grad">invoice</span>
+            </h1>
+            <p className="mt-2 text-pretty text-sm text-second/60">
+              Masukkan data pelanggan, pilih kamera, lalu atur diskon, S&K, dan
+              status invoice.
+            </p>
+          </div>
+        </div>
       </header>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <Section
-          title="Informasi Pelanggan"
-          description="Informasi ini akan disimpan sebagai bagian dari invoice."
-        >
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-            <Field label="Nama pelanggan" htmlFor="customer-name" required>
-              <input
-                id="customer-name"
-                name="customer_name"
-                value={form.customer_name}
-                onChange={handleFormChange}
+      <form
+        ref={formRef}
+        onSubmit={handleSubmit}
+        noValidate
+        className="grid grid-cols-1 items-start gap-8 xl:grid-cols-3"
+      >
+        <div className="flex min-w-0 flex-col gap-8 xl:col-span-2">
+          <FormSection
+            title="Informasi pelanggan"
+            description="Informasi ini akan disimpan sebagai bagian dari invoice."
+          >
+            <FieldGrid>
+              <FormField
+                label="Nama pelanggan"
+                htmlFor="customer_name"
                 required
-                maxLength={100}
-                placeholder="Nama lengkap pelanggan"
-                className={INPUT_CLASS}
-              />
-            </Field>
-
-            <Field
-              label="WhatsApp pelanggan"
-              htmlFor="customer-whatsapp"
-              required
-            >
-              <input
-                id="customer-whatsapp"
-                name="customer_whatsapp"
-                type="tel"
-                value={form.customer_whatsapp}
-                onChange={handleFormChange}
-                required
-                minLength={8}
-                maxLength={15}
-                pattern="\+?[0-9]+"
-                title="8–15 karakter, hanya angka, boleh diawali +"
-                placeholder="081234567890"
-                className={INPUT_CLASS}
-              />
-            </Field>
-
-            <div className="sm:col-span-2">
-              <Field
-                label="Alamat pelanggan"
-                htmlFor="customer-address"
-                required
+                error={errorOf("customer_name")}
               >
-                <textarea
-                  id="customer-address"
-                  name="customer_address"
-                  value={form.customer_address}
+                <input
+                  id="customer_name"
+                  name="customer_name"
+                  autoComplete="off"
+                  value={form.customer_name}
                   onChange={handleFormChange}
-                  required
-                  maxLength={500}
-                  rows={3}
-                  placeholder="Alamat lengkap pelanggan"
-                  className={`${INPUT_CLASS} resize-y`}
+                  className={inputClass(errorOf("customer_name"))}
+                  placeholder="Nama lengkap pelanggan…"
+                  maxLength={100}
+                  disabled={isSubmitting}
+                  {...fieldProps("customer_name")}
                 />
-              </Field>
-            </div>
+              </FormField>
 
-            <Field label="Instagram pelanggan" htmlFor="customer-instagram">
-              <input
-                id="customer-instagram"
-                name="customer_instagram"
-                value={form.customer_instagram}
-                onChange={handleFormChange}
-                maxLength={100}
-                placeholder="@username"
-                className={INPUT_CLASS}
-              />
-            </Field>
-          </div>
-        </Section>
-
-        <Section
-          title="Pilih Kamera"
-          description="Cari kamera dan tambahkan ke invoice. Harga yang ditampilkan hanya estimasi; server akan memakai harga aktual dari data kamera."
-        >
-          <div className="relative">
-            <FiSearch
-              size={18}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-second/45"
-            />
-
-            <input
-              type="search"
-              value={cameraSearch}
-              onChange={(event) => setCameraSearch(event.target.value)}
-              placeholder="Cari nama kamera atau 4 digit terakhir SKU..."
-              className={`${INPUT_CLASS} pl-10`}
-            />
-          </div>
-          {isLoadingCameras ? (
-            <div className="rounded-xl border border-second/15 p-5 text-sm text-second/60">
-              Memuat daftar kamera...
-            </div>
-          ) : isCameraError ? (
-            <div className="rounded-xl border border-red-500/20 p-5">
-              <p className="text-sm text-second/70">
-                Gagal memuat daftar kamera.
-              </p>
-
-              <button
-                type="button"
-                onClick={() => refetchCameras()}
-                disabled={isFetchingCameras}
-                className="mt-3 rounded-lg border border-second/25 px-3 py-2 text-sm hover:bg-second/10 disabled:opacity-50"
+              <FormField
+                label="WhatsApp pelanggan"
+                htmlFor="customer_whatsapp"
+                required
+                error={errorOf("customer_whatsapp")}
               >
-                Coba lagi
-              </button>
-            </div>
-          ) : cameras.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-second/20 p-6 text-center text-sm text-second/60">
-              Tidak ada kamera yang cocok dengan pencarian.
-            </div>
-          ) : (
-            <div className="max-h-80 space-y-2 overflow-y-auto">
-              {cameras.map((camera) => {
-                const isSelected = selectedIds.has(camera.id);
-                const price = Number(camera.price);
+                <input
+                  id="customer_whatsapp"
+                  name="customer_whatsapp"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="off"
+                  value={form.customer_whatsapp}
+                  onChange={handleFormChange}
+                  className={`${inputClass(errorOf("customer_whatsapp"))} tabular-nums`}
+                  placeholder="081234567890"
+                  maxLength={15}
+                  disabled={isSubmitting}
+                  {...fieldProps("customer_whatsapp")}
+                />
 
-                return (
-                  <div
-                    key={camera.id}
-                    className="flex flex-col gap-3 rounded-xl border border-second/15 p-3 sm:flex-row sm:items-center sm:justify-between"
+                {isLookingUpCustomer && (
+                  <p
+                    className="mt-2 flex items-center gap-2 text-xs text-second/60"
+                    role="status"
                   >
-                    <div className="min-w-0">
-                      <p className="break-words text-sm font-medium">
-                        {camera.name}
-                      </p>
+                    <FiLoader
+                      className="animate-spin motion-reduce:animate-none"
+                      size={12}
+                      aria-hidden="true"
+                    />
+                    Mencari pelanggan…
+                  </p>
+                )}
 
-                      <p className="mt-1 text-xs text-second/60">
-                        {Number.isFinite(price) && price >= 0
-                          ? formatCurrency(price)
-                          : "Harga tidak tersedia"}
-                      </p>
+                {!isLookingUpCustomer && matchedCustomer && (
+                  <div className="mt-2 flex flex-col gap-2 rounded-xl border border-second4/30 bg-second4/5 p-4">
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <FiCheck
+                        size={14}
+                        className="shrink-0 text-second4"
+                        aria-hidden="true"
+                      />
+                      <span className="text-second/80">
+                        Nomor ini terdaftar atas nama{" "}
+                        <span className="font-semibold text-second">
+                          {matchedCustomer.name || "(tanpa nama)"}
+                        </span>
+                        .
+                      </span>
+                      {nameDiffersFromMatch && (
+                        <Tag tone="strong">Nama berbeda</Tag>
+                      )}
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => addCamera(camera)}
-                      disabled={
-                        isSelected ||
-                        selectedItems.length >= 10 ||
-                        !Number.isFinite(price) ||
-                        price < 0
-                      }
-                      className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-second/25 px-3 py-2 text-sm font-medium transition hover:bg-second/10 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      {isSelected ? (
-                        <>
-                          <FiCheck size={16} />
-                          Ditambahkan
-                        </>
-                      ) : (
-                        <>
-                          <FiPlus size={16} />
-                          Tambahkan
-                        </>
-                      )}
-                    </button>
+                    <p className="text-xs text-second/70">
+                      Mau pakai data pelanggan ini, atau pakai data berbeda
+                      dengan nomor WA yang sama?
+                    </p>
+
+                    <div className="flex flex-col gap-2">
+                      <label
+                        className={`flex flex-1 cursor-pointer items-start gap-2 rounded-xl border p-4 transition-colors ${
+                          customerChoice === CUSTOMER_CHOICE.EXISTING
+                            ? "border-second4 bg-second4/10"
+                            : "border-second/30 hover:border-second/30"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="customer_choice"
+                          value={CUSTOMER_CHOICE.EXISTING}
+                          checked={customerChoice === CUSTOMER_CHOICE.EXISTING}
+                          onChange={() =>
+                            handleCustomerChoiceChange(CUSTOMER_CHOICE.EXISTING)
+                          }
+                          disabled={isSubmitting}
+                          className={`mt-0.5 size-4 shrink-0 cursor-pointer accent-second4 ${FOCUS_RING}`}
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-second">
+                            Pakai data pelanggan ini
+                          </span>
+                          <span className="mt-2 block text-xs text-second/60">
+                            Instagram dan alamat diisi otomatis dari data
+                            pelanggan. Nama tetap bisa diedit.
+                          </span>
+                        </span>
+                      </label>
+
+                      <label
+                        className={`flex flex-1 cursor-pointer items-start gap-2 rounded-xl border p-4 transition-colors ${
+                          customerChoice === CUSTOMER_CHOICE.NEW
+                            ? "border-second4 bg-second4/10"
+                            : "border-second/30 hover:border-second/30"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="customer_choice"
+                          value={CUSTOMER_CHOICE.NEW}
+                          checked={customerChoice === CUSTOMER_CHOICE.NEW}
+                          onChange={() =>
+                            handleCustomerChoiceChange(CUSTOMER_CHOICE.NEW)
+                          }
+                          disabled={isSubmitting}
+                          className={`mt-0.5 size-4 shrink-0 cursor-pointer accent-second4 ${FOCUS_RING}`}
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-second">
+                            Pakai data berbeda
+                          </span>
+                          <span className="mt-2 block text-xs text-second/60">
+                            Instagram dan alamat dikosongkan. Invoice tetap
+                            tertaut ke pelanggan lama.
+                          </span>
+                        </span>
+                      </label>
+                    </div>
                   </div>
-                );
-              })}
+                )}
+
+                {!isLookingUpCustomer &&
+                  !matchedCustomer &&
+                  whatsappLongEnough && (
+                    <p className="mt-2 text-xs text-second/60">
+                      Nomor belum terdaftar. Pelanggan baru akan dibuat otomatis
+                      saat invoice disimpan.
+                    </p>
+                  )}
+              </FormField>
+            </FieldGrid>
+
+            <FormField
+              label="Alamat pelanggan"
+              htmlFor="customer_address"
+              required
+              error={errorOf("customer_address")}
+            >
+              <textarea
+                id="customer_address"
+                name="customer_address"
+                value={form.customer_address}
+                onChange={handleFormChange}
+                className={`${inputClass(errorOf("customer_address"))} resize-y`}
+                rows={3}
+                placeholder="Alamat lengkap pelanggan…"
+                maxLength={500}
+                disabled={isSubmitting}
+                {...fieldProps("customer_address")}
+              />
+            </FormField>
+
+            <FormField label="Instagram pelanggan" htmlFor="customer_instagram">
+              <input
+                id="customer_instagram"
+                name="customer_instagram"
+                autoComplete="off"
+                spellCheck={false}
+                value={form.customer_instagram}
+                onChange={handleFormChange}
+                className={inputClass(false)}
+                placeholder="@username"
+                maxLength={100}
+                disabled={isSubmitting}
+              />
+            </FormField>
+          </FormSection>
+
+          <FormSection
+            sectionRef={itemsRef}
+            title="Pilih kamera"
+            description="Cari kamera dan tambahkan ke invoice. Harga yang ditampilkan hanya estimasi; server akan memakai harga aktual dari data kamera."
+            aside={
+              <Tag tone="soft">
+                {selectedItems.length}/{MAX_ITEMS} jenis
+              </Tag>
+            }
+          >
+            <div className="relative">
+              <FiSearch
+                size={16}
+                aria-hidden="true"
+                className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-second/40"
+              />
+              <input
+                type="search"
+                name="camera_search"
+                aria-label="Cari kamera"
+                autoComplete="off"
+                spellCheck={false}
+                value={cameraSearch}
+                onChange={(event) => setCameraSearch(event.target.value)}
+                placeholder="Cari nama kamera atau 4 digit terakhir SKU…"
+                className={`${inputClass(false)} pl-8`}
+                disabled={isSubmitting}
+              />
             </div>
-          )}
 
-          <p className="text-xs text-second/55">
-            {selectedItems.length}/10 jenis kamera dipilih. Maksimal 10 jenis
-            kamera, masing-masing dengan kuantitas 1–10. Stok tidak dicek dan
-            tidak dikurangi untuk invoice admin.
-          </p>
-
-          {selectedItems.length > 0 && (
-            <div className="space-y-3 border-t border-second/15 pt-5">
-              <h3 className="font-semibold">Item Invoice</h3>
-
-              {selectedItems.map(({ camera, quantity }) => (
-                <div
-                  key={camera.id}
-                  className="flex flex-col gap-4 rounded-xl border border-second/15 p-4 sm:flex-row sm:items-center"
+            {isLoadingCameras ? (
+              <div
+                className="flex items-center justify-center gap-4 py-16 text-sm text-second/60"
+                role="status"
+              >
+                <FiLoader
+                  className="animate-spin motion-reduce:animate-none"
+                  size={16}
+                  aria-hidden="true"
+                />
+                Memuat daftar kamera…
+              </div>
+            ) : isCameraError ? (
+              <div
+                role="alert"
+                className="flex flex-col items-start gap-4 rounded-xl border border-second2/30 bg-second2/5 p-4"
+              >
+                <p className="text-sm font-medium text-second2">
+                  Gagal memuat daftar kamera.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => refetchCameras()}
+                  disabled={isFetchingCameras}
+                  className={`${BTN_BASE} bg-grad text-primary shadow-lg shadow-second4/25 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING}`}
                 >
-                  <div className="min-w-0 flex-1">
-                    <p className="break-words text-sm font-medium">
-                      {camera.name}
-                    </p>
+                  Coba lagi
+                </button>
+              </div>
+            ) : cameras.length === 0 ? (
+              <p className="rounded-xl bg-second/5 p-4 text-sm text-second/60">
+                Tidak ada kamera yang cocok dengan pencarian.
+              </p>
+            ) : (
+              <div className="flex max-h-80 flex-col gap-2 overflow-y-auto">
+                {cameras.map((camera) => {
+                  const isSelected = selectedIds.has(camera.id);
+                  const price = Number(camera.price);
+                  const validPrice = Number.isFinite(price) && price >= 0;
+                  return (
+                    <div
+                      key={camera.id}
+                      className={`flex flex-col gap-4 rounded-xl border p-4 transition-colors sm:flex-row sm:items-center sm:justify-between ${
+                        isSelected
+                          ? "border-second4 bg-second4/5"
+                          : "border-second/30"
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <p className="break-words text-sm font-semibold text-second">
+                          {camera.name}
+                        </p>
+                        <p className="mt-2 text-sm tabular-nums text-second/60">
+                          {validPrice
+                            ? formatCurrency(price)
+                            : "Harga tidak tersedia"}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => addCamera(camera)}
+                        disabled={
+                          isSubmitting ||
+                          isSelected ||
+                          selectedItems.length >= MAX_ITEMS ||
+                          !validPrice
+                        }
+                        className={`${BTN_BASE} shrink-0 border border-second/30 text-second hover:border-second4 hover:text-second4 disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`}
+                      >
+                        {isSelected ? (
+                          <>
+                            <FiCheck size={16} aria-hidden="true" />
+                            Ditambahkan
+                          </>
+                        ) : (
+                          <>
+                            <FiPlus size={16} aria-hidden="true" />
+                            Tambahkan
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
-                    <p className="mt-1 text-xs text-second/60">
-                      {formatCurrency(camera.price)} × {quantity}
-                    </p>
+            <p className="text-sm text-second/60">
+              Maksimal {MAX_ITEMS} jenis kamera, masing-masing dengan kuantitas
+              1–{MAX_QUANTITY}. Stok tidak dicek dan tidak dikurangi untuk
+              invoice admin.
+            </p>
 
-                    <p className="mt-1 text-sm font-semibold">
-                      {formatCurrency(Number(camera.price) * quantity)}
-                    </p>
+            {selectedItems.length > 0 && (
+              <div className="flex flex-col gap-4 border-t border-second/30 pt-4">
+                <h3 className="text-sm font-semibold text-second">
+                  Item invoice
+                </h3>
+                {selectedItems.map(({ camera, quantity }) => (
+                  <div
+                    key={camera.id}
+                    className="flex flex-col gap-4 rounded-xl border border-second/30 p-4 sm:flex-row sm:items-center"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="break-words text-sm font-semibold text-second">
+                        {camera.name}
+                      </p>
+                      <p className="mt-2 text-xs tabular-nums text-second/60">
+                        {formatCurrency(camera.price)} × {quantity}
+                      </p>
+                      <p className="mt-2 text-sm font-semibold tabular-nums text-second">
+                        {formatCurrency(Number(camera.price) * quantity)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <QuantityButton
+                        label={`Kurangi kuantitas ${camera.name}`}
+                        onClick={() => changeQuantity(camera.id, quantity - 1)}
+                        disabled={isSubmitting || quantity <= 1}
+                      >
+                        <FiMinus size={16} aria-hidden="true" />
+                      </QuantityButton>
+                      <span className="w-8 text-center text-sm font-semibold tabular-nums text-second">
+                        {quantity}
+                      </span>
+                      <QuantityButton
+                        label={`Tambah kuantitas ${camera.name}`}
+                        onClick={() => changeQuantity(camera.id, quantity + 1)}
+                        disabled={isSubmitting || quantity >= MAX_QUANTITY}
+                      >
+                        <FiPlus size={16} aria-hidden="true" />
+                      </QuantityButton>
+                      <button
+                        type="button"
+                        aria-label={`Hapus ${camera.name} dari invoice`}
+                        onClick={() => removeCamera(camera.id)}
+                        disabled={isSubmitting}
+                        className={`ml-2 inline-flex size-8 items-center justify-center rounded-full bg-primary text-second2 shadow transition-colors hover:bg-second2 hover:text-primary disabled:opacity-50 touch-manipulation ${FOCUS_RING}`}
+                      >
+                        <FiTrash2 size={16} aria-hidden="true" />
+                      </button>
+                    </div>
                   </div>
+                ))}
+              </div>
+            )}
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      aria-label={`Kurangi kuantitas ${camera.name}`}
-                      onClick={() => changeQuantity(camera.id, quantity - 1)}
-                      disabled={quantity <= 1}
-                      className="rounded-lg border border-second/25 p-2 transition hover:bg-second/10 disabled:opacity-35"
-                    >
-                      <FiMinus size={15} />
-                    </button>
+            {errors.items && (
+              <ErrorText id="items-desc">{errors.items}</ErrorText>
+            )}
+          </FormSection>
 
-                    <span className="w-8 text-center text-sm font-semibold tabular-nums">
-                      {quantity}
-                    </span>
+          <FormSection
+            title="Pembayaran dan pengiriman"
+            description="Metode pembayaran dan ekspedisi yang dipakai untuk invoice ini."
+          >
+            <FieldGrid>
+              <FormField label="Metode pembayaran" htmlFor="payment_method">
+                <input
+                  id="payment_method"
+                  name="payment_method"
+                  autoComplete="off"
+                  value={form.payment_method}
+                  onChange={handleFormChange}
+                  className={inputClass(false)}
+                  placeholder="Contoh: Transfer BCA…"
+                  maxLength={100}
+                  disabled={isSubmitting}
+                />
+              </FormField>
+              <FormField label="Pengiriman" htmlFor="ship">
+                <input
+                  id="ship"
+                  name="ship"
+                  autoComplete="off"
+                  value={form.ship}
+                  onChange={handleFormChange}
+                  className={inputClass(false)}
+                  placeholder="Contoh: JNE…"
+                  maxLength={100}
+                  disabled={isSubmitting}
+                />
+              </FormField>
+            </FieldGrid>
+          </FormSection>
 
-                    <button
-                      type="button"
-                      aria-label={`Tambah kuantitas ${camera.name}`}
-                      onClick={() => changeQuantity(camera.id, quantity + 1)}
-                      disabled={quantity >= 10}
-                      className="rounded-lg border border-second/25 p-2 transition hover:bg-second/10 disabled:opacity-35"
-                    >
-                      <FiPlus size={15} />
-                    </button>
-
-                    <button
-                      type="button"
-                      aria-label={`Hapus ${camera.name} dari invoice`}
-                      onClick={() => removeCamera(camera.id)}
-                      className="ml-2 rounded-lg border border-red-500/25 p-2 text-red-400 transition hover:bg-red-500/10"
-                    >
-                      <FiTrash2 size={15} />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Section>
-
-        <Section title="Pembayaran dan Pengiriman">
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-            <Field label="Metode pembayaran" htmlFor="payment-method">
-              <input
-                id="payment-method"
-                name="payment_method"
-                value={form.payment_method}
-                onChange={handleFormChange}
-                maxLength={100}
-                placeholder="Contoh: Transfer BCA"
-                className={INPUT_CLASS}
-              />
-            </Field>
-
-            <Field label="Pengiriman" htmlFor="ship">
-              <input
-                id="ship"
-                name="ship"
-                value={form.ship}
-                onChange={handleFormChange}
-                maxLength={100}
-                placeholder="Contoh: JNE"
-                className={INPUT_CLASS}
-              />
-            </Field>
-          </div>
-        </Section>
-
-        <Section
-          title="Syarat dan Ketentuan"
-          description="Pilih S&K pembayaran untuk invoice ini. Invoice menyimpan salinannya sendiri, jadi perubahan template di kemudian hari tidak mengubah invoice yang sudah dibuat."
-        >
-          <fieldset className="space-y-3">
-            <legend className="sr-only">Pilihan syarat dan ketentuan</legend>
-
-            {TERMS_OPTIONS.map((option) => {
-              const isActive = termsMode === option.value;
-
-              return (
-                <label
+          <FormSection
+            title="Syarat dan ketentuan"
+            description="Pilih S&K pembayaran untuk invoice ini. Invoice menyimpan salinannya sendiri, jadi perubahan template di kemudian hari tidak mengubah invoice yang sudah dibuat."
+          >
+            <fieldset className="flex flex-col gap-4">
+              <legend className="sr-only">Pilihan syarat dan ketentuan</legend>
+              {TERMS_OPTIONS.map((option) => (
+                <RadioCard
                   key={option.value}
-                  className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition ${
-                    isActive
-                      ? "border-second/60 bg-second/5"
-                      : "border-second/15 hover:border-second/30"
+                  name="terms_mode"
+                  value={option.value}
+                  checked={termsMode === option.value}
+                  onChange={() => handleTermsModeChange(option.value)}
+                  disabled={isSubmitting}
+                  title={option.title}
+                  description={option.description}
+                />
+              ))}
+            </fieldset>
+
+            {termsMode === TERMS_MODES.TEMPLATE && (
+              <div className="rounded-xl bg-second/5 p-4">
+                <p className="text-xs font-semibold text-second/60">
+                  Preview template saat ini
+                </p>
+                {isLoadingTerms ? (
+                  <p
+                    className="mt-2 flex items-center gap-2 text-sm text-second/60"
+                    role="status"
+                  >
+                    <FiLoader
+                      className="animate-spin motion-reduce:animate-none"
+                      size={16}
+                      aria-hidden="true"
+                    />
+                    Memuat template S&K…
+                  </p>
+                ) : isTermsError ? (
+                  <p role="alert" className="mt-2 text-sm text-second2">
+                    Template tidak dapat ditampilkan. Server tetap akan menyalin
+                    template saat invoice dibuat.
+                  </p>
+                ) : templateTerms ? (
+                  <p className="mt-2 max-h-80 overflow-y-auto whitespace-pre-line break-words text-sm text-second">
+                    {templateTerms}
+                  </p>
+                ) : (
+                  <p className="mt-2 text-sm text-second/60">
+                    Template belum diisi, sehingga invoice dibuat tanpa S&K.
+                    Template diatur oleh owner.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {termsMode === TERMS_MODES.CUSTOM && (
+              <FormField
+                label="S&K khusus invoice ini"
+                htmlFor="custom_terms"
+                required
+                error={errorOf("custom_terms")}
+              >
+                <textarea
+                  id="custom_terms"
+                  name="custom_terms"
+                  value={customTerms}
+                  onChange={(event) => {
+                    setCustomTerms(event.target.value);
+                    clearError("custom_terms");
+                  }}
+                  className={`${inputClass(
+                    errorOf("custom_terms") || isCustomTooLong,
+                  )} resize-y`}
+                  rows={8}
+                  placeholder="Tulis syarat dan ketentuan pembayaran…"
+                  disabled={isSubmitting}
+                  {...fieldProps("custom_terms")}
+                />
+                <p
+                  className={`mt-2 text-right text-xs tabular-nums ${
+                    isCustomTooLong
+                      ? "font-semibold text-second2"
+                      : "text-second/50"
                   }`}
                 >
+                  {customTerms.length}/{TERMS_MAX_LENGTH}
+                </p>
+              </FormField>
+            )}
+          </FormSection>
+
+          <FormSection
+            title="Diskon dan status"
+            description="Nilai diskon dikurangkan dari subtotal. Backend tetap menghitung total akhir."
+          >
+            <FieldGrid>
+              <FormField label="Diskon toko" htmlFor="store_discount">
+                <PrefixedInput prefix="Rp">
                   <input
-                    type="radio"
-                    name="terms_mode"
-                    value={option.value}
-                    checked={isActive}
-                    onChange={() => handleTermsModeChange(option.value)}
-                    className="mt-1 size-4 accent-second"
+                    ref={storeDiscountRef}
+                    id="store_discount"
+                    name="store_discount"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    value={formatThousands(form.store_discount)}
+                    onChange={handleDiscountChange}
+                    className={`${inputClass(Boolean(discountError))} rounded-l-none tabular-nums`}
+                    placeholder="0"
+                    maxLength={16}
+                    disabled={isSubmitting}
+                    aria-invalid={discountError ? true : undefined}
+                    aria-describedby={
+                      discountError ? "discount-desc" : undefined
+                    }
                   />
+                </PrefixedInput>
+              </FormField>
 
-                  <span>
-                    <span className="block text-sm font-medium">
-                      {option.title}
-                    </span>
-                    <span className="mt-1 block text-xs leading-relaxed text-second/60">
-                      {option.description}
-                    </span>
-                  </span>
-                </label>
-              );
-            })}
-          </fieldset>
+              <FormField label="Diskon pelanggan" htmlFor="customer_discount">
+                <PrefixedInput prefix="Rp">
+                  <input
+                    ref={customerDiscountRef}
+                    id="customer_discount"
+                    name="customer_discount"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    value={formatThousands(form.customer_discount)}
+                    onChange={handleDiscountChange}
+                    className={`${inputClass(Boolean(discountError))} rounded-l-none tabular-nums`}
+                    placeholder="0"
+                    maxLength={16}
+                    disabled={isSubmitting}
+                    aria-invalid={discountError ? true : undefined}
+                    aria-describedby={
+                      discountError ? "discount-desc" : undefined
+                    }
+                  />
+                </PrefixedInput>
+              </FormField>
+            </FieldGrid>
 
-          {termsMode === TERMS_MODES.TEMPLATE && (
-            <div className="rounded-xl bg-second/5 p-4">
-              <p className="text-xs font-medium text-second/60">
-                Preview template saat ini
-              </p>
+            {discountError && (
+              <ErrorText id="discount-desc">{discountError}</ErrorText>
+            )}
 
-              {isLoadingTerms ? (
-                <p className="mt-2 text-sm text-second/60">
-                  Memuat template S&K...
-                </p>
-              ) : isTermsError ? (
-                <p className="mt-2 text-sm text-red-400">
-                  Gagal memuat template. Server tetap akan menyalin template
-                  saat invoice dibuat.
-                </p>
-              ) : templateTerms ? (
-                <p className="mt-2 max-h-48 overflow-y-auto whitespace-pre-line break-words text-sm">
-                  {templateTerms}
-                </p>
-              ) : (
-                <p className="mt-2 text-sm text-second/60">
-                  Template belum diisi, sehingga invoice dibuat tanpa S&K.{" "}
-                  <Link
-                    href="/admin/invoices/terms"
-                    className={`font-semibold text-second underline ${FOCUS_RING}`}
-                  >
-                    Isi template
-                  </Link>
-                </p>
-              )}
-            </div>
-          )}
-
-          {termsMode === TERMS_MODES.CUSTOM && (
-            <div className="space-y-2">
-              <label
-                htmlFor="custom-terms"
-                className="block text-sm font-medium"
-              >
-                S&K khusus invoice ini
-              </label>
-
-              <textarea
-                id="custom-terms"
-                value={customTerms}
-                onChange={(event) => setCustomTerms(event.target.value)}
-                rows={8}
-                placeholder="Tulis syarat dan ketentuan pembayaran..."
-                className={`${INPUT_CLASS} resize-y ${
-                  isCustomTooLong ? "border-red-500" : ""
-                }`}
-              />
-
-              <p
-                className={`text-right text-xs ${
-                  isCustomTooLong
-                    ? "font-semibold text-red-400"
-                    : "text-second/55"
-                }`}
-              >
-                {customTerms.length}/{TERMS_MAX_LENGTH}
-              </p>
-            </div>
-          )}
-        </Section>
-
-        <Section
-          title="Diskon dan Total"
-          description="Nilai di bawah adalah preview. Backend tetap menghitung subtotal dan total akhir."
-        >
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-            <Field label="Diskon toko (Rp)" htmlFor="store-discount">
-              <input
-                ref={storeDiscountRef}
-                id="store-discount"
-                name="store_discount"
-                type="text"
-                inputMode="numeric"
-                value={formatThousands(form.store_discount)}
-                onChange={handleDiscountChange}
-                maxLength={12}
-                placeholder="0"
-                className={INPUT_CLASS}
-              />
-            </Field>
-
-            <Field label="Diskon pelanggan (Rp)" htmlFor="customer-discount">
-              <input
-                ref={customerDiscountRef}
-                id="customer-discount"
-                name="customer_discount"
-                type="text"
-                inputMode="numeric"
-                value={formatThousands(form.customer_discount)}
-                onChange={handleDiscountChange}
-                maxLength={12}
-                placeholder="0"
-                className={INPUT_CLASS}
-              />
-            </Field>
-          </div>
-
-          <div className="space-y-3 rounded-xl bg-second/5 p-4">
-            <div className="flex items-center justify-between gap-3 text-sm">
-              <span className="text-second/60">Subtotal</span>
-              <span className="font-medium">{formatCurrency(subtotal)}</span>
-            </div>
-
-            <div className="flex items-center justify-between gap-3 text-sm">
-              <span className="text-second/60">Diskon toko</span>
-              <span>− {formatCurrency(storeDiscount)}</span>
-            </div>
-
-            <div className="flex items-center justify-between gap-3 text-sm">
-              <span className="text-second/60">Diskon pelanggan</span>
-              <span>− {formatCurrency(customerDiscount)}</span>
-            </div>
-
-            <div className="flex items-center justify-between gap-3 border-t border-second/15 pt-3">
-              <span className="font-semibold">Estimasi Total</span>
-              <span className="text-lg font-bold">
-                {formatCurrency(totalAmount)}
-              </span>
-            </div>
-          </div>
-
-          {(discountError || totalAmount < 0) && (
-            <p className="flex items-start gap-2 text-sm text-red-400">
-              <FiAlertCircle className="mt-0.5 shrink-0" />
-              {discountError || "Total diskon tidak boleh melebihi subtotal."}
-            </p>
-          )}
-
-          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-second/15 p-4">
-            <input
-              type="checkbox"
+            <ToggleCard
               name="is_final"
               checked={form.is_final}
               onChange={handleFormChange}
-              className="mt-1 size-4 accent-second"
+              disabled={isSubmitting}
+              title="Langsung finalkan invoice"
+              description="Jika dicentang, invoice langsung final dan tidak dapat diedit. Jika tidak, invoice masih dapat diedit satu kali sesuai aturan backend."
             />
-
-            <span>
-              <span className="block text-sm font-medium">
-                Langsung finalkan invoice
-              </span>
-              <span className="mt-1 block text-xs leading-relaxed text-second/60">
-                Jika dicentang, invoice langsung final dan tidak dapat diedit.
-                Jika tidak dicentang, invoice masih dapat diedit satu kali
-                sesuai aturan backend.
-              </span>
-            </span>
-          </label>
-        </Section>
-
-        <div className="flex flex-col-reverse gap-3 border-t border-second/15 pt-5 sm:flex-row sm:justify-end">
-          <Link
-            href="/admin/invoices"
-            className="rounded-xl border border-second/25 px-5 py-3 text-center text-sm font-medium transition hover:bg-second/10"
-          >
-            Batal
-          </Link>
-
-          <button
-            type="submit"
-            disabled={
-              createMutation.isPending ||
-              selectedItems.length === 0 ||
-              hasInvalidPrice ||
-              isCustomTooLong
-            }
-            className="rounded-xl bg-second px-5 py-3 text-sm font-semibold text-primary transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {createMutation.isPending ? "Membuat Invoice..." : "Buat Invoice"}
-          </button>
+          </FormSection>
         </div>
+
+        <aside className="flex min-w-0 flex-col gap-4 xl:sticky xl:top-16 xl:-mt-4 xl:pt-4">
+          <InvoiceSummary
+            customerName={form.customer_name}
+            matchedCustomerName={matchedCustomer?.name ?? null}
+            customerChoice={customerChoice}
+            itemCount={selectedItems.length}
+            isFinal={form.is_final}
+            subtotal={subtotal}
+            storeDiscount={storeDiscount}
+            customerDiscount={customerDiscount}
+            totalAmount={totalAmount}
+          />
+          <div className="flex flex-col gap-2">
+            <PrimaryButton
+              type="submit"
+              disabled={isSubmitting}
+              aria-busy={isSubmitting}
+              className={`${BTN_BASE} w-full bg-grad text-primary shadow-lg shadow-second4/25 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING}`}
+            >
+              {isSubmitting ? (
+                <>
+                  <FiLoader
+                    className="animate-spin motion-reduce:animate-none"
+                    size={16}
+                    aria-hidden="true"
+                  />
+                  Membuat invoice…
+                </>
+              ) : (
+                "Buat invoice"
+              )}
+            </PrimaryButton>
+
+            <CancelButton
+              href="/admin/invoices"
+              aria-disabled={isSubmitting}
+              tabIndex={isSubmitting ? -1 : undefined}
+              className={`${BTN_BASE} w-full border border-second/30 text-second hover:border-second2 hover:text-second2 ${FOCUS_RING} ${
+                isSubmitting ? "pointer-events-none opacity-50" : ""
+              }`}
+            >
+              Batal
+            </CancelButton>
+          </div>
+        </aside>
       </form>
     </div>
   );

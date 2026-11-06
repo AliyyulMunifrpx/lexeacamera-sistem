@@ -461,7 +461,7 @@ function OrderReceipt({ order }) {
           </div>
         </div>
 
-        <div className="space-y-2 border-t border-second/10 pt-4">
+        <div className="space-y-2 border-t border-second/30 pt-4">
           {order.items?.map((item, index) => (
             <div
               key={`${item.camera_name}-${index}`}
@@ -481,7 +481,7 @@ function OrderReceipt({ order }) {
           ))}
         </div>
 
-        <div className="flex items-center justify-between border-t border-second/10 pt-4">
+        <div className="flex items-center justify-between border-t border-second/30 pt-4">
           <p className="font-semibold text-second">Total</p>
           <p className="text-base font-semibold text-grad">
             Rp{formatPrice(order.total_amount)}
@@ -772,7 +772,7 @@ function OrderPageContent() {
               return (
                 <div
                   key={item.id}
-                  className="space-y-4 border-b border-second/10 pb-4 last:border-b-0 last:pb-0"
+                  className="space-y-4 border-b border-second/30 pb-4 last:border-b-0 last:pb-0"
                 >
                   <div className="flex gap-4">
                     <div className="relative size-20 shrink-0 overflow-hidden rounded-md bg-second/5">

@@ -2,15 +2,16 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { supabase } from "../../../../lib/supabase.js";
+import api from "../../../../lib/api/client.js";
 import { normalizeApiError } from "../../../../lib/api/errors.js";
 import notify from "../../../../lib/notify.js";
+import { useForgotPassword } from "../../../features/auth/hooks.js";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isSent, setIsSent] = useState(false);
-
+  const forgotPassword = useForgotPassword();
   async function handleSubmit(event) {
     event.preventDefault();
 
@@ -20,14 +21,9 @@ export default function ForgotPasswordPage() {
     setIsSent(false);
 
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(
-        email.trim(),
-        {
-          redirectTo: `${process.env.NEXT_PUBLIC_FRONTEND_URL}/auth/reset-password`,
-        },
-      );
-
-      if (error) throw error;
+      await forgotPassword.mutateAsync({
+        email: email.trim(),
+      });
 
       setIsSent(true);
       notify.success("Jika email terdaftar, tautan pemulihan akan dikirimkan.");
@@ -41,7 +37,7 @@ export default function ForgotPasswordPage() {
 
   return (
     <main className="flex min-h-dvh items-center justify-center bg-primary px-5 py-10 text-second">
-      <section className="w-full max-w-md space-y-5 rounded-2xl border border-second/15 p-8">
+      <section className="w-full max-w-md space-y-5 rounded-2xl border border-second/30 p-8">
         <div>
           <h1 className="text-3xl font-bold">Lupa kata sandi?</h1>
           <p className="mt-2 text-sm leading-6 text-second/60">
@@ -53,13 +49,14 @@ export default function ForgotPasswordPage() {
         {isSent ? (
           <div
             role="status"
-            className="space-y-3 rounded-xl border border-second/15 p-4"
+            className="space-y-3 rounded-xl border border-second/30 p-4"
           >
             <p className="font-medium">Periksa email Anda</p>
             <p className="break-all text-sm text-second/60">{email.trim()}</p>
             <p className="text-sm leading-6 text-second/70">
               Jika alamat email tersebut terdaftar, Anda akan menerima tautan
-              pemulihan. Periksa juga folder spam.
+              pemulihan. Periksa juga folder spam. Kalau belum masuk, tunggu
+              sekitar 1 menit sebelum meminta lagi.
             </p>
             <button
               type="button"
@@ -83,7 +80,7 @@ export default function ForgotPasswordPage() {
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 placeholder="nama@email.com"
-                className="w-full rounded-xl border border-second/15 bg-transparent px-4 py-3 outline-none transition-colors placeholder:text-second/35 focus:border-second/50"
+                className="w-full rounded-xl border border-second/30 bg-transparent px-4 py-3 outline-none transition-colors placeholder:text-second/35 focus:border-second/50"
               />
             </div>
 

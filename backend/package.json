@@ -21,6 +21,7 @@
     "express-rate-limit": "^8.7.1",
     "joi": "^18.3.0",
     "multer": "^2.4.0",
+    "nodemailer": "^10.3.1",
     "pg": "^8.23.1",
     "sharp": "^0.35.5",
     "supabase": "^2.121.0",

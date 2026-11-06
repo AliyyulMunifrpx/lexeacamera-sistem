@@ -1,26 +1,47 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link.js";
 import { useParams, useRouter } from "next/navigation";
 import {
   FiArrowLeft,
+  FiCalendar,
   FiCamera,
+  FiCheck,
+  FiCopy,
+  FiEdit2,
   FiExternalLink,
+  FiLayers,
   FiLoader,
   FiPackage,
   FiTag,
-  FiTrash2,
+  FiAlertTriangle,
 } from "react-icons/fi";
 
 import Image from "next/image.js";
-import {
-  useDeleteCamera,
-  useGetCamera,
-} from "../../../../features/cameras/hooks.js";
+import { useGetAdminCamera } from "../../../../features/admin-cameras/hooks.js";
 import { normalizeApiError } from "../../../../../lib/api/errors.js";
 import notify from "../../../../../lib/notify.js";
-import DeleteCameraModal from "../../../../../components/admin/delete-camera-modal.jsx";
+import PrimaryButton from "./../../../../../components/primary-button";
+
+/* -------------------------------------------------------------------------- */
+/*  Design rules (SAMAKAN DENGAN INVOICE)                                     */
+/*  Spacing : only 2, 4, 8, 16                                                */
+/*  Color   : primary + second (+ second2 error, second3 sukses, second4 fokus) */
+/* -------------------------------------------------------------------------- */
+
+const FOCUS_RING =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-second4/40";
+
+const BTN_BASE =
+  "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition touch-manipulation";
+
+const CONDITION_LABEL = {
+  NEW: "Baru",
+  SECOND: "Bekas",
+};
+
+/* -------------------------------- Formatters ------------------------------ */
 
 function formatNumber(number = 0) {
   return new Intl.NumberFormat("id-ID").format(number);
@@ -34,42 +55,211 @@ function formatPrice(price = 0) {
   }).format(price);
 }
 
-function DetailItem({ label, children }) {
+function formatDate(value, withTime = false) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+
+  return date.toLocaleString("id-ID", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    ...(withTime && { hour: "2-digit", minute: "2-digit" }),
+  });
+}
+
+function toNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+/* ------------------------------ Small pieces ------------------------------ */
+
+function Tag({ children, tone = "outline", icon: Icon }) {
+  const tones = {
+    outline: "border border-second/20 text-second/60",
+    strong: "border border-second4 text-second4",
+    soft: "bg-second/10 text-second",
+    solid: "bg-second text-primary",
+    grad: "bg-grad text-primary",
+    success: "bg-second3 text-primary",
+    failure: "bg-second2 text-primary",
+    pending: "bg-second4 text-primary",
+    blue: "bg-second3/10 text-second3",
+    violet: "bg-second4/10 text-second4",
+    red: "bg-second2/10 text-second2",
+    muted: "bg-second/5 text-second/60",
+  };
+
   return (
-    <div className="space-y-1.5">
-      <p className="text-sm text-second/50">{label}</p>
-      <div className="break-words text-sm font-medium text-second">
-        {children || "—"}
+    <span
+      className={`inline-flex h-4 shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-2 text-xs font-semibold leading-none ${tones[tone]}`}
+    >
+      {Icon && <Icon size={12} aria-hidden="true" />}
+      {children}
+    </span>
+  );
+}
+
+function DetailItem({ label, children, mono = false, copyable = false }) {
+  const [copied, setCopied] = useState(false);
+  const hasValue =
+    children !== undefined && children !== null && children !== "";
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(String(children));
+      setCopied(true);
+      notify.success(`${label} disalin.`);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      notify.error("Gagal menyalin ke clipboard.");
+    }
+  }
+
+  return (
+    <div className="min-w-0 space-y-2">
+      <dt className="text-xs text-second/60">{label}</dt>
+      <dd className="flex min-w-0 items-center gap-2 text-sm font-medium text-second">
+        <span className={`min-w-0 break-words ${mono ? "font-mono" : ""}`}>
+          {hasValue ? children : "—"}
+        </span>
+
+        {copyable && hasValue && (
+          <button
+            type="button"
+            onClick={handleCopy}
+            aria-label={`Salin ${label}`}
+            className={`shrink-0 rounded-xl p-2 text-second/60 transition-colors hover:bg-second/10 hover:text-second ${FOCUS_RING}`}
+          >
+            {copied ? (
+              <FiCheck size={14} aria-hidden="true" />
+            ) : (
+              <FiCopy size={14} aria-hidden="true" />
+            )}
+          </button>
+        )}
+      </dd>
+    </div>
+  );
+}
+
+function StatTile({ icon: Icon, label, value }) {
+  return (
+    <div className="flex min-w-0 items-center gap-4">
+      <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-grad text-primary shadow-lg shadow-second4/20">
+        <Icon size={16} aria-hidden="true" />
+      </div>
+
+      <div className="min-w-0">
+        <p className="text-xs text-second/60">{label}</p>
+        <p className="mt-2 truncate text-sm font-semibold tabular-nums text-second">
+          {value}
+        </p>
       </div>
     </div>
   );
 }
 
-function StatusBadge({ active, children }) {
+function SectionTitle({ children }) {
   return (
-    <span
-      className={`inline-flex rounded-full px-3 py-1.5 text-xs font-semibold ${
-        active
-          ? "bg-emerald-500/10 text-emerald-600"
-          : "bg-second/5 text-second/60"
-      }`}
-    >
+    <h3 className="text-xs font-semibold uppercase tracking-wide text-second/50">
       {children}
-    </span>
+    </h3>
   );
 }
+
+/* --------------------------------- States --------------------------------- */
+
+function LoadingState() {
+  return (
+    <div className="mx-auto flex min-h-dvh w-full max-w-screen-xl flex-col gap-8 bg-primary pb-16">
+      <header className="flex flex-col gap-4">
+        <div className="h-8 w-48 animate-pulse rounded-full bg-second/10" />
+        <div className="flex items-center gap-4">
+          <div className="size-8 shrink-0 animate-pulse rounded-xl bg-second/10" />
+          <div className="min-w-0 space-y-2">
+            <div className="h-8 w-64 animate-pulse rounded-lg bg-second/10" />
+            <div className="h-4 w-80 animate-pulse rounded bg-second/10" />
+          </div>
+        </div>
+      </header>
+      <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-2">
+        <div className="h-96 animate-pulse rounded-2xl bg-second/10" />
+        <div className="h-96 animate-pulse rounded-2xl bg-second/10" />
+      </div>
+    </div>
+  );
+}
+
+function ErrorState({ onRetry, isFetching, onBack, notFound = false }) {
+  return (
+    <div className="mx-auto flex min-h-dvh w-full max-w-screen-xl flex-col gap-8 bg-primary pb-16">
+      <header>
+        <button
+          type="button"
+          onClick={onBack}
+          className={`inline-flex h-8 w-fit items-center gap-2 rounded-full pr-4 text-sm font-medium text-second/60 transition-colors hover:text-second4 touch-manipulation ${FOCUS_RING}`}
+        >
+          <FiArrowLeft size={16} aria-hidden="true" />
+          Kembali ke daftar produk
+        </button>
+      </header>
+      <div className="flex flex-col items-center justify-center rounded-2xl border border-second2/30 bg-second2/5 px-4 py-16 text-center">
+        <FiAlertTriangle
+          size={32}
+          className="text-second2"
+          aria-hidden="true"
+        />
+        <h2 className="mt-4 text-lg font-bold text-second">
+          {notFound ? "Produk tidak ditemukan" : "Gagal memuat detail produk"}
+        </h2>
+        <p className="mt-2 max-w-md text-sm text-second/60">
+          {notFound
+            ? "Produk tidak ada atau sudah dihapus."
+            : "Periksa koneksi Anda, lalu coba kembali."}
+        </p>
+        <div className="mt-4 flex flex-wrap justify-center gap-2">
+          <button
+            type="button"
+            onClick={onBack}
+            className={`${BTN_BASE} border border-second/30 text-second hover:border-second4 hover:text-second4 ${FOCUS_RING}`}
+          >
+            Kembali
+          </button>
+          {onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              disabled={isFetching}
+              className={`${BTN_BASE} bg-grad text-primary shadow-lg shadow-second4/25 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING}`}
+            >
+              <FiLoader
+                className={
+                  isFetching
+                    ? "animate-spin motion-reduce:animate-none"
+                    : "hidden"
+                }
+                size={16}
+                aria-hidden="true"
+              />
+              {isFetching ? "Memuat…" : "Coba lagi"}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------- Page ---------------------------------- */
 
 export default function CameraDetailPage() {
   const router = useRouter();
   const params = useParams();
   const id = typeof params.id === "string" ? params.id : "";
 
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-
-  // 1. Tambahkan state untuk menyimpan gambar yang sedang terpilih
-  const [activeImage, setActiveImage] = useState(null);
-
-  const deleteCam = useDeleteCamera();
+  const [selectedImageKey, setSelectedImageKey] = useState(null);
 
   const {
     data: camera,
@@ -78,338 +268,405 @@ export default function CameraDetailPage() {
     error,
     refetch,
     isFetching,
-  } = useGetCamera(id);
+  } = useGetAdminCamera(id);
 
   useEffect(() => {
     if (!isError || !error) return;
-
     const apiError = normalizeApiError(error);
     notify.error(apiError.message);
   }, [isError, error]);
 
-  // 2. Set default activeImage begitu data camera berhasil di-fetch
-  useEffect(() => {
-    if (camera?.images && camera.images.length > 0) {
-      const primary =
-        camera.images.find((img) => img.is_primary) ?? camera.images[0];
-      setActiveImage(primary);
-    }
-  }, [camera]);
+  const images = useMemo(() => camera?.images ?? [], [camera]);
+  const marketplaces = camera?.marketplaceLinks ?? [];
 
-  async function handleDeleteCamera() {
-    try {
-      await deleteCam.mutateAsync(id);
-
-      setShowDeleteModal(false);
-      notify.success("Produk berhasil dihapus.");
-      router.replace("/admin/cameras");
-    } catch (error) {
-      const apiError = normalizeApiError(error);
-      notify.error(apiError.message);
-    }
-  }
+  const activeImage = useMemo(() => {
+    if (images.length === 0) return null;
+    const selected = images.find(
+      (img) => (img.id ?? img.image_url) === selectedImageKey,
+    );
+    return selected ?? images.find((img) => img.is_primary) ?? images[0];
+  }, [images, selectedImageKey]);
 
   if (isPending) {
-    return (
-      <div className="flex min-h-64 items-center justify-center gap-3 text-sm text-second/60">
-        <FiLoader className="animate-spin" size={22} />
-        Memuat detail produk...
-      </div>
-    );
+    return <LoadingState />;
   }
 
   if (isError || !camera) {
     return (
-      <div className="flex min-h-64 flex-col items-center justify-center gap-4 rounded-2xl border border-second/30 p-6 text-center">
-        <FiCamera size={36} className="text-second/30" />
-
-        <div>
-          <h2 className="font-semibold text-second">
-            Gagal memuat detail produk
-          </h2>
-          <p className="mt-2 text-sm text-second/60">
-            Data produk tidak ditemukan atau gagal dimuat.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap justify-center gap-3">
-          <button
-            type="button"
-            onClick={() => router.push("/admin/cameras")}
-            className="rounded-full border border-second/15 px-5 py-2.5 text-sm font-semibold text-second hover:bg-second/5"
-          >
-            Kembali
-          </button>
-
-          {isError && (
-            <button
-              type="button"
-              onClick={() => refetch()}
-              disabled={isFetching}
-              className="rounded-full bg-second px-5 py-2.5 text-sm font-semibold text-primary disabled:opacity-50"
-            >
-              {isFetching ? "Memuat..." : "Coba lagi"}
-            </button>
-          )}
-        </div>
-      </div>
+      <ErrorState
+        notFound={
+          error?.response?.data?.errors === "CAMERA_NOT_FOUND" ||
+          error?.response?.status === 404
+        }
+        onRetry={isError ? () => refetch() : undefined}
+        isFetching={isFetching}
+        onBack={() => router.push("/admin/cameras")}
+      />
     );
   }
 
-  const images = camera.images ?? [];
-  const marketplaces = camera.marketplaceLinks ?? [];
+  /* ----- Turunan data ----- */
+  const price = toNumber(camera.price) ?? 0;
+  const strikethrough = toNumber(camera.strikethrough_price);
+  const stock = toNumber(camera.stock) ?? 0;
+  const shutterCount = toNumber(camera.shutter_count);
 
-  const conditionLabel = {
-    NEW: "Baru",
-    SECOND: "Bekas",
-  };
+  const hasDiscount = strikethrough !== null && strikethrough > price;
+  const discountPercent = hasDiscount
+    ? Math.round(((strikethrough - price) / strikethrough) * 100)
+    : 0;
+
+  const stockLow = stock > 0 && stock <= 3;
+  const outOfStock = stock <= 0;
 
   return (
-    <div className="mx-auto w-full max-w-screen-2xl space-y-6 pb-10">
-      <button
-        type="button"
-        onClick={() => router.push("/admin/cameras")}
-        className="inline-flex items-center gap-2 text-sm text-second/60 transition-colors hover:text-second"
-      >
-        <FiArrowLeft size={18} />
-        Kembali
-      </button>
+    <div className="mx-auto flex min-h-dvh w-full max-w-screen-xl flex-col gap-8 bg-primary pb-16">
+      {/* Navigasi */}
+      <nav aria-label="Navigasi halaman">
+        <Link
+          href="/admin/cameras"
+          className={`inline-flex h-8 w-fit items-center gap-2 rounded-full pr-4 text-sm font-medium text-second/60 transition-colors hover:text-second4 touch-manipulation ${FOCUS_RING}`}
+        >
+          <FiArrowLeft size={16} aria-hidden="true" />
+          Kembali ke daftar produk
+        </Link>
+      </nav>
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <FiCamera size={24} />
-
-            <h1 className="text-2xl font-bold tracking-tight text-second sm:text-3xl">
-              Detail Produk
-            </h1>
+      {/* Header */}
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-center gap-4">
+          <div
+            aria-hidden="true"
+            className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-grad text-primary shadow-lg shadow-second4/20"
+          >
+            <FiCamera size={16} />
           </div>
 
-          <p className="mt-2 text-sm text-second/60">
-            Informasi lengkap produk dalam katalog penjualan.
-          </p>
+          <div className="min-w-0">
+            <p className="text-sm text-second/60">Detail Produk</p>
+            <h1 className="mt-2 text-balance break-words text-2xl font-bold tracking-tight text-second sm:text-3xl">
+              {camera.name}
+            </h1>
+            <p className="mt-2 text-pretty text-sm text-second/60">
+              Informasi lengkap produk dalam katalog penjualan.
+            </p>
+          </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <StatusBadge active={camera.promo}>
-            {camera.promo ? "Promosi aktif" : "Promosi tidak aktif"}
-          </StatusBadge>
+        <div className="flex flex-col gap-4 sm:items-end">
+          <div className="flex flex-wrap gap-2 sm:justify-end">
+            <Tag tone={camera.condition === "NEW" ? "blue" : "violet"}>
+              {CONDITION_LABEL[camera.condition] ?? camera.condition ?? "—"}
+            </Tag>
 
-          <StatusBadge active={camera.best_selling}>
-            {camera.best_selling ? "Best seller" : "Bukan best seller"}
-          </StatusBadge>
+            <Tag tone={camera.promo ? "grad" : "muted"}>
+              {camera.promo ? "Promosi aktif" : "Tanpa promosi"}
+            </Tag>
+
+            <Tag tone={camera.best_selling ? "violet" : "muted"}>
+              {camera.best_selling ? "Best seller" : "Bukan best seller"}
+            </Tag>
+          </div>
         </div>
-      </div>
+      </header>
 
-      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
-        <section className="space-y-4 rounded-2xl border border-second/30 p-4 sm:p-6">
-          {/* Frame Utama / Gambar Besar */}
-          <div className="flex aspect-square items-center justify-center overflow-hidden rounded-xl bg-second/[0.03]">
+      <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-2">
+        {/* ============ Kolom kiri: Galeri ============ */}
+        <section
+          aria-label="Galeri gambar produk"
+          className="flex min-w-0 flex-col gap-4 rounded-2xl border border-second/30 bg-primary p-4 shadow-xl shadow-second/5 sm:p-8 lg:sticky lg:top-16"
+        >
+          <div className="relative aspect-square overflow-hidden rounded-xl bg-second/[0.03]">
             {activeImage?.image_url ? (
               <Image
-                width={1600}
-                height={1600}
+                key={activeImage.image_url}
+                fill
+                priority
+                sizes="(min-width: 1024px) 50vw, 100vw"
                 src={activeImage.image_url}
                 alt={camera.name}
-                className="h-full w-full object-cover transition-all duration-300"
+                className="object-cover"
               />
             ) : (
-              <div className="flex flex-col items-center gap-2 text-second/30">
-                <FiCamera size={48} />
+              <div className="flex h-full flex-col items-center justify-center gap-2 text-second/40">
+                <FiCamera size={48} aria-hidden="true" />
                 <span className="text-sm">Gambar tidak tersedia</span>
               </div>
             )}
+
+            {hasDiscount && (
+              <span className="absolute left-4 top-4 z-10 rounded-full bg-grad px-2 py-1 text-xs font-bold tabular-nums text-primary shadow-lg shadow-second4/25">
+                Hemat {discountPercent}%
+              </span>
+            )}
           </div>
 
-          {/* List Thumbnail Gambar Kecil */}
           {images.length > 0 && (
-            <div className="grid grid-cols-4 gap-3 sm:grid-cols-5">
+            <ul className="grid grid-cols-4 gap-2 sm:grid-cols-5">
               {images.map((image, index) => {
-                // Cek apakah thumbnail ini yang sedang aktif ditampilkan
-                const isSelected = activeImage
-                  ? (activeImage.id && activeImage.id === image.id) ||
-                    activeImage.image_url === image.image_url
-                  : image.is_primary;
+                const key = image.id ?? image.image_url ?? index;
+                const isSelected =
+                  (activeImage?.id ?? activeImage?.image_url) ===
+                  (image.id ?? image.image_url);
 
                 return (
-                  <button
-                    type="button"
-                    key={image.id ?? image.image_url ?? index}
-                    onClick={() => setActiveImage(image)} // 3. Set gambar aktif ketika diklik
-                    className={`flex aspect-square cursor-pointer items-center justify-center overflow-hidden rounded-xl bg-second/[0.03] transition-all hover:opacity-80 ${
-                      isSelected
-                        ? "ring-2 ring-second ring-offset-2 ring-offset-primary"
-                        : "border border-second/30 opacity-60"
-                    }`}
-                  >
-                    {image.image_url ? (
-                      <div className="relative h-full w-full">
-                        {image.is_primary && (
-                          <p className="absolute inset-0 z-20 bg-grad h-fit text-primary">
-                            Utama
-                          </p>
-                        )}
-
+                  <li key={key}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSelectedImageKey(image.id ?? image.image_url)
+                      }
+                      aria-label={`Tampilkan gambar ${index + 1} dari ${images.length}${
+                        image.is_primary ? " (utama)" : ""
+                      }`}
+                      aria-pressed={isSelected}
+                      className={`relative block aspect-square w-full overflow-hidden rounded-xl bg-second/[0.03] transition-opacity ${FOCUS_RING} ${
+                        isSelected
+                          ? "ring-2 ring-second4 ring-offset-2 ring-offset-primary"
+                          : "border border-second/30 opacity-60 hover:opacity-100"
+                      }`}
+                    >
+                      {image.image_url ? (
                         <Image
                           fill
+                          sizes="(min-width: 1024px) 10vw, 25vw"
                           src={image.image_url}
-                          alt={`${camera.name} ${index + 1}`}
-                          className="z-10 h-full w-full object-cover"
+                          alt=""
+                          className="object-cover"
                         />
-                      </div>
-                    ) : (
-                      <FiCamera className="text-second/30" size={22} />
-                    )}
-                  </button>
+                      ) : (
+                        <span className="flex h-full items-center justify-center">
+                          <FiCamera
+                            className="text-second/40"
+                            size={22}
+                            aria-hidden="true"
+                          />
+                        </span>
+                      )}
+
+                      {image.is_primary && (
+                        <span className="absolute left-2 top-2 z-10 rounded-full bg-grad px-2 py-1 text-[10px] font-semibold text-primary">
+                          Utama
+                        </span>
+                      )}
+                    </button>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
           )}
 
-          <p className="text-xs text-second/50">{images.length} gambar</p>
+          <p className="text-xs tabular-nums text-second/50">
+            {images.length} gambar
+            {images[0]?.created_at && (
+              <> · diunggah {formatDate(images[0].created_at)}</>
+            )}
+          </p>
         </section>
 
-        <section className="flex h-full flex-col space-y-6 rounded-2xl border border-second/30 p-5 sm:p-7">
-          <div>
-            <p className="text-sm text-second/50">Nama produk</p>
-            <h2 className="mt-2 text-2xl font-bold text-second">
+        {/* ============ Kolom kanan: Informasi ============ */}
+        <section className="flex min-w-0 flex-col gap-8 rounded-2xl border border-second/30 bg-primary p-4 shadow-xl shadow-second/5 sm:p-8">
+          {/* Nama + kategori */}
+          <div className="min-w-0">
+            {camera.category?.name && (
+              <Tag tone="violet" icon={FiLayers}>
+                {camera.category.name}
+              </Tag>
+            )}
+
+            <h2 className="mt-4 text-balance break-words text-2xl font-bold text-second">
               {camera.name}
             </h2>
           </div>
 
+          {/* Harga */}
           <div>
-            <p className="text-sm text-second/50">Harga</p>
-            <p className="mt-1 text-3xl font-bold text-second">
-              {formatPrice(camera.price)}
+            <p className="text-sm text-second/60">Harga jual</p>
+
+            <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-2">
+              <p className="text-3xl font-bold tabular-nums text-second">
+                {formatPrice(price)}
+              </p>
+
+              {hasDiscount && (
+                <>
+                  <p className="text-base tabular-nums text-second/40 line-through">
+                    <span className="sr-only">Harga sebelum diskon </span>
+                    {formatPrice(strikethrough)}
+                  </p>
+                  <Tag tone="failure">-{discountPercent}%</Tag>
+                </>
+              )}
+            </div>
+
+            {hasDiscount && (
+              <p className="mt-2 text-xs tabular-nums text-second/50">
+                Potongan {formatPrice(strikethrough - price)} dari harga coret.
+              </p>
+            )}
+          </div>
+
+          {/* Ringkasan */}
+          <div className="grid grid-cols-1 gap-4 border-y border-second/30 py-4 sm:grid-cols-3">
+            <StatTile
+              icon={FiPackage}
+              label="Stok"
+              value={outOfStock ? "Habis" : `${formatNumber(stock)} unit`}
+            />
+            <StatTile
+              icon={FiTag}
+              label="Kondisi"
+              value={
+                CONDITION_LABEL[camera.condition] ?? camera.condition ?? "—"
+              }
+            />
+            <StatTile
+              icon={FiCamera}
+              label="Shutter count"
+              value={
+                shutterCount !== null
+                  ? `${formatNumber(shutterCount)} klik`
+                  : "—"
+              }
+            />
+          </div>
+
+          {(stockLow || outOfStock) && (
+            <p
+              className={`rounded-xl px-4 py-2 text-sm ${
+                outOfStock
+                  ? "bg-second2/10 text-second2"
+                  : "bg-second4/10 text-second4"
+              }`}
+            >
+              {outOfStock
+                ? "Stok habis."
+                : `Stok menipis — tersisa ${formatNumber(stock)} unit.`}
             </p>
+          )}
+
+          {/* Spesifikasi */}
+          <div className="flex flex-col gap-4">
+            <SectionTitle>Spesifikasi</SectionTitle>
+
+            <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+              <DetailItem label="Kategori">
+                {camera.category?.name ?? camera.category_id}
+              </DetailItem>
+
+              <DetailItem label="SKU" mono copyable>
+                {camera.sku}
+              </DetailItem>
+
+              <DetailItem label="Serial number" mono copyable>
+                {camera.serial_number}
+              </DetailItem>
+
+              <DetailItem label="Warna">
+                <span className="capitalize">{camera.color}</span>
+              </DetailItem>
+
+              <DetailItem label="Kondisi">
+                {CONDITION_LABEL[camera.condition] ?? camera.condition}
+              </DetailItem>
+
+              <DetailItem label="Shutter count">
+                {shutterCount !== null ? formatNumber(shutterCount) : null}
+              </DetailItem>
+            </dl>
           </div>
 
-          <div className="grid grid-cols-2 gap-5 border-y border-second/30 py-5">
-            <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-full bg-grad text-primary">
-                <FiPackage size={20} />
-              </div>
-
-              <div>
-                <p className="text-xs text-second/50">Stok</p>
-                <p className="mt-1 font-semibold text-second">
-                  {formatNumber(camera.stock)} unit
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-full bg-grad text-primary">
-                <FiTag size={20} />
-              </div>
-
-              <div>
-                <p className="text-xs text-second/50">Kondisi</p>
-                <p className="mt-1 font-semibold text-second">
-                  {conditionLabel[camera.condition] ?? camera.condition ?? "—"}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Grid Informasi Spesifikasi produk */}
-          <div className="grid grid-cols-2 gap-5 sm:grid-cols-3">
-            <DetailItem label="Kategori">
-              {camera.category?.name ?? camera.category_id}
-            </DetailItem>
-
-            <DetailItem label="SKU">{camera.sku}</DetailItem>
-
-            <DetailItem label="Serial Number">
-              {camera.serial_number}
-            </DetailItem>
-
-            <DetailItem label="Warna">{camera.color}</DetailItem>
-
-            <DetailItem label="Shutter Count">
-              {camera.shutter_count !== undefined &&
-              camera.shutter_count !== null
-                ? formatNumber(Number(camera.shutter_count))
-                : "—"}
-            </DetailItem>
-
-            <DetailItem label="Tanggal ditambahkan">
-              {camera.created_at
-                ? new Date(camera.created_at).toLocaleDateString("id-ID", {
-                    day: "numeric",
-                    month: "long",
-                    year: "numeric",
-                  })
-                : "—"}
-            </DetailItem>
-          </div>
-
-          <div className="space-y-2">
-            <h3 className="font-semibold text-second">Deskripsi</h3>
-            <p className="whitespace-pre-line text-sm leading-6 text-second/70">
+          {/* Deskripsi & kelengkapan */}
+          <div className="flex flex-col gap-2">
+            <SectionTitle>Deskripsi</SectionTitle>
+            <p className="whitespace-pre-line text-sm leading-relaxed text-second/70">
               {camera.description || "Tidak ada deskripsi."}
             </p>
           </div>
 
-          <div className="space-y-2">
-            <h3 className="font-semibold text-second">Kelengkapan</h3>
-            <p className="whitespace-pre-line text-sm leading-6 text-second/70">
+          <div className="flex flex-col gap-2">
+            <SectionTitle>Kelengkapan</SectionTitle>
+            <p className="whitespace-pre-line text-sm leading-relaxed text-second/70">
               {camera.inclusions || "Tidak ada informasi kelengkapan."}
             </p>
           </div>
 
-          {marketplaces.length > 0 && (
-            <div className="space-y-3 border-t border-second/30 pt-5">
-              <h3 className="font-semibold text-second">Marketplace</h3>
-              <div className="flex gap-4">
-                {marketplaces.map((item, index) => (
-                  <Link
-                    key={item.id ?? item.marketplace_id ?? index}
-                    href={item.product_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-between gap-3 rounded-xl  p-4 text-sm text-second transition-colors hover:bg-second/[0.03]"
-                  >
-                    <Image
-                      alt={`${item.marketplace.name} logo`}
-                      src={item.marketplace.logo_url}
-                      width={50}
-                      height={50}
-                    ></Image>
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* Marketplace */}
+          <div className="flex flex-col gap-4">
+            <SectionTitle>Marketplace</SectionTitle>
 
-          <div className="mt-auto flex w-full gap-4 pt-2">
-            <Link
-              href={`/admin/cameras/${camera.id}/edit`}
-              className="flex w-full items-center justify-center rounded-full bg-second px-5 py-3 text-sm font-semibold text-primary transition-colors hover:bg-second/80"
-            >
-              Edit Produk
-            </Link>
+            {marketplaces.length > 0 ? (
+              <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {marketplaces.map((item, index) => {
+                  const name = item.marketplace?.name ?? "Marketplace";
 
-            <button
-              type="button"
-              onClick={() => setShowDeleteModal(true)}
-              disabled={deleteCam.isPending}
-              className="flex w-full items-center justify-center gap-2 rounded-full bg-second2 px-5 py-3 text-sm font-semibold text-primary transition-colors hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <FiTrash2 size={17} />
-              Hapus Produk
-            </button>
+                  return (
+                    <li key={item.id ?? item.marketplace_id ?? index}>
+                      <a
+                        href={item.product_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={`Buka di ${name} (tab baru)`}
+                        className={`flex items-center gap-4 rounded-xl border border-second/30 p-4 text-sm text-second transition-colors hover:border-second4 hover:bg-second4/5 ${FOCUS_RING}`}
+                      >
+                        {item.marketplace?.logo_url ? (
+                          <Image
+                            alt=""
+                            src={item.marketplace.logo_url}
+                            width={40}
+                            height={40}
+                            className="size-10 shrink-0 rounded-xl object-contain"
+                          />
+                        ) : (
+                          <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-second/10">
+                            <FiTag size={18} aria-hidden="true" />
+                          </span>
+                        )}
+
+                        <span className="min-w-0 flex-1 truncate font-medium">
+                          {name}
+                        </span>
+
+                        <FiExternalLink
+                          size={16}
+                          className="shrink-0 text-second/40"
+                          aria-hidden="true"
+                        />
+                      </a>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="rounded-xl border border-dashed border-second/30 px-4 py-4 text-sm text-second/50">
+                Belum ada tautan marketplace untuk produk ini.
+              </p>
+            )}
           </div>
+
+          {/* Metadata */}
+          <div className="flex flex-col gap-4 border-t border-second/30 pt-4">
+            <SectionTitle>Metadata</SectionTitle>
+
+            <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="min-w-0 space-y-2">
+                <dt className="flex items-center gap-2 text-xs text-second/60">
+                  <FiCalendar size={12} aria-hidden="true" />
+                  Tanggal ditambahkan
+                </dt>
+                <dd className="text-sm font-medium tabular-nums text-second">
+                  {formatDate(camera.created_at, true)}
+                </dd>
+              </div>
+            </dl>
+          </div>
+
+          <PrimaryButton href={`/admin/cameras/${camera.id}/edit`} fullWidth>
+            <FiEdit2 size={16} aria-hidden="true" />
+            Edit produk
+          </PrimaryButton>
         </section>
       </div>
-
-      <DeleteCameraModal
-        isOpen={showDeleteModal}
-        cameraName={camera.name}
-        isDeleting={deleteCam.isPending}
-        onClose={() => setShowDeleteModal(false)}
-        onConfirm={handleDeleteCamera}
-      />
     </div>
   );
 }

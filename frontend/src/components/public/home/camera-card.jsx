@@ -1,6 +1,7 @@
 import Image from "next/image.js";
 import Link from "next/link.js";
 import { BsFire } from "react-icons/bs";
+
 const priceFormatter = new Intl.NumberFormat("id-ID", {
   maximumFractionDigits: 0,
 });
@@ -14,7 +15,12 @@ function formatPrice(value) {
 
   return priceFormatter.format(number);
 }
+
 export default function CameraCard({ data }) {
+  const price = Number(data.price) || 0;
+  const strikethrough = Number(data.strikethrough_price) || 0;
+  const hasDiscount = strikethrough > price && price >= 0;
+
   return (
     <Link
       href={`/${data.id}`}
@@ -44,7 +50,7 @@ export default function CameraCard({ data }) {
         )}
       </div>
       <div className="flex flex-col gap-2">
-        <h3 className="text-second text-sm font-normal line-clamp-2 break-words ">
+        <h3 className="text-second text-sm font-normal line-clamp-2 break-words">
           <span className="bg-second2 text-primary text-xs px-1 font-semibold">
             {data.condition}
           </span>{" "}
@@ -53,8 +59,7 @@ export default function CameraCard({ data }) {
         {data.stock === 0
           ? ""
           : data.stock <= 3 && (
-              <div className="h-3 w-full bg-second2/40 rounded-md relative ">
-                {" "}
+              <div className="h-3 w-full bg-second2/40 rounded-md relative">
                 <div
                   className={`h-3 bg-second2 absolute top-0 left-0 ${data.stock === 0 ? "hidden" : data.stock === 3 ? "w-9" : data.stock === 2 ? "w-7" : "w-5"} rounded-md`}
                 ></div>
@@ -74,10 +79,18 @@ export default function CameraCard({ data }) {
                 </p>
               </div>
             )}
-        <p className="text-base text-grad font-semibold">
-          <span className="text-sm">Rp</span>
-          {formatPrice(data.price)}
-        </p>
+        <div className="flex flex-col gap-0.5">
+          {hasDiscount && (
+            <p className="text-xs text-second/50 line-through">
+              <span className="text-sm">Rp</span>
+              {formatPrice(strikethrough)}
+            </p>
+          )}
+          <p className="text-base text-grad font-semibold">
+            <span className="text-sm">Rp</span>
+            {formatPrice(price)}
+          </p>
+        </div>
       </div>
     </Link>
   );

@@ -1,8 +1,21 @@
 import Image from "next/image.js";
 import Link from "next/link.js";
 
+const priceFormatter = new Intl.NumberFormat("id-ID", {
+  maximumFractionDigits: 0,
+});
+
+function formatPrice(value) {
+  const number = Number(value);
+
+  if (value === null || value === undefined || Number.isNaN(number)) {
+    return "0";
+  }
+
+  return priceFormatter.format(number);
+}
+
 export default function PrimaryBanner({ banner, cameras }) {
-  console.log(cameras);
   return (
     <div className="w-full aspect-[2/3] relative rounded-lg overflow-hidden">
       {" "}
@@ -20,6 +33,10 @@ export default function PrimaryBanner({ banner, cameras }) {
       </div>
       <div className="w-full absolute aspect-square bottom-0 left-0 grid grid-cols-2 p-4 gap-4">
         {cameras.map((item, i) => {
+          const price = Number(item.price) || 0;
+          const strikethrough = Number(item.strikethrough_price) || 0;
+          const hasDiscount = strikethrough > price && price >= 0;
+
           return (
             <Link
               href={`/${item.id}`}
@@ -32,6 +49,19 @@ export default function PrimaryBanner({ banner, cameras }) {
                 src={item.image_url}
                 className="w-full h-full"
               ></Image>
+
+              <div className="absolute inset-x-0 bottom-0 flex flex-col gap-0.5 px-2 py-1 backdrop-blur-sm">
+                {hasDiscount && (
+                  <p className="text-xs text-primary/70 line-through text-center">
+                    <span className="text-[10px]">Rp</span>
+                    {formatPrice(strikethrough)}
+                  </p>
+                )}
+                <p className="text-base font-semibold text-primary text-center">
+                  <span className="text-[10px]">Rp</span>
+                  {formatPrice(price)}
+                </p>
+              </div>
             </Link>
           );
         })}

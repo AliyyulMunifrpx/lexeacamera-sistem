@@ -1,99 +1,50 @@
-# 📝 Dokumentasi API: Registrasi Pengguna
+### **POST /users/register**
 
-Endpoint ini digunakan untuk mendaftarkan pengguna baru ke dalam sistem backend.
+Mendaftarkan **pemilik (OWNER) pertama**. Endpoint ini hanya berfungsi **sekali**: setelah ada satu user di sistem, semua pendaftaran berikutnya ditolak. Admin tidak mendaftar sendiri, admin dibuat oleh owner. Tidak memerlukan autentikasi.
 
----
+Setelah berhasil, Supabase mengirim email verifikasi. Link di email mengarah ke `{FRONTEND_URL}/auth/verify-email`. Akun belum bisa login sebelum email diverifikasi.
 
-## 📌 Informasi Endpoint
+#### **Request Body (JSON)**
 
-- **URL Path:** `/users/register`
-- **Method:** `POST`
-- **Content-Type:** `application/json`
-- **Autentikasi:** Tidak Perlu (Public Endpoint)
-
----
-
-## 📥 Request Body
-
-| Field      | Tipe Data | Wajib? | Keterangan / Aturan Validasi                                       |
-| ---------- | --------- | ------ | ------------------------------------------------------------------ |
-| `email`    | `string`  | Ya     | Wajib berupa format email yang valid (contoh: `user@example.com`). |
-| `password` | `string`  | Ya     | Minimal panjang **8 digit/karakter**.                              |
-| `name`     | `string`  | Ya     | Nama lengkap pengguna.                                             |
-
-### Contoh Request Body
+- `name` (string, **Required**): Nama pengguna.
+- `email` (string, **Required**): Email yang valid.
+- `password` (string, **Required**): Kata sandi.
 
 ```json
 {
-  "email": "aliyyul@example.com",
-  "password": "password123",
-  "name": "Aliyyul Munif"
+  "name": "Budi",
+  "email": "budi@example.com",
+  "password": "rahasia123"
 }
 ```
 
 ---
 
-## 📤 Respon Sukses (`201 Created`)
-
-Dikembalikan ketika proses pendaftaran berhasil dibuat di Supabase Auth dan tersinkronisasi ke database Prisma.
+#### **Response Sukses (201 Created)**
 
 ```json
 {
   "data": {
-    "email": "aliyyul@example.com",
-    "name": "Aliyyul Munif"
+    "email": "budi@example.com",
+    "name": "Budi"
   }
 }
 ```
 
+User yang dibuat otomatis berperan **OWNER**.
+
 ---
 
-## ❌ Respon Error
+#### **Response Error**
 
-### 1. Error Validasi Input Joi (`400 Bad Request`)
-
-Terjadi ketika payload request tidak sesuai dengan aturan schema validasi Joi.
-
-- **Format email salah:**
+1. **400 Bad Request** (Validasi gagal, atau sudah ada user)
 
 ```json
 {
-  "errors": "\"email\" must be a valid email"
+  "errors": "USER_ALREADY_EXIST"
 }
 ```
 
-- **Password kurang dari 8 karakter:**
-
-```json
-{
-  "errors": "\"password\" length must be at least 8 characters long"
-}
-```
-
-- **Field wajib ada yang kosong:**
-
-```json
-{
-  "errors": "\"name\" is required"
-}
-```
-
-### 2. Email Sudah Terdaftar (`400 Bad Request`)
-
-Terjadi jika email sudah terdaftar di database Prisma maupun di Supabase Auth.
-
-```json
-{
-  "errors": "EMAIL_ALREADY_EXIST"
-}
-```
-
-### 3. Server Error / Internal Response Error (`500 Internal Server Error`)
-
-Terjadi jika terdapat kegagalan tak terduga pada server, koneksi database Prisma, atau service Supabase.
-
-```json
-{
-  "errors": "INTERNAL_SERVER_ERROR"
-}
-```
+- `USER_ALREADY_EXIST`: owner sudah terdaftar, pendaftaran ditutup.
+- `EMAIL_ALREADY_EXIST`: email sudah dipakai di Supabase.
+- Pesan validasi lain jika field tidak lengkap atau tidak valid.

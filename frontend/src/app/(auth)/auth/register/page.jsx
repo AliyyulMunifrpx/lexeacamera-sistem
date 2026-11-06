@@ -54,7 +54,7 @@ export default function RegisterPage() {
     <main className="flex min-h-dvh items-center justify-center bg-primary px-5 py-10 text-second">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-md space-y-5 rounded-2xl border border-second/15 p-8"
+        className="w-full max-w-md space-y-5 rounded-2xl border border-second/30 p-8"
       >
         <div>
           <h1 className="text-3xl font-bold">Buat akun</h1>
@@ -71,9 +71,10 @@ export default function RegisterPage() {
             id="name"
             value={name}
             onChange={(e) => setName(e.target.value)}
+            placeholder="Masukkan nama lengkap"
             autoComplete="name"
             required
-            className="mt-2 w-full rounded-xl border border-second/20 bg-transparent px-4 py-3 outline-none focus:border-second"
+            className="mt-2 w-full rounded-xl border border-second/20 bg-transparent px-4 py-3 outline-none placeholder:text-second/40 focus:border-second"
           />
         </div>
 
@@ -86,9 +87,10 @@ export default function RegisterPage() {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            placeholder="contoh@email.com"
             autoComplete="email"
             required
-            className="mt-2 w-full rounded-xl border border-second/20 bg-transparent px-4 py-3 outline-none focus:border-second"
+            className="mt-2 w-full rounded-xl border border-second/20 bg-transparent px-4 py-3 outline-none placeholder:text-second/40 focus:border-second"
           />
         </div>
 
@@ -103,10 +105,11 @@ export default function RegisterPage() {
               type={showPassword ? "text" : "password"}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              placeholder="Minimal 8 karakter"
               autoComplete="new-password"
               minLength={8}
               required
-              className="w-full rounded-xl border border-second/20 bg-transparent px-4 py-3 pr-12 outline-none focus:border-second"
+              className="w-full rounded-xl border border-second/20 bg-transparent px-4 py-3 pr-12 outline-none placeholder:text-second/40 focus:border-second"
             />
 
             <button
@@ -134,13 +137,14 @@ export default function RegisterPage() {
               type={showConfirmPassword ? "text" : "password"}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Masukkan ulang password"
               autoComplete="new-password"
               minLength={8}
               required
               aria-invalid={
                 confirmPassword.length > 0 && password !== confirmPassword
               }
-              className="w-full rounded-xl border border-second/20 bg-transparent px-4 py-3 pr-12 outline-none focus:border-second aria-[invalid=true]:border-red-500"
+              className="w-full rounded-xl border border-second/20 bg-transparent px-4 py-3 pr-12 outline-none placeholder:text-second/40 focus:border-second aria-[invalid=true]:border-red-500"
             />
 
             <button

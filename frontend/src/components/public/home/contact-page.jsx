@@ -42,7 +42,7 @@ function ContactItem({ href, icon: Icon, label, value }) {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="group flex items-center gap-3 transition-colors hover:bg-second/5 border-b border-second/10 pb-4"
+      className="group flex items-center gap-3 transition-colors hover:bg-second/5 border-b border-second/30 pb-4"
     >
       <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-second text-primary">
         <Icon size={19} />

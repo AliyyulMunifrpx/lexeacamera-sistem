@@ -1,43 +1,66 @@
 import crypto from "node:crypto";
 
-import { Prisma } from "@prisma/client"; // sesuaikan kalau client Prisma-mu punya output custom
+import { Prisma } from "@prisma/client";
 
 import { ResponseError } from "../error/response-error.js";
 import { prisma } from "../lib/database.js";
+import {
+  blankToNull,
+  generateCustomerId,
+  normalizeWhatsapp,
+} from "./customer.js";
+
+export { blankToNull };
 
 const INVOICE_PREFIX = "WAV";
-const MAX_NUMBER_ATTEMPTS = 5;
-// Tanpa karakter yang mirip (I, O, 0, 1) supaya mudah dibaca dan diketik
+const MAX_ATTEMPTS = 5;
+const MAX_INT = 2147483647;
 const NUMBER_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
 
 export const INVOICE_INCLUDE = {
   order: {
     select: {
+      type: true,
+      customer_id: true,
+      payment_status: true,
+      paid_at: true,
       total_amount: true,
       order_items: {
         orderBy: [{ camera_name: "asc" }, { id: "asc" }],
-        include: {
+        select: {
+          id: true,
+          camera_id: true,
+          camera_name: true,
+          camera_price: true,
+          camera_modal: true,
+          quantity: true,
+          restocked: true,
           camera: {
-            select: {
-              sku: true, // <-- SKU kamera ketarik di sini
-              serial_number: true, // (Opsional kalau butuh)
-              color: true, // (Opsional)
-            },
+            select: { sku: true, serial_number: true, color: true },
           },
         },
       },
     },
   },
 };
-export const blankToNull = (value) =>
-  value === undefined || value === null || value === "" ? null : value;
 
-// Nominal selalu disimpan sebagai string digit murni ("5500000")
-export const toMoney = (value) =>
-  value === undefined || value === null || value === "" ? null : String(value);
+export const toMoney = (value) => {
+  if (value === undefined || value === null || value === "") return null;
+
+  const amount = Number(value);
+  if (!Number.isSafeInteger(amount) || amount < 0 || amount > MAX_INT) {
+    throw new ResponseError(400, "AMOUNT_TOO_LARGE");
+  }
+
+  return amount;
+};
 
 export const calculateTotal = (subtotal, storeDiscount, customerDiscount) => {
+  if (subtotal > MAX_INT) {
+    throw new ResponseError(400, "AMOUNT_TOO_LARGE");
+  }
+
   const total =
     subtotal - Number(storeDiscount ?? 0) - Number(customerDiscount ?? 0);
 
@@ -48,7 +71,6 @@ export const calculateTotal = (subtotal, storeDiscount, customerDiscount) => {
   return total;
 };
 
-// WAV-20261021-K7M2QX (tanggal WIB)
 export const generateInvoiceNumber = () => {
   const date = new Date(Date.now() + WIB_OFFSET_MS)
     .toISOString()
@@ -66,16 +88,18 @@ export const generateInvoiceNumber = () => {
 const buildLines = async (tx, items, checkStock) => {
   const ids = items.map((item) => item.camera_id);
 
-  // FOR SHARE: kamera dikunci sampai transaksi order selesai. Edit atau hapus
-  // dari admin menunggu, dan order yang mulai setelah admin commit sudah
-  // melihat is_deleted = true. ORDER BY id supaya urutan kunci selalu sama.
-  const cameras = await tx.$queryRaw`
-    SELECT id, name, price, stock
+  await tx.$queryRaw`
+    SELECT id
     FROM "Camera"
     WHERE id IN (${Prisma.join(ids)}) AND is_deleted = false
     ORDER BY id
     FOR SHARE
   `;
+
+  const cameras = await tx.camera.findMany({
+    where: { id: { in: ids }, is_deleted: false },
+    select: { id: true, name: true, price: true, capital: true, stock: true },
+  });
   const byId = new Map(cameras.map((camera) => [camera.id, camera]));
 
   const missing = ids.filter((id) => !byId.has(id));
@@ -102,10 +126,11 @@ const buildLines = async (tx, items, checkStock) => {
     const camera = byId.get(item.camera_id);
     const lineTotal = camera.price * item.quantity;
 
-    // Rupiah harus bulat, dan hasil kali harus aman dihitung sebagai angka
     if (
       !Number.isSafeInteger(camera.price) ||
       camera.price < 0 ||
+      !Number.isSafeInteger(camera.capital) ||
+      camera.capital < 0 ||
       !Number.isSafeInteger(lineTotal)
     ) {
       throw new ResponseError(500, "CAMERA_PRICE_INVALID");
@@ -113,29 +138,53 @@ const buildLines = async (tx, items, checkStock) => {
 
     return {
       camera_id: camera.id,
-      camera_name: camera.name, // snapshot
-      camera_price: camera.price, // snapshot
+      camera_name: camera.name,
+      camera_price: camera.price,
+      camera_modal: camera.capital,
       quantity: item.quantity,
       line_total: lineTotal,
     };
   });
 };
 
-// Membuat Order + OrderItem + Invoice dalam satu transaksi
+const findOrCreateCustomerId = async (tx, customer) => {
+  const existing = await tx.customer.findUnique({
+    where: { whatsapp: customer.whatsapp },
+    select: { id: true },
+  });
+
+  if (existing) return existing.id;
+
+  const created = await tx.customer.create({
+    data: {
+      id: generateCustomerId(),
+      name: customer.name,
+      whatsapp: customer.whatsapp,
+      instagram: customer.instagram,
+      address: customer.address,
+    },
+    select: { id: true },
+  });
+
+  return created.id;
+};
+
 export const createOrderWithInvoice = async ({
-  customer,
+  customer: rawCustomer,
   items,
   checkStock,
   extras = {},
 }) => {
+  const customer = {
+    ...rawCustomer,
+    whatsapp: normalizeWhatsapp(rawCustomer.whatsapp),
+  };
+
   const store = await prisma.store.findFirst({ orderBy: { id: "asc" } });
   if (!store) {
     throw new ResponseError(503, "STORE_NOT_READY");
   }
 
-  // Terms pembayaran disalin ke invoice (snapshot): kalau terms diubah kemudian,
-  // invoice yang sudah ada tidak ikut berubah. Admin boleh menimpa lewat extras;
-  // undefined = pakai terms saat ini, null atau "" = invoice tanpa terms.
   const termsSnapshot =
     extras.terms_and_condition !== undefined
       ? blankToNull(extras.terms_and_condition)
@@ -147,7 +196,7 @@ export const createOrderWithInvoice = async ({
   const storeDiscount = toMoney(extras.store_discount);
   const customerDiscount = toMoney(extras.customer_discount);
 
-  for (let attempt = 1; attempt <= MAX_NUMBER_ATTEMPTS; attempt++) {
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
       return await prisma.$transaction(
         async (tx) => {
@@ -161,11 +210,11 @@ export const createOrderWithInvoice = async ({
             storeDiscount,
             customerDiscount,
           );
+          const customerId = await findOrCreateCustomerId(tx, customer);
 
           return await tx.invoice.create({
             data: {
               no_invoice: generateInvoiceNumber(),
-              // Snapshot toko
               store_name: store.name,
               store_address: store.address,
               whatsapp_store: store.whatsapp,
@@ -176,23 +225,25 @@ export const createOrderWithInvoice = async ({
               customer_address: customer.address,
               customer_whatsapp: customer.whatsapp,
               customer_instagram: customer.instagram,
-              total_amount: String(total),
+              total_amount: total,
               store_discount: storeDiscount,
               customer_discount: customerDiscount,
               is_final: extras.is_final ?? false,
               terms_and_condition: termsSnapshot,
               order: {
                 create: {
+                  customer_id: customerId,
                   customer_name: customer.name,
                   address: customer.address,
                   whatsapp: customer.whatsapp,
                   instagram: customer.instagram,
-                  total_amount: String(subtotal),
+                  total_amount: total,
                   order_items: {
                     create: lines.map((line) => ({
                       camera_id: line.camera_id,
                       camera_name: line.camera_name,
-                      camera_price: String(line.camera_price),
+                      camera_price: line.camera_price,
+                      camera_modal: line.camera_modal,
                       quantity: line.quantity,
                     })),
                   },
@@ -205,14 +256,7 @@ export const createOrderWithInvoice = async ({
         { timeout: 15000 },
       );
     } catch (error) {
-      // Satu-satunya unique yang bisa bentrok di sini adalah no_invoice.
-      // Transaksi sudah di-rollback seluruhnya, jadi aman diulang dengan nomor baru.
-      if (error.code === "P2002") continue;
-
-      // Kamera terhapus permanen di tengah proses (hard delete lewat database)
-      if (error.code === "P2003") {
-        throw new ResponseError(404, "CAMERA_NOT_FOUND");
-      }
+      if (error.code === "P2002" || error.code === "P2003") continue;
 
       throw error;
     }
@@ -226,10 +270,9 @@ const toItems = (order) =>
     camera_name: item.camera_name,
     camera_price: item.camera_price,
     quantity: item.quantity,
-    line_total: String(Number(item.camera_price) * item.quantity),
+    line_total: item.camera_price * item.quantity,
   }));
 
-// Untuk pembeli publik: tanpa id internal
 export const toPublicOrder = ({ order, ...invoice }) => ({
   no_invoice: invoice.no_invoice,
   customer_name: invoice.customer_name,
@@ -238,17 +281,53 @@ export const toPublicOrder = ({ order, ...invoice }) => ({
   items: toItems(order),
 });
 
-// Untuk admin: semua kolom invoice + subtotal + item
-export const toInvoiceResponse = ({ order, ...invoice }) => ({
-  ...invoice,
-  subtotal: order.total_amount,
-  items: order.order_items.map((item) => ({
+const invoiceItems = (order) =>
+  order.order_items.map((item) => ({
     id: item.id,
     camera_id: item.camera_id,
     camera_name: item.camera_name,
     camera_price: item.camera_price,
     quantity: item.quantity,
-    sku: item.camera?.sku ?? null, // <-- Tambahin ini bro!
-    line_total: String(Number(item.camera_price) * item.quantity),
-  })),
-});
+    restocked: item.restocked,
+    sku: item.camera?.sku ?? null,
+    serial_number: item.camera?.serial_number ?? null,
+    line_total: item.camera_price * item.quantity,
+  }));
+
+export const toInvoiceResponse = ({ order, ...invoice }) => {
+  const items = invoiceItems(order);
+
+  return {
+    ...invoice,
+    type: order.type,
+    customer_id: order.customer_id,
+    payment_status: order.payment_status,
+    paid_at: order.paid_at,
+    subtotal: items.reduce((sum, item) => sum + item.line_total, 0),
+    items,
+  };
+};
+
+// Versi owner: ditambah modal (HPP) dan laba. Invoice REFUND tidak punya laba.
+export const toOwnerInvoiceResponse = ({ order, ...invoice }) => {
+  const base = toInvoiceResponse({ order, ...invoice });
+  const isSale = order.type === "SALE";
+
+  const items = base.items.map((item, i) => {
+    const modal = order.order_items[i].camera_modal;
+
+    return {
+      ...item,
+      camera_modal: modal,
+      modal_line_total: modal * item.quantity,
+    };
+  });
+  const capital = items.reduce((sum, item) => sum + item.modal_line_total, 0);
+
+  return {
+    ...base,
+    items,
+    capital_total: isSale ? capital : null,
+    profit: isSale ? base.total_amount - capital : null,
+  };
+};
