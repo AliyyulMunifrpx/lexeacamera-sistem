@@ -50,9 +50,9 @@ export default function PrimaryBanner({ banner, cameras }) {
                 className="w-full h-full"
               ></Image>
 
-              <div className="absolute inset-x-0 bottom-0 flex flex-col gap-0.5 px-2 py-1 backdrop-blur-sm">
+              <div className="absolute inset-x-0 bottom-0 flex flex-col gap-0.5 px-2 py-1 backdrop-blur-sm rounded-md">
                 {hasDiscount && (
-                  <p className="text-sm text-primary/70 line-through text-center">
+                  <p className="text-sm text-primary/70 line-through text-center ">
                     <span className="text-[10px]">Rp</span>
                     {formatPrice(strikethrough)}
                   </p>

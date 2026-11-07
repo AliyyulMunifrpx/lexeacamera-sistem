@@ -951,7 +951,7 @@ export default function ProductsReportPage() {
               <FiShoppingBag size={16} aria-hidden="true" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-xs text-second/60">Unit terjual</p>
+              <p className="text-xs text-second/60">Unit (halaman ini)</p>
               <p className="mt-1 text-lg font-bold tabular-nums text-second">
                 {formatNumber(totals.units)}
               </p>
@@ -962,7 +962,7 @@ export default function ProductsReportPage() {
               <FiTrendingUp size={16} aria-hidden="true" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-xs text-second/60">Omzet</p>
+              <p className="text-xs text-second/60">Omzet (halaman ini)</p>
               <p className="mt-1 text-lg font-bold tabular-nums text-second">
                 {formatRupiah(totals.revenue)}
               </p>
@@ -973,7 +973,7 @@ export default function ProductsReportPage() {
               <FiPercent size={16} aria-hidden="true" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-xs text-second/60">Laba</p>
+              <p className="text-xs text-second/60">Laba (halaman ini)</p>
               <p className="mt-1 text-lg font-bold tabular-nums text-second">
                 {formatRupiah(totals.profit)}
               </p>

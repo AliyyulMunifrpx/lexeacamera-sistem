@@ -141,10 +141,6 @@ function formatRupiah(value = 0) {
   return `${rounded < 0 ? "-" : ""}Rp ${new Intl.NumberFormat("id-ID").format(Math.abs(rounded))}`;
 }
 
-function formatPercent(value) {
-  if (value === null || value === undefined) return "—";
-  return `${String(Number(value.toFixed(2))).replace(".", ",")}%`;
-}
 /* Kalau yang diketik berupa nomor (08…, +62 8…, 62…), kirim ke backend sebagai 62… */
 function toSearchTerm(input) {
   const text = String(input ?? "").trim();
@@ -971,7 +967,9 @@ export default function CustomersReportPage() {
               <FiUsers size={16} aria-hidden="true" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-xs text-second/60">Order lunas</p>
+              <p className="text-xs text-second/60">
+                Order lunas (halaman ini)
+              </p>
               <p className="mt-1 text-lg font-bold tabular-nums text-second">
                 {formatNumber(totals.orders)}
               </p>
@@ -982,7 +980,7 @@ export default function CustomersReportPage() {
               <FiShoppingBag size={16} aria-hidden="true" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-xs text-second/60">Omzet</p>
+              <p className="text-xs text-second/60">Omzet (halaman ini)</p>
               <p className="mt-1 text-lg font-bold tabular-nums text-second">
                 {formatRupiah(totals.revenue)}
               </p>
@@ -993,7 +991,7 @@ export default function CustomersReportPage() {
               <FiPercent size={16} aria-hidden="true" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-xs text-second/60">Laba</p>
+              <p className="text-xs text-second/60">Laba (halaman ini)</p>
               <p className="mt-1 text-lg font-bold tabular-nums text-second">
                 {formatRupiah(totals.profit)}
               </p>

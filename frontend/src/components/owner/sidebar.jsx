@@ -21,6 +21,7 @@ import {
   MdOutlineShoppingCart,
   MdOutlineStore,
   MdQrCode2,
+  MdQrCodeScanner,
 } from "react-icons/md";
 import { BiStoreAlt } from "react-icons/bi";
 
@@ -94,6 +95,12 @@ const navigation = [
     group: "Tim",
   },
   {
+    label: "QR Absensi",
+    href: "/owner/qr-attendances",
+    icon: MdQrCodeScanner,
+    group: "Tim",
+  },
+  {
     label: "Admin",
     href: "/owner/admins",
     icon: HiOutlineUserCircle,
@@ -158,6 +165,7 @@ const pageTitles = {
   "/owner/admins": "Tim Admin",
   "/owner/employees": "Karyawan",
   "/owner/attendances": "Absensi",
+  "/owner/qr-attendances": "QR Absensi",
 };
 
 /* Hindari warning useLayoutEffect saat render di server */

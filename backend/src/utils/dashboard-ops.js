@@ -62,6 +62,7 @@ const pad = (n) => String(n).padStart(2, "0");
 
 // Satu titik per hari sejak tanggal 1 sampai hari ini (WIB), hari tanpa
 // penjualan diisi 0 supaya grafik tidak bolong.
+// Owner: revenue = gross (penjualan lunas) - refund (refund lunas), per tanggal lunas.
 const buildTrend = ({ trendRows, monthStart, dayStart, isOwner }) => {
   const first = new Date(monthStart.getTime() + WIB_OFFSET_MS);
   const year = first.getUTCFullYear();
@@ -76,14 +77,23 @@ const buildTrend = ({ trendRows, monthStart, dayStart, isOwner }) => {
     const row = byDay.get(date);
     const point = { date, orders: row?.orders ?? 0 };
 
-    if (isOwner) point.revenue = Number(row?.revenue ?? 0);
+    if (isOwner) {
+      const gross = Number(row?.gross ?? 0);
+      const refund = Number(row?.refund ?? 0);
+
+      point.gross = gross;
+      point.refund = refund;
+      point.refund_orders = row?.refund_orders ?? 0;
+      point.revenue = gross - refund;
+    }
+
     days.push(point);
   }
 
   return days;
 };
 
-// isOwner = true: ditambah pendapatan bulan ini dan modal kamera.
+// isOwner = true: ditambah pendapatan bulan ini, rincian refund, dan modal kamera.
 export const createDashboardOps = ({ isOwner }) => {
   const getDashboard = async (query = {}) => {
     validate(getDashboardValidation, query);
@@ -95,18 +105,18 @@ export const createDashboardOps = ({ isOwner }) => {
     const lowStockWhere = { ...ACTIVE, stock: { lte: LOW_STOCK_THRESHOLD } };
     const unpaidWhere = { order: { ...SALE, payment_status: "UNPAID" } };
 
-    // Penjualan lunas per hari (WIB) bulan ini, menurut tanggal lunas. Pendapatan
-    // bersih = penjualan lunas dikurangi refund lunas (sama dengan laporan owner).
+    // Order lunas per hari (WIB) bulan ini, menurut tanggal lunas. Pendapatan
+    // bersih = penjualan lunas dikurangi refund lunas (dihitung di buildTrend).
+    // Refund belum lunas tidak mengurangi pendapatan, dihitung terpisah.
     // Versi admin tidak membaca nominal sama sekali, hanya jumlah order.
     const trendQuery = () =>
       isOwner
         ? prisma.$queryRaw`
       SELECT to_char(("paid_at" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD') AS day,
         (COUNT(*) FILTER (WHERE "type" = 'SALE'))::int AS orders,
-        COALESCE(
-          SUM(CASE WHEN "type" = 'SALE' THEN "total_amount" ELSE -"total_amount" END),
-          0
-        )::text AS revenue
+        (COUNT(*) FILTER (WHERE "type" = 'REFUND'))::int AS refund_orders,
+        COALESCE(SUM("total_amount") FILTER (WHERE "type" = 'SALE'), 0)::text AS gross,
+        COALESCE(SUM("total_amount") FILTER (WHERE "type" = 'REFUND'), 0)::text AS refund
       FROM "Order"
       WHERE "payment_status" = 'PAID'
         AND "paid_at" >= ${monthStart.toISOString()}::timestamp
@@ -160,6 +170,9 @@ export const createDashboardOps = ({ isOwner }) => {
       unpaidRows,
       trendRows,
       topRows,
+      // Hanya owner: refund yang belum dikembalikan (kewajiban yang menggantung,
+      // tidak dibatasi bulan). Untuk admin elemen ini tidak ada (undefined).
+      unpaidRefund,
     ] = await prisma.$transaction([
       prisma.camera.count({ where: ACTIVE }),
       prisma.camera.count({ where: { ...ACTIVE, stock: 0 } }),
@@ -214,6 +227,16 @@ export const createDashboardOps = ({ isOwner }) => {
 
       trendQuery(),
       topProductsQuery(),
+
+      ...(isOwner
+        ? [
+            prisma.order.aggregate({
+              where: { type: "REFUND", payment_status: "UNPAID" },
+              _count: { _all: true },
+              _sum: { total_amount: true },
+            }),
+          ]
+        : []),
     ]);
 
     const cameras = (rows) => (isOwner ? rows : rows.map(withoutCapital));
@@ -233,10 +256,24 @@ export const createDashboardOps = ({ isOwner }) => {
     const trend = buildTrend({ trendRows, monthStart, dayStart, isOwner });
 
     if (isOwner) {
+      // Bersih: penjualan lunas - refund lunas (per tanggal lunas)
       summary.revenue_this_month = trend.reduce(
         (sum, day) => sum + day.revenue,
         0,
       );
+      // Rincian untuk kartu pendapatan
+      summary.revenue_gross_this_month = trend.reduce(
+        (sum, day) => sum + day.gross,
+        0,
+      );
+      summary.refund_this_month = {
+        count: trend.reduce((sum, day) => sum + day.refund_orders, 0),
+        amount: trend.reduce((sum, day) => sum + day.refund, 0),
+      };
+      summary.refund_unpaid = {
+        count: unpaidRefund?._count?._all ?? 0,
+        amount: Number(unpaidRefund?._sum?.total_amount ?? 0),
+      };
     }
 
     return {

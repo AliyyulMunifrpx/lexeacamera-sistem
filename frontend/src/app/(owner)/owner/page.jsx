@@ -58,6 +58,8 @@ const CHART_COLOR = "#8b5cf6";
 const CHART_MUTED = "#71717a";
 const CHART_GRID = "rgba(113,113,122,0.2)";
 
+const EMPTY_AMOUNT = { count: 0, amount: 0 };
+
 /* -------------------------------- Formatters ------------------------------ */
 
 function formatNumber(value = 0) {
@@ -72,11 +74,15 @@ function formatPrice(value = 0) {
   }).format(Number(value) || 0);
 }
 
+/* Aman untuk angka negatif (pendapatan bersih bisa minus di hari refund besar) */
 function formatPriceShort(value = 0) {
   const amount = Number(value) || 0;
-  if (amount >= 1_000_000) return `${(amount / 1_000_000).toFixed(1)}jt`;
-  if (amount >= 1_000) return `${(amount / 1_000).toFixed(0)}rb`;
-  return String(Math.round(amount));
+  const sign = amount < 0 ? "-" : "";
+  const abs = Math.abs(amount);
+
+  if (abs >= 1_000_000) return `${sign}${(abs / 1_000_000).toFixed(1)}jt`;
+  if (abs >= 1_000) return `${sign}${(abs / 1_000).toFixed(0)}rb`;
+  return `${sign}${Math.round(abs)}`;
 }
 
 function formatDate(value) {
@@ -233,25 +239,62 @@ function statusTone(value, tone) {
   return Number(value) > 0 ? tone : "neutral";
 }
 
-/* Card utama — fitur revenue (compact) */
-function RevenueCard({ value }) {
+/* Card utama — pendapatan BERSIH (penjualan lunas dikurangi refund lunas),
+   dengan rincian bruto/refund dan peringatan refund yang belum dikembalikan. */
+function RevenueCard({ net, gross, refund, refundUnpaid }) {
+  const hasRefund = refund.count > 0 || refund.amount > 0;
+  const hasUnpaidRefund = refundUnpaid.count > 0 || refundUnpaid.amount > 0;
+
   return (
     <article className="flex min-w-0 flex-col justify-between gap-4 rounded-2xl bg-grad p-4 text-primary shadow-lg shadow-second4/25">
       <div className="flex items-center gap-2">
         <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-primary text-second">
           <FiTrendingUp size={16} aria-hidden="true" />
         </div>
-        <h3 className="text-sm font-semibold">Pendapatan bulan ini</h3>
+        <h3 className="text-sm font-semibold">Pendapatan bersih bulan ini</h3>
       </div>
 
       <div className="min-w-0">
         <p className="break-words text-2xl font-bold tracking-tight tabular-nums sm:text-3xl">
-          {value}
+          {formatPrice(net)}
         </p>
         <p className="mt-2 text-xs text-primary/90">
-          Dari invoice final bulan berjalan
+          Penjualan lunas dikurangi refund yang sudah dikembalikan, menurut
+          tanggal pembayaran
         </p>
       </div>
+
+      {hasRefund && (
+        <dl className="grid grid-cols-1 gap-4 border-t border-primary/30 pt-4 sm:grid-cols-2">
+          <div className="min-w-0">
+            <dt className="text-xs text-primary/90">Penjualan bruto</dt>
+            <dd className="mt-2 break-words text-sm font-semibold tabular-nums">
+              {formatPrice(gross)}
+            </dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="text-xs text-primary/90">
+              Refund dikembalikan ({formatNumber(refund.count)} order)
+            </dt>
+            <dd className="mt-2 break-words text-sm font-semibold tabular-nums">
+              -{formatPrice(refund.amount)}
+            </dd>
+          </div>
+        </dl>
+      )}
+
+      {hasUnpaidRefund && (
+        <p
+          role="status"
+          className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-second2"
+        >
+          <FiAlertTriangle size={16} className="shrink-0" aria-hidden="true" />
+          <span className="min-w-0 break-words tabular-nums">
+            Refund belum dikembalikan: {formatPrice(refundUnpaid.amount)} (
+            {formatNumber(refundUnpaid.count)} order)
+          </span>
+        </p>
+      )}
     </article>
   );
 }
@@ -278,7 +321,7 @@ function MiniStatCard({ title, value, icon: Icon, tone = "neutral" }) {
 
 /* -------------------------------- Charts ---------------------------------- */
 
-/* Tren penjualan — ApexCharts (area, smooth, gradient) */
+/* Tren penjualan — ApexCharts (area, smooth, gradient), nilai BERSIH */
 function SalesTrendChart({ data }) {
   const reducedMotion = usePrefersReducedMotion();
 
@@ -292,10 +335,19 @@ function SalesTrendChart({ data }) {
     [data],
   );
 
-  const hasData = points.some((item) => item.revenue > 0 || item.orders > 0);
+  const hasData = points.some((item) => item.revenue !== 0 || item.orders > 0);
+
+  /* Hari dengan refund lebih besar dari penjualan bernilai negatif,
+     jadi batas bawah sumbu Y tidak boleh dikunci di 0. */
+  const yMin = useMemo(
+    () => Math.min(0, ...points.map((item) => item.revenue)),
+    [points],
+  );
 
   const series = useMemo(
-    () => [{ name: "Pendapatan", data: points.map((item) => item.revenue) }],
+    () => [
+      { name: "Pendapatan bersih", data: points.map((item) => item.revenue) },
+    ],
     [points],
   );
 
@@ -356,7 +408,7 @@ function SalesTrendChart({ data }) {
         },
       },
       yaxis: {
-        min: 0,
+        min: yMin,
         forceNiceScale: true,
         tickAmount: 4,
         labels: {
@@ -373,7 +425,7 @@ function SalesTrendChart({ data }) {
       },
       noData: { text: "Belum ada data penjualan." },
     }),
-    [points, reducedMotion],
+    [points, reducedMotion, yMin],
   );
 
   if (!points.length) {
@@ -386,7 +438,7 @@ function SalesTrendChart({ data }) {
     <div className="flex flex-col gap-2">
       <div
         role="img"
-        aria-label={`Grafik tren pendapatan ${formatNumber(points.length)} hari terakhir`}
+        aria-label={`Grafik tren pendapatan bersih ${formatNumber(points.length)} hari terakhir`}
         className="w-full min-w-0 overflow-hidden"
       >
         <ReactApexChart
@@ -853,6 +905,12 @@ export default function AdminDashboardPage() {
   const invoices = summary.invoices;
   const salesTrend = dashboard.charts?.sales_trend ?? [];
   const topProducts = dashboard.charts?.top_products ?? [];
+
+  const netRevenue = summary.revenue_this_month ?? 0;
+  const grossRevenue = summary.revenue_gross_this_month ?? netRevenue;
+  const refundPaid = summary.refund_this_month ?? EMPTY_AMOUNT;
+  const refundUnpaid = summary.refund_unpaid ?? EMPTY_AMOUNT;
+
   /* 4 card mini yang paling penting (sisanya disembunyikan) */
   const miniStats = [
     {
@@ -902,7 +960,12 @@ export default function AdminDashboardPage() {
 
       {/* Ringkasan statistik — compact */}
       <section aria-label="Ringkasan statistik" className="flex flex-col gap-4">
-        <RevenueCard value={formatPrice(summary.revenue_this_month)} />
+        <RevenueCard
+          net={netRevenue}
+          gross={grossRevenue}
+          refund={refundPaid}
+          refundUnpaid={refundUnpaid}
+        />
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {miniStats.map((stat) => (
@@ -918,7 +981,7 @@ export default function AdminDashboardPage() {
       >
         <Panel
           title="Tren penjualan"
-          description="Pendapatan beberapa hari terakhir."
+          description="Pendapatan bersih per hari bulan ini, setelah dikurangi refund."
           aside={
             <Tag tone="strong">{formatNumber(salesTrend.length)} hari</Tag>
           }

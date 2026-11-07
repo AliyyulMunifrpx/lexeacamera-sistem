@@ -1530,7 +1530,7 @@ function TransactionsReport() {
                             </Tag>
                           </td>
                           <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-second">
-                            {formatNumber(tx.units)}
+                            {formatNumber(isRefund ? -tx.units : tx.units)}
                           </td>
                           <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-second">
                             {formatRupiah(tx.revenue)}
@@ -1608,7 +1608,7 @@ function TransactionsReport() {
                         <div>
                           <dt className="text-xs text-second/60">Unit</dt>
                           <dd className="mt-2 font-semibold tabular-nums text-second">
-                            {formatNumber(tx.units)}
+                            {formatNumber(isRefund ? -tx.units : tx.units)}
                           </dd>
                         </div>
                         <div>

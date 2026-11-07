@@ -521,16 +521,16 @@ function CameraDetailContent() {
                 </span>{" "}
                 {camera.name}
               </h1>
-
-              <p className="text-xs text-second/50 line-through">
-                <span>Rp</span>
-                {formatPrice(camera.strikethrough_price)}
-              </p>
+              {camera.strikethrough_price && (
+                <p className="text-xs text-second/50 line-through">
+                  <span>Rp</span>
+                  {formatPrice(camera.strikethrough_price)}
+                </p>
+              )}{" "}
               <p className="text-base font-semibold text-grad md:text-xl">
                 <span className="text-base">Rp</span>
                 {formatPrice(camera.price)}
               </p>
-
               <p className="text-sm text-second/60">
                 {isOutOfStock ? "Stok habis" : `Stok tersedia: ${camera.stock}`}
               </p>
