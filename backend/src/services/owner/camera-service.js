@@ -281,6 +281,8 @@ const getAllCamera = async (request) => {
         stock: true,
         images: { where: { is_primary: true }, take: 1 },
         category: true,
+        condition: true,
+        sku: true,
       },
       orderBy: [{ created_at: "desc" }, { id: "asc" }],
       skip: (req.page - 1) * PER_PAGE,
