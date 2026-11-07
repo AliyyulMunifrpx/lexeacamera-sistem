@@ -26,6 +26,7 @@ import {
 } from "../../../features/reports/hooks.js";
 import { normalizeApiError } from "../../../../lib/api/errors.js";
 import PrimaryButton from "./../../../../components/primary-button";
+import { useQueryClient } from "@tanstack/react-query";
 const Chart = dynamic(() => import("react-apexcharts"), {
   ssr: false,
 
@@ -900,7 +901,6 @@ function TopCustomersPanel({ range }) {
 
   const customers = query.data?.data ?? [];
   const metric = query.data?.sort ?? sort;
-
   const valueOf = (customer) => customer.sales[metric];
   const maxValue = Math.max(
     1,
@@ -1068,7 +1068,7 @@ function TransactionsPreviewPanel({ range }) {
                     colSpan={4}
                     className="px-4 py-3 text-right text-xs font-semibold text-second/60"
                   >
-                    Total ({formatNumber(totals.orders)} order)
+                    Total periode ({formatNumber(totals.orders)} order){" "}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-bold tabular-nums text-second">
                     {formatRupiah(totals.revenue)}
@@ -1148,29 +1148,6 @@ function StockValuePanel() {
               Jika semua stok terjual penuh
             </p>
           </div>
-
-          {purchased && (
-            <dl className="grid grid-cols-1 gap-2 border-t border-second/30 pt-4 text-sm sm:grid-cols-3">
-              <div className="flex items-center justify-between gap-2">
-                <dt className="text-second/60">Modal terjual</dt>
-                <dd className="font-semibold tabular-nums text-second">
-                  {formatRupiah(purchased.sold_cost)}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <dt className="text-second/60">Modal stok</dt>
-                <dd className="font-semibold tabular-nums text-second">
-                  {formatRupiah(purchased.stock_cost)}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <dt className="text-second/60">Total modal</dt>
-                <dd className="font-semibold tabular-nums text-second">
-                  {formatRupiah(purchased.total_cost)}
-                </dd>
-              </div>
-            </dl>
-          )}
 
           {categories.length > 0 && (
             <div className="overflow-x-auto rounded-xl border border-second/30">
@@ -1256,6 +1233,7 @@ export default function ReportsOverviewPage() {
 
   const invalidRange =
     draft.from !== "" && draft.to !== "" && draft.from > draft.to;
+  const queryClient = useQueryClient();
 
   const summaryQuery = useGetReportSummary(range);
   const summary = summaryQuery.data;
@@ -1279,7 +1257,7 @@ export default function ReportsOverviewPage() {
   }
 
   function refreshAll() {
-    summaryQuery.refetch();
+    queryClient.invalidateQueries({ queryKey: ["reports"] });
   }
 
   return (
