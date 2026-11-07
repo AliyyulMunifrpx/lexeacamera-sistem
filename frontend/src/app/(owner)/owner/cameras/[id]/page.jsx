@@ -815,6 +815,12 @@ export default function CameraDetailPage() {
             <PrimaryButton href={`/owner/cameras/${camera.id}/edit`} fullWidth>
               Edit Produk
             </PrimaryButton>
+            <PrimaryButton
+              href={`/owner/reports/transactions?product_id=${camera.id}`}
+              fullWidth
+            >
+              Laporan Penjualan Produk Ini
+            </PrimaryButton>
 
             <CancelButton
               type="button"
