@@ -77,16 +77,23 @@ export async function getReportCategories({ from, to, sort } = {}) {
  * sort: revenue | orders | profit, limit 1-100, page.
  * Mengembalikan { data, paging, period, sort }.
  */
-export async function getReportCustomers({ from, to, sort, limit, page } = {}) {
+export async function getReportCustomers({
+  from,
+  to,
+  sort,
+  search,
+  limit,
+  page,
+} = {}) {
   const response = await api.get("/owner/reports/customers", {
     params: {
       ...periodParams({ from, to }),
       ...(hasValue(sort) && { sort }),
+      ...(hasValue(search) && { search }),
       ...(hasValue(limit) && { limit }),
       ...(hasValue(page) && { page }),
     },
   });
-
   return response.data;
 }
 
