@@ -376,7 +376,7 @@ export default function CategoriesPage() {
           }`}
         >
           {categories.length > 0 ? (
-            <div className="overflow-hidden rounded-2xl border border-second/30 bg-primary shadow-xl shadow-second/5">
+            <div className="overflow-hidden rounded-2xl  bg-primary shadow-xl shadow-second/5">
               <div className="overflow-x-auto">
                 <table className="min-w-full text-left">
                   <thead className="bg-grad text-primary">
@@ -405,10 +405,10 @@ export default function CategoriesPage() {
                   </thead>
 
                   <tbody className="divide-y divide-second/10">
-                    {categories.map((category) => (
+                    {categories.map((category, i) => (
                       <tr
                         key={category.id}
-                        className="transition-colors hover:bg-second4/5"
+                        className={`align-top transition-colors hover:bg-second/20 ${i % 2 === 0 ? "" : "bg-second3/20"}`}
                       >
                         <td className="px-4 py-4">
                           <div className="flex min-w-0 items-center gap-4">

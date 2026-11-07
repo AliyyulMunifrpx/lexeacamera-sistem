@@ -19,7 +19,7 @@ import {
 
 import { useGetReportProducts } from "../../../../features/reports/hooks.js";
 import { normalizeApiError } from "../../../../../lib/api/errors.js";
-import * as XLSX from "xlsx";
+import notify from "../../../../../lib/notify.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Design rules (SAMAKAN DENGAN INVOICE)                                     */
@@ -142,6 +142,350 @@ function formatRupiah(value = 0) {
 function formatPercent(value) {
   if (value === null || value === undefined) return "—";
   return `${String(Number(value.toFixed(2))).replace(".", ",")}%`;
+}
+
+function netUnits(product) {
+  return (product.sales?.units ?? 0) - (product.refunds?.units ?? 0);
+}
+
+/* ------------------------------ Excel export ------------------------------ */
+
+const XLSX_COLORS = {
+  brand: "FF4F46E5",
+  brandText: "FFFFFFFF",
+  title: "FF1E1B4B",
+  muted: "FF6B7280",
+  zebra: "FFF5F5FB",
+  border: "FFD9D9E3",
+  total: "FFE8E8F5",
+  profit: "FF047857",
+  warning: "FFB45309",
+};
+
+const XLSX_RUPIAH = '"Rp" #,##0;[Red]-"Rp" #,##0';
+const XLSX_NUMBER = "#,##0";
+const XLSX_PERCENT = "0.00%";
+
+const XLSX_COLUMN_COUNT = 10;
+const XLSX_HEADER_ROW = 10;
+
+const XLSX_HEADERS = [
+  { label: "No", width: 6, align: "center" },
+  { label: "Produk", width: 40, align: "left" },
+  { label: "Kategori", width: 20, align: "left" },
+  { label: "Unit terjual", width: 14, align: "right" },
+  { label: "Unit refund", width: 14, align: "right" },
+  { label: "Unit bersih", width: 14, align: "right" },
+  { label: "Omzet bersih", width: 20, align: "right" },
+  { label: "HPP bersih", width: 20, align: "right" },
+  { label: "Laba bersih", width: 20, align: "right" },
+  { label: "Margin", width: 12, align: "right" },
+];
+
+function formatExportTimestamp() {
+  const text = new Date().toLocaleString("id-ID", {
+    timeZone: "Asia/Jakarta",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return `${text} WIB`;
+}
+
+async function exportProductsXlsx({
+  products,
+  range,
+  sortLabel,
+  search,
+  paging,
+}) {
+  const ExcelJS = (await import("exceljs")).default;
+
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "Laporan Produk";
+  workbook.created = new Date();
+
+  const sheet = workbook.addWorksheet("Laporan Produk", {
+    views: [{ showGridLines: false }],
+    pageSetup: {
+      paperSize: 9,
+      orientation: "landscape",
+      fitToPage: true,
+      fitToWidth: 1,
+      fitToHeight: 0,
+      printTitlesRow: `${XLSX_HEADER_ROW}:${XLSX_HEADER_ROW}`,
+      margins: {
+        left: 0.4,
+        right: 0.4,
+        top: 0.5,
+        bottom: 0.5,
+        header: 0.3,
+        footer: 0.3,
+      },
+    },
+    headerFooter: {
+      oddFooter: "&LLaporan Produk&RHalaman &P dari &N",
+    },
+  });
+
+  sheet.columns = XLSX_HEADERS.map((column) => ({ width: column.width }));
+
+  const lastColumn = XLSX_COLUMN_COUNT;
+  const thinBorder = {
+    top: { style: "thin", color: { argb: XLSX_COLORS.border } },
+    left: { style: "thin", color: { argb: XLSX_COLORS.border } },
+    bottom: { style: "thin", color: { argb: XLSX_COLORS.border } },
+    right: { style: "thin", color: { argb: XLSX_COLORS.border } },
+  };
+
+  /* ----- Judul ----- */
+  sheet.mergeCells(1, 1, 1, lastColumn);
+  const titleCell = sheet.getCell(1, 1);
+  titleCell.value = "LAPORAN PRODUK";
+  titleCell.font = { size: 18, bold: true, color: { argb: XLSX_COLORS.title } };
+  titleCell.alignment = { vertical: "middle", horizontal: "left" };
+  sheet.getRow(1).height = 30;
+
+  sheet.mergeCells(2, 1, 2, lastColumn);
+  const subtitleCell = sheet.getCell(2, 1);
+  subtitleCell.value =
+    "Produk terjual berdasarkan order lunas, sudah dikurangi refund.";
+  subtitleCell.font = {
+    size: 10,
+    italic: true,
+    color: { argb: XLSX_COLORS.muted },
+  };
+  subtitleCell.alignment = { vertical: "middle", horizontal: "left" };
+
+  /* ----- Keterangan ----- */
+  const total = paging?.total ?? products.length;
+  const totalPages = Math.max(1, paging?.total_pages ?? 1);
+  const page = paging?.page ?? 1;
+
+  const meta = [
+    [
+      "Periode",
+      `${formatPeriod(range.from, range.to)} (${daysBetween(range.from, range.to)} hari)`,
+    ],
+    ["Diekspor pada", formatExportTimestamp()],
+    ["Diurutkan berdasarkan", sortLabel],
+    ["Pencarian", search || "Semua produk"],
+    [
+      "Cakupan data",
+      `Halaman ${page} dari ${totalPages} (${products.length} dari ${total} produk)`,
+    ],
+  ];
+
+  meta.forEach(([label, value], index) => {
+    const rowNumber = 4 + index;
+    sheet.mergeCells(rowNumber, 1, rowNumber, 2);
+    sheet.mergeCells(rowNumber, 3, rowNumber, lastColumn);
+
+    const labelCell = sheet.getCell(rowNumber, 1);
+    labelCell.value = label;
+    labelCell.font = {
+      bold: true,
+      size: 10,
+      color: { argb: XLSX_COLORS.title },
+    };
+    labelCell.alignment = { vertical: "middle", horizontal: "left" };
+
+    const valueCell = sheet.getCell(rowNumber, 3);
+    valueCell.value = value;
+    valueCell.font = { size: 10 };
+    valueCell.alignment = { vertical: "middle", horizontal: "left" };
+  });
+
+  /* ----- Header tabel ----- */
+  const headerRow = sheet.getRow(XLSX_HEADER_ROW);
+  headerRow.height = 26;
+  XLSX_HEADERS.forEach((column, index) => {
+    const cell = headerRow.getCell(index + 1);
+    cell.value = column.label;
+    cell.font = { bold: true, color: { argb: XLSX_COLORS.brandText } };
+    cell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: XLSX_COLORS.brand },
+    };
+    cell.alignment = {
+      vertical: "middle",
+      horizontal: column.align === "left" ? "left" : "center",
+      wrapText: true,
+    };
+    cell.border = thinBorder;
+  });
+
+  /* ----- Data ----- */
+  const firstDataRow = XLSX_HEADER_ROW + 1;
+  const sums = {
+    sold: 0,
+    refunded: 0,
+    units: 0,
+    revenue: 0,
+    cost: 0,
+    profit: 0,
+  };
+
+  products.forEach((product, index) => {
+    const sold = product.sales?.units ?? 0;
+    const refunded = product.refunds?.units ?? 0;
+    const units = netUnits(product);
+    const revenue = product.net?.revenue ?? 0;
+    const cost = product.net?.cost ?? 0;
+    const profit = product.net?.profit ?? 0;
+    const margin = product.net?.margin_pct;
+
+    sums.sold += sold;
+    sums.refunded += refunded;
+    sums.units += units;
+    sums.revenue += revenue;
+    sums.cost += cost;
+    sums.profit += profit;
+
+    const row = sheet.getRow(firstDataRow + index);
+    row.values = [
+      index + 1,
+      product.name,
+      product.category?.name ?? "Tanpa kategori",
+      sold,
+      refunded,
+      units,
+      revenue,
+      cost,
+      profit,
+      margin === null || margin === undefined ? "-" : margin / 100,
+    ];
+
+    row.eachCell({ includeEmpty: true }, (cell, col) => {
+      if (col > lastColumn) return;
+      cell.border = thinBorder;
+      cell.alignment = {
+        vertical: "middle",
+        horizontal: XLSX_HEADERS[col - 1].align,
+        wrapText: col === 2,
+      };
+      if (index % 2 === 1) {
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: XLSX_COLORS.zebra },
+        };
+      }
+    });
+
+    [4, 5, 6].forEach((col) => (row.getCell(col).numFmt = XLSX_NUMBER));
+    [7, 8, 9].forEach((col) => (row.getCell(col).numFmt = XLSX_RUPIAH));
+    row.getCell(10).numFmt = XLSX_PERCENT;
+    row.getCell(9).font = { bold: true, color: { argb: XLSX_COLORS.profit } };
+  });
+
+  const lastDataRow = firstDataRow + products.length - 1;
+
+  /* ----- Total ----- */
+  const totalRowNumber = lastDataRow + 1;
+  const totalRow = sheet.getRow(totalRowNumber);
+  totalRow.height = 24;
+  sheet.mergeCells(totalRowNumber, 1, totalRowNumber, 3);
+  totalRow.getCell(1).value = "Total halaman ini";
+
+  const sumCell = (col, letter, result, numFmt) => {
+    const cell = totalRow.getCell(col);
+    cell.value = {
+      formula: `SUM(${letter}${firstDataRow}:${letter}${lastDataRow})`,
+      result,
+    };
+    cell.numFmt = numFmt;
+  };
+
+  sumCell(4, "D", sums.sold, XLSX_NUMBER);
+  sumCell(5, "E", sums.refunded, XLSX_NUMBER);
+  sumCell(6, "F", sums.units, XLSX_NUMBER);
+  sumCell(7, "G", sums.revenue, XLSX_RUPIAH);
+  sumCell(8, "H", sums.cost, XLSX_RUPIAH);
+  sumCell(9, "I", sums.profit, XLSX_RUPIAH);
+
+  const marginCell = totalRow.getCell(10);
+  marginCell.value = {
+    formula: `IF(G${totalRowNumber}=0,"-",I${totalRowNumber}/G${totalRowNumber})`,
+    result: sums.revenue > 0 ? sums.profit / sums.revenue : "-",
+  };
+  marginCell.numFmt = XLSX_PERCENT;
+
+  for (let col = 1; col <= lastColumn; col += 1) {
+    const cell = totalRow.getCell(col);
+    cell.font = { bold: true, color: { argb: XLSX_COLORS.title } };
+    cell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: XLSX_COLORS.total },
+    };
+    cell.border = {
+      ...thinBorder,
+      top: { style: "medium", color: { argb: XLSX_COLORS.brand } },
+    };
+    cell.alignment = {
+      vertical: "middle",
+      horizontal: col === 1 ? "left" : "right",
+    };
+  }
+
+  /* ----- Catatan ----- */
+  const notes = [
+    "Catatan:",
+    "• Hanya order berstatus lunas yang dihitung. Unit, omzet, HPP, dan laba sudah dikurangi refund.",
+    "• HPP bersih = modal barang terjual dikurangi modal barang refund yang kembali ke stok.",
+    "• Margin = laba bersih dibagi omzet bersih.",
+  ];
+  if (totalPages > 1) {
+    notes.push(
+      "• File ini hanya berisi produk pada halaman yang dipilih. Pindah halaman lalu export lagi untuk produk lainnya.",
+    );
+  }
+
+  notes.forEach((text, index) => {
+    const rowNumber = totalRowNumber + 2 + index;
+    sheet.mergeCells(rowNumber, 1, rowNumber, lastColumn);
+    const cell = sheet.getCell(rowNumber, 1);
+    cell.value = text;
+    cell.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
+    cell.font =
+      index === 0
+        ? { bold: true, size: 10, color: { argb: XLSX_COLORS.title } }
+        : {
+            size: 10,
+            color: {
+              argb:
+                totalPages > 1 && index === notes.length - 1
+                  ? XLSX_COLORS.warning
+                  : XLSX_COLORS.muted,
+            },
+          };
+  });
+
+  sheet.autoFilter = {
+    from: { row: XLSX_HEADER_ROW, column: 1 },
+    to: { row: lastDataRow, column: lastColumn },
+  };
+
+  /* ----- Unduh ----- */
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `laporan-produk_${range.from}_sd_${range.to}${
+    totalPages > 1 ? `_hal-${page}` : ""
+  }.xlsx`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 /* ------------------------------ Error Mapping ----------------------------- */
@@ -298,6 +642,7 @@ export default function ProductsReportPage() {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [isExporting, setIsExporting] = useState(false);
 
   const invalidRange =
     draft.from !== "" && draft.to !== "" && draft.from > draft.to;
@@ -332,9 +677,9 @@ export default function ProductsReportPage() {
   const totals = useMemo(() => {
     return products.reduce(
       (acc, p) => ({
-        units: acc.units + (p.sales?.units ?? 0),
-        revenue: acc.revenue + (p.sales?.revenue ?? 0),
-        profit: acc.profit + (p.sales?.profit ?? 0),
+        units: acc.units + netUnits(p),
+        revenue: acc.revenue + (p.net?.revenue ?? 0),
+        profit: acc.profit + (p.net?.profit ?? 0),
       }),
       { units: 0, revenue: 0, profit: 0 },
     );
@@ -371,21 +716,26 @@ export default function ProductsReportPage() {
     setCurrentPage(1);
   }
 
-  function handleExport() {
-    const ws = XLSX.utils.json_to_sheet(
-      products.map((p) => ({
-        Produk: p.name,
-        SKU: p.sku ?? "",
-        Unit: p.sales.units,
-        Omzet: p.sales.revenue,
-        Laba: p.sales.profit,
-        Margin:
-          p.sales.revenue > 0 ? (p.sales.profit / p.sales.revenue) * 100 : 0,
-      })),
-    );
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Produk");
-    XLSX.writeFile(wb, `produk-${range.from}-${range.to}.xlsx`);
+  async function handleExport() {
+    if (isExporting || products.length === 0) return;
+
+    setIsExporting(true);
+    try {
+      await exportProductsXlsx({
+        products,
+        range,
+        sortLabel:
+          SORT_OPTIONS.find((option) => option.value === metric)?.label ??
+          metric,
+        search,
+        paging,
+      });
+    } catch (error) {
+      console.error(error);
+      notify.error("Gagal membuat file Excel. Coba lagi.");
+    } finally {
+      setIsExporting(false);
+    }
   }
 
   if (query.isPending) {
@@ -435,7 +785,7 @@ export default function ProductsReportPage() {
                 Laporan <span className="text-grad">Produk</span>
               </h1>
               <p className="mt-2 text-pretty text-sm text-second/60">
-                Produk terjual berdasarkan order lunas. Belum dikurangi refund.
+                Produk terjual berdasarkan order lunas. Sudah dikurangi refund.
               </p>
             </div>
           </div>
@@ -463,11 +813,20 @@ export default function ProductsReportPage() {
             <button
               type="button"
               onClick={handleExport}
-              disabled={products.length === 0}
+              disabled={products.length === 0 || isExporting}
+              aria-busy={isExporting}
               className={`${BTN_BASE} w-full bg-grad text-primary shadow-lg shadow-second4/25 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto ${FOCUS_RING}`}
             >
-              <FiDownload size={16} aria-hidden="true" />
-              Export Excel
+              {isExporting ? (
+                <FiLoader
+                  size={16}
+                  className="animate-spin motion-reduce:animate-none"
+                  aria-hidden="true"
+                />
+              ) : (
+                <FiDownload size={16} aria-hidden="true" />
+              )}
+              {isExporting ? "Menyiapkan file…" : "Export Excel"}
             </button>
           </div>
         </div>
@@ -558,7 +917,7 @@ export default function ProductsReportPage() {
                 type="search"
                 value={searchInput}
                 onChange={(event) => setSearchInput(event.target.value)}
-                placeholder="Cari nama atau SKU produk…"
+                placeholder="Cari nama produk…"
                 className={`${inputClass(false)} pl-8`}
                 maxLength={100}
                 autoComplete="off"
@@ -676,9 +1035,9 @@ export default function ProductsReportPage() {
             className={`transition-opacity duration-200 ${query.isFetching ? "opacity-40" : "opacity-100"}`}
           >
             {/* Tabel desktop */}
-            <div className="hidden overflow-hidden rounded-2xl border border-second/30 bg-primary shadow-xl shadow-second/5 md:block">
+            <div className="hidden overflow-hidden rounded-2xl  bg-primary shadow-xl shadow-second/5 md:block">
               <table className="min-w-full text-left">
-                <thead className="bg-second/[0.03] text-xs text-second/70">
+                <thead className="bg-grad text-sm text-primary">
                   <tr>
                     <th scope="col" className="px-4 py-3 font-semibold">
                       Produk
@@ -711,15 +1070,12 @@ export default function ProductsReportPage() {
                 </thead>
 
                 <tbody className="divide-y divide-second/10">
-                  {products.map((product) => {
-                    const margin =
-                      product.sales.revenue > 0
-                        ? (product.sales.profit / product.sales.revenue) * 100
-                        : null;
+                  {products.map((product, i) => {
+                    const margin = product.net.margin_pct;
                     return (
                       <tr
                         key={product.id}
-                        className="transition-colors hover:bg-second4/5"
+                        className={`align-top transition-colors hover:bg-second/20 ${i % 2 === 0 ? "" : "bg-second3/20"}`}
                       >
                         <td className="px-4 py-4">
                           <p className="break-words text-sm font-semibold text-second">
@@ -730,15 +1086,21 @@ export default function ProductsReportPage() {
                               SKU {product.sku}
                             </p>
                           )}
+                          {product.refunds?.units > 0 && (
+                            <p className="mt-2 text-xs tabular-nums text-second/60">
+                              Sudah dikurangi refund{" "}
+                              {formatNumber(product.refunds.units)} unit
+                            </p>
+                          )}
                         </td>
                         <td className="whitespace-nowrap px-4 py-4 text-right text-sm font-semibold tabular-nums text-second">
-                          {formatNumber(product.sales.units)}
+                          {formatNumber(netUnits(product))}
                         </td>
                         <td className="whitespace-nowrap px-4 py-4 text-right text-sm tabular-nums text-second">
-                          {formatRupiah(product.sales.revenue)}
+                          {formatRupiah(product.net.revenue)}
                         </td>
                         <td className="whitespace-nowrap px-4 py-4 text-right text-sm font-semibold tabular-nums text-second3">
-                          {formatRupiah(product.sales.profit)}
+                          {formatRupiah(product.net.profit)}
                         </td>
                         <td className="whitespace-nowrap px-4 py-4 text-right text-sm tabular-nums text-second/70">
                           {formatPercent(margin)}
@@ -753,10 +1115,7 @@ export default function ProductsReportPage() {
             {/* Card mobile */}
             <ul className="flex flex-col gap-4 md:hidden">
               {products.map((product) => {
-                const margin =
-                  product.sales.revenue > 0
-                    ? (product.sales.profit / product.sales.revenue) * 100
-                    : null;
+                const margin = product.net.margin_pct;
                 return (
                   <li key={product.id}>
                     <article className="flex min-w-0 flex-col gap-4 rounded-2xl border border-second/30 bg-primary p-4 shadow-xl shadow-second/5">
@@ -769,25 +1128,31 @@ export default function ProductsReportPage() {
                             SKU {product.sku}
                           </p>
                         )}
+                        {product.refunds?.units > 0 && (
+                          <p className="mt-2 text-xs tabular-nums text-second/60">
+                            Sudah dikurangi refund{" "}
+                            {formatNumber(product.refunds.units)} unit
+                          </p>
+                        )}
                       </div>
 
                       <dl className="grid grid-cols-2 gap-4 border-t border-second/30 pt-4 text-sm">
                         <div>
                           <dt className="text-xs text-second/60">Unit</dt>
                           <dd className="mt-2 font-semibold tabular-nums text-second">
-                            {formatNumber(product.sales.units)}
+                            {formatNumber(netUnits(product))}
                           </dd>
                         </div>
                         <div>
                           <dt className="text-xs text-second/60">Omzet</dt>
                           <dd className="mt-2 font-semibold tabular-nums text-second">
-                            {formatRupiah(product.sales.revenue)}
+                            {formatRupiah(product.net.revenue)}
                           </dd>
                         </div>
                         <div>
                           <dt className="text-xs text-second/60">Laba</dt>
                           <dd className="mt-2 font-semibold tabular-nums text-second3">
-                            {formatRupiah(product.sales.profit)}
+                            {formatRupiah(product.net.profit)}
                           </dd>
                         </div>
                         <div>

@@ -63,6 +63,7 @@ export const productsReportValidation = Joi.object({
   from: wibDate,
   to: wibDate,
   sort: SORT,
+  search: Joi.string().trim().max(100).allow("").empty("").optional(),
   limit: Joi.number().integer().min(1).max(1000).default(20),
   page: Joi.number().integer().min(1).default(1),
 })
@@ -81,6 +82,7 @@ export const customersReportValidation = Joi.object({
   from: wibDate,
   to: wibDate,
   sort: Joi.string().valid("revenue", "orders", "profit").default("revenue"),
+  search: Joi.string().trim().max(100).allow("").empty("").optional(),
   limit: Joi.number().integer().min(1).max(1000).default(20),
   page: Joi.number().integer().min(1).default(1),
 })
@@ -97,6 +99,10 @@ export const transactionsReportValidation = Joi.object({
   to: wibDate,
   type: Joi.string().valid("SALE", "REFUND"),
   search: Joi.string().trim().max(100).allow("").empty("").optional(),
+  category_id: Joi.string().uuid().allow("").empty(""),
+  camera_id: Joi.string().uuid().allow("").empty(""),
+  product: Joi.string().trim().max(100).allow("").empty("").optional(),
+  category: Joi.string().trim().max(100).allow("").empty("").optional(),
   limit: Joi.number().integer().min(1).max(1000).default(20),
   page: Joi.number().integer().min(1).default(1),
 })

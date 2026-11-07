@@ -1,7 +1,8 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link.js";
+import { useSearchParams } from "next/navigation.js";
 import {
   FiAlertTriangle,
   FiArrowLeft,
@@ -21,6 +22,7 @@ import {
 } from "react-icons/fi";
 
 import { getReportTransactions } from "../../../../features/reports/api.js";
+import { useGetCategories } from "../../../../features/categories/hooks.js";
 import { useGetReportTransactions } from "../../../../features/reports/hooks.js";
 import { normalizeApiError } from "../../../../../lib/api/errors.js";
 import notify from "../../../../../lib/notify.js";
@@ -53,6 +55,13 @@ function inputClass(hasError) {
 
 const PER_PAGE = 20;
 const EXPORT_LIMIT = 1000;
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function uuidParam(value) {
+  return value && UUID_RE.test(value) ? value : "";
+}
 
 const TYPE_OPTIONS = [
   { value: "", label: "Semua" },
@@ -343,9 +352,9 @@ function TransactionItems({ items }) {
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-second/30">
-      <table className="min-w-full text-left text-xs">
-        <thead className="bg-second/[0.03] text-second/70">
+    <div className="overflow-x-auto rounded-xl ">
+      <table className="min-w-full text-left text-sm">
+        <thead className="bg-grad text-primary">
           <tr>
             <th scope="col" className="px-3 py-2 font-semibold">
               Produk
@@ -366,7 +375,10 @@ function TransactionItems({ items }) {
         </thead>
         <tbody className="divide-y divide-second/10">
           {items.map((item, index) => (
-            <tr key={`${item.camera_id}-${index}`}>
+            <tr
+              key={`${item.camera_id}-${index}`}
+              className={`align-top transition-colors hover:bg-second/20 ${index % 2 === 0 ? "" : "bg-second3/20"}`}
+            >
               <td className="px-3 py-2 text-second">{item.name ?? "—"}</td>
               <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-second">
                 {formatNumber(item.quantity)}
@@ -396,39 +408,503 @@ function TransactionItems({ items }) {
 
 /* ------------------------------- Export Excel ----------------------------- */
 
-async function exportTransactionsExcel({ from, to, type, search }) {
+const XLSX_COLORS = {
+  brand: "FF4F46E5",
+  brandText: "FFFFFFFF",
+  title: "FF1E1B4B",
+  muted: "FF6B7280",
+  zebra: "FFF5F5FB",
+  border: "FFD9D9E3",
+  total: "FFE8E8F5",
+  profit: "FF047857",
+  refund: "FFB91C1C",
+  warning: "FFB45309",
+};
+
+const XLSX_RUPIAH = '"Rp" #,##0;[Red]-"Rp" #,##0';
+const XLSX_NUMBER = "#,##0;[Red]-#,##0";
+const XLSX_DATETIME = "dd mmm yyyy hh:mm";
+
+const TX_HEADERS = [
+  { label: "No", width: 6, align: "center" },
+  { label: "Invoice", width: 22, align: "left" },
+  { label: "Tanggal lunas (WIB)", width: 22, align: "center" },
+  { label: "Customer", width: 28, align: "left" },
+  { label: "ID customer", width: 16, align: "left" },
+  { label: "Tipe", width: 12, align: "center" },
+  { label: "Unit", width: 10, align: "right" },
+  { label: "Omzet", width: 20, align: "right" },
+  { label: "Modal", width: 20, align: "right" },
+  { label: "Laba", width: 20, align: "right" },
+];
+
+const ITEM_HEADERS = [
+  { label: "No", width: 6, align: "center" },
+  { label: "Invoice", width: 22, align: "left" },
+  { label: "Tanggal lunas (WIB)", width: 22, align: "center" },
+  { label: "Tipe", width: 12, align: "center" },
+  { label: "Customer", width: 28, align: "left" },
+  { label: "Produk", width: 40, align: "left" },
+  { label: "Qty", width: 8, align: "right" },
+  { label: "Harga satuan", width: 18, align: "right" },
+  { label: "Modal satuan", width: 18, align: "right" },
+  { label: "Status stok", width: 16, align: "center" },
+];
+
+const THIN_BORDER = {
+  top: { style: "thin", color: { argb: XLSX_COLORS.border } },
+  left: { style: "thin", color: { argb: XLSX_COLORS.border } },
+  bottom: { style: "thin", color: { argb: XLSX_COLORS.border } },
+  right: { style: "thin", color: { argb: XLSX_COLORS.border } },
+};
+
+function solidFill(argb) {
+  return { type: "pattern", pattern: "solid", fgColor: { argb } };
+}
+
+function formatExportTimestamp() {
+  const text = new Date().toLocaleString("id-ID", {
+    timeZone: "Asia/Jakarta",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return `${text} WIB`;
+}
+
+// Geser +7 jam supaya Excel (yang membaca tanggal sebagai UTC) menampilkan jam WIB.
+function toWibCellDate(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return new Date(date.getTime() + 7 * 60 * 60 * 1000);
+}
+
+function typeText(type) {
+  return type === "REFUND" ? "Refund" : "Penjualan";
+}
+
+function stockText(restocked) {
+  if (restocked === true) return "Kembali ke stok";
+  if (restocked === false) return "Tidak kembali";
+  return "-";
+}
+
+function createSheet(workbook, name, footerLabel, headers, headerRowNumber) {
+  const sheet = workbook.addWorksheet(name, {
+    views: [{ showGridLines: false }],
+    pageSetup: {
+      paperSize: 9,
+      orientation: "landscape",
+      fitToPage: true,
+      fitToWidth: 1,
+      fitToHeight: 0,
+      printTitlesRow: `${headerRowNumber}:${headerRowNumber}`,
+      margins: {
+        left: 0.4,
+        right: 0.4,
+        top: 0.5,
+        bottom: 0.5,
+        header: 0.3,
+        footer: 0.3,
+      },
+    },
+    headerFooter: { oddFooter: `&L${footerLabel}&RHalaman &P dari &N` },
+  });
+  sheet.columns = headers.map((column) => ({ width: column.width }));
+  return sheet;
+}
+
+function writeTitle(sheet, lastColumn, title, subtitle) {
+  sheet.mergeCells(1, 1, 1, lastColumn);
+  const titleCell = sheet.getCell(1, 1);
+  titleCell.value = title;
+  titleCell.font = { size: 18, bold: true, color: { argb: XLSX_COLORS.title } };
+  titleCell.alignment = { vertical: "middle", horizontal: "left" };
+  sheet.getRow(1).height = 30;
+
+  sheet.mergeCells(2, 1, 2, lastColumn);
+  const subtitleCell = sheet.getCell(2, 1);
+  subtitleCell.value = subtitle;
+  subtitleCell.font = {
+    size: 10,
+    italic: true,
+    color: { argb: XLSX_COLORS.muted },
+  };
+  subtitleCell.alignment = { vertical: "middle", horizontal: "left" };
+}
+
+function writeHeaderRow(sheet, rowNumber, headers) {
+  const row = sheet.getRow(rowNumber);
+  row.height = 26;
+  headers.forEach((column, index) => {
+    const cell = row.getCell(index + 1);
+    cell.value = column.label;
+    cell.font = { bold: true, color: { argb: XLSX_COLORS.brandText } };
+    cell.fill = solidFill(XLSX_COLORS.brand);
+    cell.alignment = {
+      vertical: "middle",
+      horizontal: column.align === "left" ? "left" : "center",
+      wrapText: true,
+    };
+    cell.border = THIN_BORDER;
+  });
+}
+
+function styleDataRow(row, headers, index, wrapColumns = []) {
+  row.eachCell({ includeEmpty: true }, (cell, col) => {
+    if (col > headers.length) return;
+    cell.border = THIN_BORDER;
+    cell.alignment = {
+      vertical: "middle",
+      horizontal: headers[col - 1].align,
+      wrapText: wrapColumns.includes(col),
+    };
+    if (index % 2 === 1) cell.fill = solidFill(XLSX_COLORS.zebra);
+  });
+}
+
+function writeNotes(sheet, startRow, lastColumn, notes, warningIndexes = []) {
+  notes.forEach((text, index) => {
+    const rowNumber = startRow + index;
+    sheet.mergeCells(rowNumber, 1, rowNumber, lastColumn);
+    const cell = sheet.getCell(rowNumber, 1);
+    cell.value = text;
+    cell.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
+    cell.font =
+      index === 0
+        ? { bold: true, size: 10, color: { argb: XLSX_COLORS.title } }
+        : {
+            size: 10,
+            color: {
+              argb: warningIndexes.includes(index)
+                ? XLSX_COLORS.warning
+                : XLSX_COLORS.muted,
+            },
+          };
+  });
+}
+
+async function downloadWorkbook(workbook, filename) {
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+async function exportTransactionsExcel({
+  from,
+  to,
+  type,
+  search,
+  product,
+  category_id,
+  camera_id,
+  filterInfo,
+}) {
   const response = await getReportTransactions({
     from,
     to,
     type,
     search,
+    product,
+    category_id,
+    camera_id,
     limit: EXPORT_LIMIT,
     page: 1,
   });
 
-  const rows = response.data.map((tx) => ({
-    Invoice: tx.invoice_no ?? "",
-    Customer: tx.customer_name ?? "",
-    "Customer ID": tx.customer_id ?? "",
-    "Tanggal Lunas": tx.paid_at ? new Date(tx.paid_at).toISOString() : "",
-    Tipe: tx.type === "REFUND" ? "Refund" : "Penjualan",
-    Unit: tx.units,
-    Omzet: tx.revenue,
-    Modal: tx.cost,
-    Laba: tx.profit,
-  }));
+  const rows = response.data ?? [];
+  if (rows.length === 0) {
+    throw new Error("Tidak ada transaksi untuk diekspor.");
+  }
 
-  const XLSX = await import("xlsx");
-  const ws = XLSX.utils.json_to_sheet(rows);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Transaksi");
-  XLSX.writeFile(wb, `transaksi-${from}-${to}.xlsx`);
+  const totalAll = response.paging?.total ?? rows.length;
+  const truncated = totalAll > rows.length;
+  const itemFilterActive = Boolean(product || category_id || camera_id);
+
+  const ExcelJS = (await import("exceljs")).default;
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "Rincian Transaksi";
+  workbook.created = new Date();
+
+  const periodText = `${formatPeriod(from, to)} (${daysBetween(from, to)} hari)`;
+  const saleCount = rows.filter((tx) => tx.type !== "REFUND").length;
+  const refundCount = rows.length - saleCount;
+
+  /* ===================== Sheet 1: Transaksi ===================== */
+
+  const meta = [
+    ["Periode", periodText],
+    ["Diekspor pada", formatExportTimestamp()],
+    ["Tipe transaksi", filterInfo.typeLabel],
+    ["Cari transaksi", search || "Semua transaksi"],
+    ["Filter produk", filterInfo.productLabel],
+    ["Kategori", filterInfo.categoryLabel],
+    [
+      "Cakupan data",
+      truncated
+        ? `${formatNumber(rows.length)} transaksi terbaru dari ${formatNumber(totalAll)} (${formatNumber(saleCount)} penjualan, ${formatNumber(refundCount)} refund)`
+        : `${formatNumber(rows.length)} transaksi (${formatNumber(saleCount)} penjualan, ${formatNumber(refundCount)} refund)`,
+    ],
+  ];
+
+  const txHeaderRow = 4 + meta.length + 1;
+  const txLastColumn = TX_HEADERS.length;
+  const txSheet = createSheet(
+    workbook,
+    "Transaksi",
+    "Rincian Transaksi",
+    TX_HEADERS,
+    txHeaderRow,
+  );
+
+  writeTitle(
+    txSheet,
+    txLastColumn,
+    "RINCIAN TRANSAKSI",
+    "Semua order lunas (penjualan dan refund) di periode ini. Refund bernilai negatif, sehingga total langsung net.",
+  );
+
+  meta.forEach(([label, value], index) => {
+    const rowNumber = 4 + index;
+    txSheet.mergeCells(rowNumber, 1, rowNumber, 2);
+    txSheet.mergeCells(rowNumber, 3, rowNumber, txLastColumn);
+
+    const labelCell = txSheet.getCell(rowNumber, 1);
+    labelCell.value = label;
+    labelCell.font = {
+      bold: true,
+      size: 10,
+      color: { argb: XLSX_COLORS.title },
+    };
+    labelCell.alignment = { vertical: "middle", horizontal: "left" };
+
+    const valueCell = txSheet.getCell(rowNumber, 3);
+    valueCell.value = value;
+    valueCell.font = { size: 10 };
+    valueCell.alignment = {
+      vertical: "middle",
+      horizontal: "left",
+      wrapText: true,
+    };
+  });
+
+  writeHeaderRow(txSheet, txHeaderRow, TX_HEADERS);
+
+  const firstTxRow = txHeaderRow + 1;
+  const sums = { units: 0, revenue: 0, cost: 0, profit: 0 };
+
+  rows.forEach((tx, index) => {
+    const isRefund = tx.type === "REFUND";
+    // Unit dibuat negatif untuk refund supaya konsisten dengan omzet, modal, dan laba.
+    const units = (isRefund ? -1 : 1) * (tx.units ?? 0);
+    const revenue = tx.revenue ?? 0;
+    const cost = tx.cost ?? 0;
+    const profit = tx.profit ?? 0;
+
+    sums.units += units;
+    sums.revenue += revenue;
+    sums.cost += cost;
+    sums.profit += profit;
+
+    const row = txSheet.getRow(firstTxRow + index);
+    row.values = [
+      index + 1,
+      tx.invoice_no ?? "-",
+      toWibCellDate(tx.paid_at),
+      tx.customer_name ?? "-",
+      tx.customer_id ?? "-",
+      typeText(tx.type),
+      units,
+      revenue,
+      cost,
+      profit,
+    ];
+
+    styleDataRow(row, TX_HEADERS, index, [4]);
+
+    row.getCell(3).numFmt = XLSX_DATETIME;
+    row.getCell(7).numFmt = XLSX_NUMBER;
+    [8, 9, 10].forEach((col) => (row.getCell(col).numFmt = XLSX_RUPIAH));
+    row.getCell(6).font = {
+      bold: true,
+      color: { argb: isRefund ? XLSX_COLORS.refund : XLSX_COLORS.title },
+    };
+    row.getCell(10).font = {
+      bold: true,
+      color: { argb: profit < 0 ? XLSX_COLORS.refund : XLSX_COLORS.profit },
+    };
+  });
+
+  const lastTxRow = firstTxRow + rows.length - 1;
+  const totalRowNumber = lastTxRow + 1;
+  const totalRow = txSheet.getRow(totalRowNumber);
+  totalRow.height = 24;
+  txSheet.mergeCells(totalRowNumber, 1, totalRowNumber, 6);
+  totalRow.getCell(1).value = "Total (net setelah refund)";
+
+  const sumCell = (col, letter, result, numFmt) => {
+    const cell = totalRow.getCell(col);
+    cell.value = {
+      formula: `SUM(${letter}${firstTxRow}:${letter}${lastTxRow})`,
+      result,
+    };
+    cell.numFmt = numFmt;
+  };
+
+  sumCell(7, "G", sums.units, XLSX_NUMBER);
+  sumCell(8, "H", sums.revenue, XLSX_RUPIAH);
+  sumCell(9, "I", sums.cost, XLSX_RUPIAH);
+  sumCell(10, "J", sums.profit, XLSX_RUPIAH);
+
+  for (let col = 1; col <= txLastColumn; col += 1) {
+    const cell = totalRow.getCell(col);
+    cell.font = { bold: true, color: { argb: XLSX_COLORS.title } };
+    cell.fill = solidFill(XLSX_COLORS.total);
+    cell.border = {
+      ...THIN_BORDER,
+      top: { style: "medium", color: { argb: XLSX_COLORS.brand } },
+    };
+    cell.alignment = {
+      vertical: "middle",
+      horizontal: col === 1 ? "left" : "right",
+    };
+  }
+
+  const txNotes = [
+    "Catatan:",
+    "• Hanya order berstatus lunas yang dihitung. Unit, omzet, modal, dan laba pada refund bernilai negatif.",
+    "• Modal = modal barang terjual. Pada refund, hanya modal barang yang kembali ke stok yang dikurangkan.",
+    "• Rincian produk per transaksi ada di sheet “Rincian Item”.",
+  ];
+  const warningIndexes = [];
+  if (itemFilterActive) {
+    txNotes.push(
+      "• Filter produk atau kategori aktif: unit, omzet, modal, dan laba hanya dihitung dari produk yang cocok, bukan seluruh isi order.",
+    );
+  }
+  if (truncated) {
+    txNotes.push(
+      `• Hanya ${formatNumber(rows.length)} transaksi terbaru dari ${formatNumber(totalAll)} yang diekspor. Persempit rentang tanggal atau filter untuk mendapat data lengkap.`,
+    );
+    warningIndexes.push(txNotes.length - 1);
+  }
+  writeNotes(
+    txSheet,
+    totalRowNumber + 2,
+    txLastColumn,
+    txNotes,
+    warningIndexes,
+  );
+
+  txSheet.autoFilter = {
+    from: { row: txHeaderRow, column: 1 },
+    to: { row: lastTxRow, column: txLastColumn },
+  };
+
+  /* ==================== Sheet 2: Rincian Item ==================== */
+
+  const itemLines = [];
+  rows.forEach((tx) => {
+    (tx.items ?? []).forEach((item) => {
+      itemLines.push({ tx, item });
+    });
+  });
+
+  const itemHeaderRow = 4;
+  const itemLastColumn = ITEM_HEADERS.length;
+  const itemSheet = createSheet(
+    workbook,
+    "Rincian Item",
+    "Rincian Item Transaksi",
+    ITEM_HEADERS,
+    itemHeaderRow,
+  );
+  itemSheet.views = [
+    { state: "frozen", ySplit: itemHeaderRow, showGridLines: false },
+  ];
+
+  writeTitle(
+    itemSheet,
+    itemLastColumn,
+    "RINCIAN ITEM TRANSAKSI",
+    `${periodText} • ${formatNumber(itemLines.length)} item dari ${formatNumber(rows.length)} transaksi`,
+  );
+
+  writeHeaderRow(itemSheet, itemHeaderRow, ITEM_HEADERS);
+
+  itemLines.forEach(({ tx, item }, index) => {
+    const row = itemSheet.getRow(itemHeaderRow + 1 + index);
+    row.values = [
+      index + 1,
+      tx.invoice_no ?? "-",
+      toWibCellDate(tx.paid_at),
+      typeText(tx.type),
+      tx.customer_name ?? "-",
+      item.name ?? "-",
+      item.quantity ?? 0,
+      item.price ?? 0,
+      item.modal ?? 0,
+      tx.type === "REFUND" ? stockText(item.restocked) : "-",
+    ];
+
+    styleDataRow(row, ITEM_HEADERS, index, [5, 6]);
+
+    row.getCell(3).numFmt = XLSX_DATETIME;
+    row.getCell(7).numFmt = XLSX_NUMBER;
+    [8, 9].forEach((col) => (row.getCell(col).numFmt = XLSX_RUPIAH));
+    if (tx.type === "REFUND") {
+      row.getCell(4).font = { bold: true, color: { argb: XLSX_COLORS.refund } };
+    }
+  });
+
+  const lastItemRow = itemHeaderRow + itemLines.length;
+  if (itemLines.length > 0) {
+    itemSheet.autoFilter = {
+      from: { row: itemHeaderRow, column: 1 },
+      to: { row: lastItemRow, column: itemLastColumn },
+    };
+  }
+
+  writeNotes(
+    itemSheet,
+    lastItemRow + 2,
+    itemLastColumn,
+    [
+      "Catatan:",
+      "• Harga dan modal adalah nilai per unit saat order dibuat. Harga item belum memperhitungkan diskon order, sehingga omzet transaksi bisa berbeda dari total harga item.",
+      "• Status stok hanya berlaku untuk refund: Kembali ke stok atau Tidak kembali.",
+      ...(itemFilterActive
+        ? [
+            "• Hanya item yang cocok dengan filter produk atau kategori yang ditampilkan.",
+          ]
+        : []),
+    ],
+    [],
+  );
+
+  await downloadWorkbook(workbook, `rincian-transaksi_${from}_sd_${to}.xlsx`);
 }
 
 /* ---------------------------------- Page --------------------------------- */
 
-export default function TransactionsReportPage() {
+function TransactionsReport() {
   const [today] = useState(wibToday);
+  const searchParams = useSearchParams();
+  const paramProductId = uuidParam(searchParams.get("product_id"));
+  const paramCategoryId = uuidParam(searchParams.get("category_id"));
 
   const [presetKey, setPresetKey] = useState("30d");
   const [range, setRange] = useState(() => PRESETS[1].range(wibToday()));
@@ -436,6 +912,10 @@ export default function TransactionsReportPage() {
   const [type, setType] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [productInput, setProductInput] = useState("");
+  const [product, setProduct] = useState("");
+  const [categoryId, setCategoryId] = useState(paramCategoryId);
+  const [productId, setProductId] = useState(paramProductId);
   const [currentPage, setCurrentPage] = useState(1);
   const [expandedId, setExpandedId] = useState(null);
   const [exporting, setExporting] = useState(false);
@@ -451,10 +931,43 @@ export default function TransactionsReportPage() {
     return () => clearTimeout(timer);
   }, [searchInput]);
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setProduct(productInput.trim());
+      setCurrentPage(1);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [productInput]);
+
+  // Filter dari link (product_id / category_id) diutamakan. Setelah itu
+  // kategori bisa diganti lewat dropdown.
+  useEffect(() => {
+    setProductId(paramProductId);
+    setCategoryId(paramCategoryId);
+    setCurrentPage(1);
+  }, [paramProductId, paramCategoryId]);
+
+  const categoriesQuery = useGetCategories();
+  const categories = useMemo(() => {
+    const raw = categoriesQuery.data;
+    const list = Array.isArray(raw)
+      ? raw
+      : Array.isArray(raw?.data)
+        ? raw.data
+        : Array.isArray(raw?.data?.data)
+          ? raw.data.data
+          : [];
+    return list.filter((item) => item?.id && item?.name);
+  }, [categoriesQuery.data]);
+  const categoryKnown = categories.some((item) => item.id === categoryId);
+
   const query = useGetReportTransactions({
     ...range,
     type,
     search,
+    product,
+    category_id: categoryId,
+    camera_id: productId,
     limit: PER_PAGE,
     page: currentPage,
   });
@@ -470,7 +983,11 @@ export default function TransactionsReportPage() {
   const startItem = total === 0 ? 0 : (safePage - 1) * perPage + 1;
   const endItem = Math.min(safePage * perPage, total);
 
-  const hasFilters = search !== "" || type !== "" || presetKey !== "30d";
+  const itemFilterActive =
+    product !== "" || categoryId !== "" || productId !== "";
+  const pickedProductName = transactions[0]?.items?.[0]?.name;
+  const hasFilters =
+    search !== "" || itemFilterActive || type !== "" || presetKey !== "30d";
 
   function applyPreset(preset) {
     const next = preset.range(today);
@@ -498,13 +1015,43 @@ export default function TransactionsReportPage() {
     setType("");
     setSearchInput("");
     setSearch("");
+    setProductInput("");
+    setProduct("");
+    setProductId("");
+    setCategoryId("");
     setCurrentPage(1);
   }
 
   async function handleExport() {
     setExporting(true);
     try {
-      await exportTransactionsExcel({ ...range, type, search });
+      const productParts = [
+        product && `Nama mengandung “${product}”`,
+        productId &&
+          (pickedProductName ?? "Produk dipilih dari laporan produk"),
+      ].filter(Boolean);
+
+      await exportTransactionsExcel({
+        ...range,
+        type,
+        search,
+        product,
+        category_id: categoryId,
+        camera_id: productId,
+        filterInfo: {
+          typeLabel:
+            type === ""
+              ? "Semua tipe"
+              : (TYPE_OPTIONS.find((option) => option.value === type)?.label ??
+                type),
+          productLabel:
+            productParts.length > 0 ? productParts.join("; ") : "Semua produk",
+          categoryLabel: categoryId
+            ? (categories.find((item) => item.id === categoryId)?.name ??
+              "Kategori dari link")
+            : "Semua kategori",
+        },
+      });
       notify.success("File Excel berhasil diunduh.");
     } catch (err) {
       notify.error(
@@ -595,6 +1142,7 @@ export default function TransactionsReportPage() {
               type="button"
               onClick={handleExport}
               disabled={transactions.length === 0 || exporting}
+              aria-busy={exporting}
               className={`${BTN_BASE} w-full bg-grad text-primary shadow-lg shadow-second4/25 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto ${FOCUS_RING}`}
             >
               {exporting ? (
@@ -625,7 +1173,8 @@ export default function TransactionsReportPage() {
         <div>
           <h2 className="text-lg font-bold text-second">Filter</h2>
           <p className="mt-2 text-pretty text-sm text-second/60">
-            Pilih rentang tanggal, filter tipe, atau cari transaksi.
+            Pilih rentang tanggal, filter tipe, kategori, atau cari transaksi
+            dan produk.
           </p>
         </div>
 
@@ -683,6 +1232,89 @@ export default function TransactionsReportPage() {
           <p className="text-xs tabular-nums text-second/60">
             Menampilkan {formatPeriod(range.from, range.to)} (
             {daysBetween(range.from, range.to)} hari).
+          </p>
+        )}
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="min-w-0">
+            <label htmlFor="report-product" className={labelClass}>
+              Cari produk
+            </label>
+            <div className="relative">
+              <FiSearch
+                size={16}
+                aria-hidden="true"
+                className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-second/40"
+              />
+              <input
+                id="report-product"
+                type="search"
+                value={productInput}
+                onChange={(event) => setProductInput(event.target.value)}
+                placeholder="Cari nama produk…"
+                className={`${inputClass(false)} pl-8`}
+                maxLength={100}
+                autoComplete="off"
+              />
+            </div>
+          </div>
+          <div className="min-w-0">
+            <label htmlFor="report-category" className={labelClass}>
+              Kategori
+            </label>
+            <select
+              id="report-category"
+              value={categoryId}
+              onChange={(event) => {
+                setCategoryId(event.target.value);
+                setCurrentPage(1);
+              }}
+              disabled={categoriesQuery.isPending}
+              className={inputClass(false)}
+            >
+              <option value="">
+                {categoriesQuery.isPending
+                  ? "Memuat kategori…"
+                  : "Semua kategori"}
+              </option>
+              {categoryId !== "" &&
+                !categoryKnown &&
+                !categoriesQuery.isPending && (
+                  <option value={categoryId}>Kategori dari link</option>
+                )}
+              {categories.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {productId !== "" && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Tag tone="strong">Produk dipilih</Tag>
+            <span className="min-w-0 break-words text-sm text-second">
+              {pickedProductName ?? "Dari laporan produk"}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setProductId("");
+                setCurrentPage(1);
+              }}
+              className={`${BTN_BASE} border border-second/30 text-second hover:border-second2 hover:text-second2 ${FOCUS_RING}`}
+            >
+              <FiX size={16} aria-hidden="true" />
+              Hapus filter produk
+            </button>
+          </div>
+        )}
+
+        {itemFilterActive && (
+          <p className="text-xs text-second/60">
+            Unit, omzet, modal, dan laba hanya dihitung dari produk yang cocok
+            dengan pencarian, bukan seluruh isi order.
           </p>
         )}
 
@@ -815,9 +1447,9 @@ export default function TransactionsReportPage() {
             className={`transition-opacity duration-200 ${query.isFetching ? "opacity-40" : "opacity-100"}`}
           >
             {/* Tabel desktop */}
-            <div className="hidden overflow-hidden rounded-2xl border border-second/30 bg-primary shadow-xl shadow-second/5 md:block">
+            <div className="hidden overflow-hidden rounded-2xl bg-primary shadow-xl shadow-second/5 md:block">
               <table className="min-w-full text-left">
-                <thead className="bg-second/[0.03] text-xs text-second/70">
+                <thead className="bg-grad text-sm text-primary">
                   <tr>
                     <th scope="col" className="w-8 px-2 py-3" />
                     <th scope="col" className="px-4 py-3 font-semibold">
@@ -856,12 +1488,14 @@ export default function TransactionsReportPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-second/10">
-                  {transactions.map((tx) => {
+                  {transactions.map((tx, i) => {
                     const isRefund = tx.type === "REFUND";
                     const isOpen = expandedId === tx.id;
                     return (
                       <Fragment key={tx.id}>
-                        <tr className="transition-colors hover:bg-second4/5">
+                        <tr
+                          className={`align-top transition-colors hover:bg-second/20 ${i % 2 === 0 ? "" : "bg-second3/20"}`}
+                        >
                           <td className="px-2 py-3">
                             <button
                               type="button"
@@ -932,14 +1566,7 @@ export default function TransactionsReportPage() {
                       >
                         Total ({formatNumber(totals.orders)} order)
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-bold tabular-nums text-second">
-                        {formatNumber(
-                          transactions.reduce(
-                            (sum, tx) => sum + (tx.units ?? 0),
-                            0,
-                          ),
-                        )}
-                      </td>
+                      <td />
                       <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-bold tabular-nums text-second">
                         {formatRupiah(totals.revenue)}
                       </td>
@@ -1091,5 +1718,13 @@ export default function TransactionsReportPage() {
         </nav>
       )}
     </div>
+  );
+}
+
+export default function TransactionsReportPage() {
+  return (
+    <Suspense fallback={<LoadingState />}>
+      <TransactionsReport />
+    </Suspense>
   );
 }

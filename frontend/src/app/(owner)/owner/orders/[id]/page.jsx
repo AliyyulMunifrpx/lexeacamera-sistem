@@ -252,11 +252,19 @@ function DetailField({
   );
 }
 
-function DetailSection({ icon: Icon, title, action, children }) {
+function DetailSection({
+  icon: Icon,
+  title,
+  action,
+  children,
+  pelanggan,
+  id,
+  invoice,
+}) {
   return (
     <section className="flex min-w-0 flex-col gap-8 rounded-2xl border border-second/30 bg-primary p-4 shadow-xl shadow-second/5 sm:p-8">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 w-full">
           <div
             aria-hidden="true"
             className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-grad text-primary shadow-lg shadow-second4/20"
@@ -264,6 +272,17 @@ function DetailSection({ icon: Icon, title, action, children }) {
             <Icon size={16} />
           </div>
           <h2 className="text-lg font-bold text-second">{title}</h2>
+
+          {pelanggan && (
+            <PrimaryButton className="ml-auto" href={`/owner/customers/${id}`}>
+              Lihat pelanggan
+            </PrimaryButton>
+          )}
+          {invoice && (
+            <PrimaryButton className="ml-auto" href={`/owner/invoices/${id}`}>
+              Lihat invoice
+            </PrimaryButton>
+          )}
         </div>
         {action}
       </div>
@@ -1324,7 +1343,12 @@ export default function OwnerOrderDetailPage() {
 
         {/* Sidebar */}
         <aside className="flex min-w-0 flex-col gap-4 xl:sticky xl:top-16 xl:-mt-4 xl:pt-4">
-          <DetailSection icon={FiUser} title="Pelanggan">
+          <DetailSection
+            icon={FiUser}
+            title="Pelanggan"
+            pelanggan
+            id={order.customer.id}
+          >
             <p className="text-xs font-semibold uppercase tracking-wide text-second/50">
               Saat order dibuat
             </p>
@@ -1392,7 +1416,12 @@ export default function OwnerOrderDetailPage() {
             )}
           </DetailSection>
 
-          <DetailSection icon={FiFileText} title="Invoice">
+          <DetailSection
+            icon={FiFileText}
+            title="Invoice"
+            invoice
+            id={invoice.id}
+          >
             {invoice ? (
               <dl className="flex flex-col gap-4">
                 <DetailField

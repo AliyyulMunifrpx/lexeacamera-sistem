@@ -372,9 +372,9 @@ export default function StockReportPage() {
         </div>
 
         {categories.length > 0 ? (
-          <div className="overflow-x-auto rounded-xl border border-second/30">
+          <div className="overflow-x-auto rounded-xl ">
             <table className="min-w-full text-left">
-              <thead className="bg-second/[0.03] text-xs text-second/70">
+              <thead className="bg-grad text-sm text-primary">
                 <tr>
                   <th scope="col" className="px-4 py-3 font-semibold">
                     Kategori
@@ -409,7 +409,7 @@ export default function StockReportPage() {
                 {categories.map((cat, index) => (
                   <tr
                     key={cat.id ?? `no-category-${index}`}
-                    className="transition-colors hover:bg-second4/5"
+                    className={`align-top transition-colors hover:bg-second/20 ${index % 2 === 0 ? "" : "bg-second3/20"}`}
                   >
                     <td className="px-4 py-3 text-sm text-second">
                       {cat.name ?? "Tanpa kategori"}

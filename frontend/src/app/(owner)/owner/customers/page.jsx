@@ -1,12 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link.js";
 import {
-  FiAlertCircle,
   FiAlertTriangle,
+  FiChevronLeft,
+  FiChevronRight,
   FiCreditCard,
-  FiLoader,
   FiRefreshCw,
   FiSearch,
   FiShoppingBag,
@@ -15,7 +14,10 @@ import {
 
 import { normalizeApiError } from "../../../../lib/api/errors.js";
 import notify from "../../../../lib/notify.js";
-import { useGetCustomers } from "../../../features/customer/hooks.js";
+import {
+  useGetCustomers,
+  useGetCustomerSummary,
+} from "../../../features/customer/hooks.js";
 import CustomerCard from "../../../../components/owner/customer-card.jsx";
 import PrimaryButton from "./../../../../components/primary-button";
 import RefreshButton from "../../../../components/refresh-button.jsx";
@@ -44,6 +46,8 @@ function inputClass(hasError) {
       : "border-second/30 hover:border-second/30 focus:border-second4 focus:ring-second4/15",
   ].join(" ");
 }
+
+const SEARCH_DEBOUNCE_MS = 400;
 
 const SORT_OPTIONS = [
   { value: "newest", label: "Terbaru" },
@@ -83,6 +87,7 @@ function normalizeWhatsapp(input) {
   return digits;
 }
 
+/* Sort hanya berlaku untuk pelanggan di halaman yang sedang dimuat. */
 function sortCustomers(customers, sort) {
   const list = [...customers];
 
@@ -105,37 +110,6 @@ function sortCustomers(customers, sort) {
         (a, b) => new Date(b.created_at) - new Date(a.created_at),
       );
   }
-}
-
-function matchesQuery(customer, query) {
-  const text = query.trim().toLowerCase();
-  if (!text) return true;
-
-  const haystack = [
-    customer.name,
-    customer.id,
-    customer.instagram,
-    customer.address,
-    customer.whatsapp,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-
-  if (haystack.includes(text)) return true;
-
-  // Cocokkan nomor WhatsApp setelah normalisasi ke format 62...
-  const digits = text.replace(/\D/g, "");
-  if (digits.length >= 3) {
-    const normalizedQuery = normalizeWhatsapp(digits);
-    const normalizedCustomer = normalizeWhatsapp(customer.whatsapp);
-
-    if (normalizedCustomer && normalizedCustomer.includes(normalizedQuery)) {
-      return true;
-    }
-  }
-
-  return false;
 }
 
 /* ------------------------------ Small pieces ------------------------------ */
@@ -226,6 +200,41 @@ function EmptyState({ icon: Icon, title, message, action }) {
   );
 }
 
+function Pagination({ page, totalPages, onChange, disabled }) {
+  if (totalPages <= 1) return null;
+
+  return (
+    <nav
+      aria-label="Halaman pelanggan"
+      className="flex items-center justify-between gap-4"
+    >
+      <button
+        type="button"
+        onClick={() => onChange(page - 1)}
+        disabled={disabled || page <= 1}
+        className={`${BTN_BASE} border border-second/30 text-second hover:border-second4 hover:text-second4 disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING}`}
+      >
+        <FiChevronLeft size={16} aria-hidden="true" />
+        Sebelumnya
+      </button>
+
+      <p className="text-xs tabular-nums text-second/60">
+        Halaman {formatNumber(page)} dari {formatNumber(totalPages)}
+      </p>
+
+      <button
+        type="button"
+        onClick={() => onChange(page + 1)}
+        disabled={disabled || page >= totalPages}
+        className={`${BTN_BASE} border border-second/30 text-second hover:border-second4 hover:text-second4 disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING}`}
+      >
+        Berikutnya
+        <FiChevronRight size={16} aria-hidden="true" />
+      </button>
+    </nav>
+  );
+}
+
 function LoadingState() {
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-screen-xl flex-col gap-8 bg-primary pb-16">
@@ -295,11 +304,30 @@ function ErrorState({ onRetry, isFetching }) {
 /* ---------------------------------- Page ---------------------------------- */
 
 export default function CustomersPage() {
-  const { data, isPending, isError, error, isFetching, refetch } =
-    useGetCustomers();
-
   const [query, setQuery] = useState("");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [sort, setSort] = useState("newest");
+
+  // Pencarian dikirim ke server setelah user berhenti mengetik.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(query.trim());
+      setPage(1);
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const { data, isPending, isError, error, isFetching, refetch } =
+    useGetCustomers({ search, page });
+
+  const {
+    data: summaryData,
+    isError: isSummaryError,
+    isFetching: isSummaryFetching,
+    refetch: refetchSummary,
+  } = useGetCustomerSummary();
 
   useEffect(() => {
     if (!isError || !error) return;
@@ -314,12 +342,8 @@ export default function CustomersPage() {
   const paging = Array.isArray(data) ? null : (data?.paging ?? null);
 
   const visibleCustomers = useMemo(
-    () =>
-      sortCustomers(
-        customers.filter((customer) => matchesQuery(customer, query)),
-        sort,
-      ),
-    [customers, query, sort],
+    () => sortCustomers(customers, sort),
+    [customers, sort],
   );
 
   if (isPending) {
@@ -330,23 +354,28 @@ export default function CustomersPage() {
     return <ErrorState onRetry={() => refetch()} isFetching={isFetching} />;
   }
 
-  const totalCustomers = paging?.total ?? customers.length;
-  const isPartial = totalCustomers > customers.length;
-  const scopeLabel = isPartial
-    ? `Dari ${formatNumber(customers.length)} pelanggan yang dimuat`
-    : "Dari seluruh pelanggan";
+  // Ringkasan dari endpoint khusus: dihitung dari SELURUH pelanggan.
+  const summary = summaryData?.data ?? summaryData ?? null;
+  const hasSummary = summary !== null && !isSummaryError;
+  const summaryFallback = isSummaryError ? "Gagal dimuat" : "—";
 
-  const customersWithOrders = customers.filter(
-    (customer) => Number(customer.order_count) > 0,
-  ).length;
-
-  const totalSpent = customers.reduce(
-    (sum, customer) => sum + (Number(customer.total_spent) || 0),
-    0,
-  );
+  const totalMatches = paging?.total ?? customers.length;
+  const totalPages = paging?.total_pages ?? 1;
+  const currentPage = paging?.page ?? page;
+  const isSearching = search !== "";
 
   const queryIsDigits =
     /\d/.test(query) && query.replace(/\D/g, "").length >= 3;
+
+  const refreshAll = () => {
+    refetch();
+    refetchSummary();
+  };
+
+  const goToPage = (next) => {
+    setPage(Math.min(Math.max(next, 1), totalPages));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-screen-xl flex-col gap-8 bg-primary pb-16">
@@ -373,21 +402,11 @@ export default function CustomersPage() {
 
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
           <RefreshButton
-            type="button"
-            onClick={() => refetch()}
-            disabled={isFetching}
-            aria-label="Perbarui data pelanggan"
-            className={`${BTN_BASE} w-full border border-second/30 text-second hover:border-second4 hover:text-second4 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto ${FOCUS_RING}`}
-          >
-            <FiRefreshCw
-              size={16}
-              aria-hidden="true"
-              className={
-                isFetching ? "animate-spin motion-reduce:animate-none" : ""
-              }
-            />
-            {isFetching ? "Memperbarui…" : "Perbarui"}
-          </RefreshButton>
+            onClick={refreshAll}
+            isFetching={isFetching || isSummaryFetching}
+            ariaLabel="Perbarui data pelanggan"
+            className="w-full sm:w-auto"
+          />
           <PrimaryButton
             href="/owner/customers/create"
             className={`${BTN_BASE} w-full bg-grad text-primary shadow-lg shadow-second4/25 hover:opacity-90 sm:w-auto ${FOCUS_RING}`}
@@ -404,22 +423,30 @@ export default function CustomersPage() {
       >
         <FeaturedStatCard
           title="Total pelanggan"
-          value={formatNumber(totalCustomers)}
+          value={
+            hasSummary ? formatNumber(summary.total_customers) : summaryFallback
+          }
           description="Seluruh pelanggan terdaftar"
           icon={FiUsers}
         />
 
         <MiniStatCard
           title="Pernah memesan"
-          value={formatNumber(customersWithOrders)}
-          description={scopeLabel}
+          value={
+            hasSummary
+              ? formatNumber(summary.customers_with_orders)
+              : summaryFallback
+          }
+          description="Pelanggan dengan minimal satu pesanan"
           icon={FiShoppingBag}
         />
 
         <MiniStatCard
           title="Total belanja"
-          value={formatPrice(totalSpent)}
-          description={scopeLabel}
+          value={
+            hasSummary ? formatPrice(summary.total_spent) : summaryFallback
+          }
+          description="Penjualan lunas dikurangi refund lunas"
           icon={FiCreditCard}
         />
       </section>
@@ -481,6 +508,12 @@ export default function CustomersPage() {
                 </option>
               ))}
             </select>
+
+            {sort !== "newest" && (
+              <p className="mt-2 text-xs text-second/60">
+                Urutan berlaku untuk halaman ini saja.
+              </p>
+            )}
           </div>
         </div>
 
@@ -490,10 +523,11 @@ export default function CustomersPage() {
             role="status"
             aria-live="polite"
           >
-            Menampilkan {formatNumber(visibleCustomers.length)} dari{" "}
-            {formatNumber(customers.length)} pelanggan
-            {isPartial &&
-              `. Total ${formatNumber(totalCustomers)} pelanggan, sisanya ada di halaman berikutnya.`}
+            {isSearching
+              ? `${formatNumber(totalMatches)} pelanggan cocok dengan “${search}”`
+              : `${formatNumber(totalMatches)} pelanggan`}
+            {totalPages > 1 &&
+              `. Menampilkan ${formatNumber(visibleCustomers.length)} di halaman ${formatNumber(currentPage)} dari ${formatNumber(totalPages)}.`}
           </p>
 
           {visibleCustomers.length > 0 && (
@@ -503,29 +537,39 @@ export default function CustomersPage() {
           )}
         </div>
 
-        {customers.length === 0 ? (
-          <EmptyState
-            icon={FiUsers}
-            title="Belum ada pelanggan"
-            message="Pelanggan akan muncul di sini setelah ada yang membuat pesanan."
-          />
-        ) : visibleCustomers.length === 0 ? (
-          <EmptyState
-            icon={FiSearch}
-            title="Pelanggan tidak ditemukan"
-            message="Coba kata kunci lain atau hapus pencarian."
-            action={
-              <CancelButton
-                type="button"
-                onClick={() => setQuery("")}
-                className={`${BTN_BASE} border border-second/30 text-second hover:border-second2 hover:text-second2 ${FOCUS_RING}`}
-              >
-                Hapus pencarian
-              </CancelButton>
-            }
-          />
+        {visibleCustomers.length === 0 ? (
+          isSearching ? (
+            <EmptyState
+              icon={FiSearch}
+              title="Pelanggan tidak ditemukan"
+              message="Coba kata kunci lain atau hapus pencarian."
+              action={
+                <CancelButton
+                  type="button"
+                  onClick={() => {
+                    setQuery("");
+                    setSearch("");
+                    setPage(1);
+                  }}
+                  className={`${BTN_BASE} border border-second/30 text-second hover:border-second2 hover:text-second2 ${FOCUS_RING}`}
+                >
+                  Hapus pencarian
+                </CancelButton>
+              }
+            />
+          ) : (
+            <EmptyState
+              icon={FiUsers}
+              title="Belum ada pelanggan"
+              message="Pelanggan akan muncul di sini setelah ada yang membuat pesanan."
+            />
+          )
         ) : (
-          <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <ul
+            className={`grid grid-cols-1 gap-4 transition-opacity md:grid-cols-2 xl:grid-cols-3 ${
+              isFetching ? "opacity-60" : ""
+            }`}
+          >
             {visibleCustomers.map((customer) => (
               <li key={customer.id} className="min-w-0">
                 <CustomerCard customer={customer} />
@@ -533,6 +577,13 @@ export default function CustomersPage() {
             ))}
           </ul>
         )}
+
+        <Pagination
+          page={currentPage}
+          totalPages={totalPages}
+          onChange={goToPage}
+          disabled={isFetching}
+        />
       </section>
     </div>
   );

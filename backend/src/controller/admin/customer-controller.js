@@ -9,6 +9,15 @@ const getAll = async (req, res, next) => {
   }
 };
 
+const getSummary = async (req, res, next) => {
+  try {
+    const result = await customerService.getCustomerSummary();
+    res.status(200).json({ data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const get = async (req, res, next) => {
   try {
     const result = await customerService.getCustomer({ id: req.params.id });
@@ -48,4 +57,4 @@ const remove = async (req, res, next) => {
   }
 };
 
-export default { getAll, get, create, update, remove };
+export default { getAll, getSummary, get, create, update, remove };

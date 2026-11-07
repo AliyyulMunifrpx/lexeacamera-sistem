@@ -9,6 +9,7 @@ import {
   FiCamera,
   FiCheck,
   FiCheckCircle,
+  FiChevronDown,
   FiClock,
   FiCopy,
   FiCreditCard,
@@ -18,6 +19,7 @@ import {
   FiFileText,
   FiLock,
   FiMapPin,
+  FiMoreHorizontal,
   FiPackage,
   FiPrinter,
   FiRotateCcw,
@@ -539,14 +541,17 @@ export default function InvoiceDetailPage() {
             <div className="min-w-0">
               <p className="text-sm text-second/60">Detail invoice</p>
 
-              <h1 className="mt-2 break-all text-2xl font-bold tracking-tight text-second sm:text-3xl">
+              <h1 className="mt-2 break-all text-xl font-bold tracking-tight text-second sm:text-3xl">
                 {invoice.no_invoice}
               </h1>
 
               <p className="mt-2 text-sm tabular-nums text-second/60">
                 Dibuat {formatDate(invoice.created_at)}
                 {isPaid && invoice.paid_at && (
-                  <> · Dibayar {formatDate(invoice.paid_at)}</>
+                  <>
+                    {" "}
+                    <br /> Dibayar {formatDate(invoice.paid_at)}
+                  </>
                 )}
               </p>
             </div>
@@ -572,31 +577,15 @@ export default function InvoiceDetailPage() {
           </div>
         </div>
 
-        {/* Baris 2: toolbar aksi */}
-        <div className="flex flex-col gap-4 rounded-2xl border border-second/30 bg-primary p-4 shadow-xl shadow-second/5">
-          <div className="flex flex-wrap items-center gap-2">
-            {!isFinal ? (
-              <PrimaryButton href={`/admin/invoices/${invoice.id}/edit`}>
-                <FiEdit2 size={16} aria-hidden="true" />
-                Edit
-              </PrimaryButton>
-            ) : (
-              <PrimaryButton
-                type="button"
-                disabled
-                title="Invoice final tidak dapat diedit."
-                className={`${BTN_BASE} border border-second/30 text-second`}
-              >
-                <FiLock size={16} aria-hidden="true" />
-                Edit
-              </PrimaryButton>
-            )}
-
+        {/* Toolbar aksi invoice */}
+        <div className="rounded-2xl border border-second/30 bg-primary p-3 shadow-xl shadow-second/5 sm:p-4">
+          <div className="flex flex-col gap-3">
+            {/* Download PDF */}
             <PrimaryButton
               type="button"
               onClick={handleDownloadPDF}
               disabled={!isFinal}
-              className={`${BTN_BASE} bg-grad text-primary shadow-lg shadow-second4/25 hover:opacity-90`}
+              className={`${BTN_BASE} w-full justify-center bg-grad text-primary shadow-lg shadow-second4/20 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40`}
             >
               {isFinal ? (
                 <FiDownload size={16} aria-hidden="true" />
@@ -606,26 +595,34 @@ export default function InvoiceDetailPage() {
               Download PDF
             </PrimaryButton>
 
-            <div className="inline-flex items-stretch overflow-hidden rounded-xl border border-second/30">
-              <label htmlFor="paper-width" className="sr-only">
-                Lebar kertas struk thermal
-              </label>
-              <select
-                id="paper-width"
-                value={paperWidth}
-                onChange={(event) => setPaperWidth(event.target.value)}
-                disabled={!isFinal}
-                className={`cursor-pointer border-r border-second/30 bg-primary py-2 pl-4 pr-2 text-sm font-medium text-second outline-none transition-colors hover:bg-second/5 disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`}
-              >
-                <option value="58">58 mm</option>
-                <option value="80">80 mm</option>
-              </select>
+            {/* Cetak struk */}
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <div className="flex min-w-0 flex-1 overflow-hidden rounded-xl border border-second/30">
+                <label htmlFor="paper-width" className="sr-only">
+                  Lebar kertas struk thermal
+                </label>
+
+                <select
+                  id="paper-width"
+                  value={paperWidth}
+                  onChange={(event) => setPaperWidth(event.target.value)}
+                  disabled={!isFinal}
+                  className={`min-w-0 flex-1 cursor-pointer border-r border-second/30 bg-primary px-3 py-3 text-sm font-medium text-second outline-none transition-colors hover:bg-second/5 disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`}
+                >
+                  <option value="58">58 mm</option>
+                  <option value="80">80 mm</option>
+                </select>
+
+                <span className="flex shrink-0 items-center px-3 text-xs text-second/50">
+                  Lebar kertas
+                </span>
+              </div>
 
               <button
                 type="button"
                 onClick={handlePrintReceipt}
                 disabled={!isFinal}
-                className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-second transition-colors hover:bg-second4/5 hover:text-second4 disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS_RING}`}
+                className={`${BTN_BASE} w-full justify-center border border-second/30 text-second hover:border-second4 hover:text-second4 disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto ${FOCUS_RING}`}
               >
                 {isFinal ? (
                   <FiPrinter size={16} aria-hidden="true" />
@@ -636,32 +633,78 @@ export default function InvoiceDetailPage() {
               </button>
             </div>
 
-            <CancelButton
-              type="button"
-              onClick={() => setDeleteOpen(true)}
-              disabled={!isFinal}
-              title={
-                !isFinal
-                  ? "Invoice yang belum final tidak dapat dihapus."
-                  : "Hapus invoice final."
-              }
-              className={`${BTN_BASE} border border-second/30 text-second hover:border-second2 hover:text-second2`}
-            >
-              {isFinal ? (
-                <FiTrash2 size={16} aria-hidden="true" />
-              ) : (
-                <FiLock size={16} aria-hidden="true" />
-              )}
-              Hapus
-            </CancelButton>
-          </div>
+            {/* Aksi lainnya */}
+            <details className="group border-t border-second/10 pt-3">
+              <summary
+                className={`flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-3 py-2 text-sm font-medium text-second/70 transition-colors hover:bg-second/5 hover:text-second [&::-webkit-details-marker]:hidden ${FOCUS_RING}`}
+              >
+                <span className="flex items-center gap-2">
+                  <FiMoreHorizontal size={18} aria-hidden="true" />
+                  Aksi lainnya
+                </span>
 
-          {!isFinal && (
-            <p className="rounded-xl border border-second4/30 bg-second4/5 px-4 py-2 text-sm text-second4">
-              Invoice ini belum final. Download PDF, cetak struk, dan hapus baru
-              tersedia setelah invoice difinalkan.
-            </p>
-          )}
+                <span className="transition-transform duration-200 group-open:rotate-180">
+                  <FiChevronDown size={16} aria-hidden="true" />
+                </span>
+              </summary>
+
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {/* Edit */}
+                {!isFinal ? (
+                  <PrimaryButton
+                    href={`/admin/invoices/${invoice.id}/edit`}
+                    className="w-full justify-center"
+                  >
+                    <FiEdit2 size={16} aria-hidden="true" />
+                    Edit invoice
+                  </PrimaryButton>
+                ) : (
+                  <PrimaryButton
+                    type="button"
+                    disabled
+                    title="Invoice final tidak dapat diedit."
+                    className={`${BTN_BASE} w-full justify-center border border-second/30 text-second`}
+                  >
+                    <FiLock size={16} aria-hidden="true" />
+                    Edit invoice
+                  </PrimaryButton>
+                )}
+
+                {/* Hapus */}
+                <CancelButton
+                  type="button"
+                  onClick={() => setDeleteOpen(true)}
+                  disabled={!isFinal}
+                  title={
+                    !isFinal
+                      ? "Invoice yang belum final tidak dapat dihapus."
+                      : "Hapus invoice final."
+                  }
+                  className={`${BTN_BASE} w-full justify-center border border-red-500/30 text-red-500 hover:border-red-500 hover:bg-red-500/5 disabled:cursor-not-allowed disabled:opacity-40`}
+                >
+                  {isFinal ? (
+                    <FiTrash2 size={16} aria-hidden="true" />
+                  ) : (
+                    <FiLock size={16} aria-hidden="true" />
+                  )}
+                  Hapus invoice
+                </CancelButton>
+              </div>
+            </details>
+
+            {/* Informasi status */}
+            {!isFinal && (
+              <p className="flex items-start gap-2 rounded-xl border border-second4/30 bg-second4/5 px-3 py-3 text-xs leading-relaxed text-second4 sm:text-sm">
+                <FiLock
+                  size={16}
+                  className="mt-0.5 shrink-0"
+                  aria-hidden="true"
+                />
+                Invoice ini belum final. Download PDF, cetak struk, dan hapus
+                baru tersedia setelah invoice difinalkan.
+              </p>
+            )}
+          </div>
         </div>
       </header>
 
@@ -719,10 +762,10 @@ export default function InvoiceDetailPage() {
             </div>
 
             {/* Tabel (tablet ke atas) */}
-            <div className="hidden overflow-hidden rounded-2xl border border-second/30 sm:block">
+            <div className="hidden overflow-hidden rounded-2xl sm:block">
               <div className="overflow-x-auto">
                 <table className="min-w-full text-left">
-                  <thead className="bg-second/[0.04] text-xs text-second/60">
+                  <thead className="bg-grad text-sm text-primary">
                     <tr>
                       <th scope="col" className="px-4 py-3 font-semibold">
                         Item
@@ -749,10 +792,10 @@ export default function InvoiceDetailPage() {
                   </thead>
 
                   <tbody className="divide-y divide-second/10">
-                    {items.map((item) => (
+                    {items.map((item, i) => (
                       <tr
                         key={item.id}
-                        className="align-top transition-colors hover:bg-second/[0.03]"
+                        className={`align-top transition-colors hover:bg-second/20 ${i % 2 === 0 ? "bg-second3/20" : ""}`}
                       >
                         <td className="px-4 py-4">
                           <div className="flex min-w-0 items-start gap-3">

@@ -753,7 +753,7 @@ function TrendPanel({ range, groupChoice, onGroupChange }) {
         role="img"
         aria-label={`Grafik tren omzet dan laba bersih ${resolvedGroup}, ${formatPeriod(range.from, range.to)}.`}
       >
-        <Chart type="area" height={280} series={series} options={options} />
+        <Chart type="area" height={400} series={series} options={options} />
       </div>
     </Panel>
   );
@@ -1007,7 +1007,7 @@ function TransactionsPreviewPanel({ range }) {
       <div className="flex flex-col gap-4">
         <div className="overflow-x-auto rounded-xl border border-second/30">
           <table className="min-w-full text-left text-sm">
-            <thead className="bg-second/[0.03] text-xs text-second/70">
+            <thead className="bg-grad text-sm text-primary">
               <tr>
                 <th scope="col" className="px-4 py-3 font-semibold">
                   Invoice
@@ -1030,12 +1030,12 @@ function TransactionsPreviewPanel({ range }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-second/10">
-              {transactions.map((tx) => {
+              {transactions.map((tx, i) => {
                 const isRefund = tx.type === "REFUND";
                 return (
                   <tr
                     key={tx.id}
-                    className="transition-colors hover:bg-second4/5"
+                    className={`align-top transition-colors hover:bg-second/20 ${i % 2 === 0 ? "" : "bg-second3/20"}`}
                   >
                     <td className="px-4 py-3 font-mono text-xs font-semibold text-second">
                       {tx.invoice_no ?? "—"}
@@ -1175,7 +1175,7 @@ function StockValuePanel() {
           {categories.length > 0 && (
             <div className="overflow-x-auto rounded-xl border border-second/30">
               <table className="min-w-full text-left text-sm">
-                <thead className="bg-second/[0.03] text-xs text-second/70">
+                <thead className="bg-grad text-sm text-primary">
                   <tr>
                     <th scope="col" className="px-4 py-3 font-semibold">
                       Kategori
@@ -1210,7 +1210,7 @@ function StockValuePanel() {
                   {categories.map((cat, index) => (
                     <tr
                       key={cat.id ?? `no-category-${index}`}
-                      className="transition-colors hover:bg-second4/5"
+                      className={`align-top transition-colors hover:bg-second/20 ${index % 2 === 0 ? "" : "bg-second3/20"}`}
                     >
                       <td className="px-4 py-3 text-second/80">
                         {cat.name ?? "Tanpa kategori"}

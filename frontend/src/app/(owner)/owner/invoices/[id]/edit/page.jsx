@@ -398,7 +398,7 @@ function InvoiceSummary({
       </dl>
 
       <p className="text-xs text-second/50">
-        Preview saja. Backend tetap menghitung total akhir.
+        Preview saja. Sistem tetap menghitung total akhir.
       </p>
     </section>
   );
@@ -1290,7 +1290,7 @@ export default function EditInvoicePage() {
           {/* Diskon */}
           <FormSection
             title="Diskon"
-            description={`Subtotal item terkunci: ${formatCurrency(invoice.subtotal)}. Total akan dihitung ulang oleh server.`}
+            description={`Subtotal item terkunci: ${formatCurrency(invoice.subtotal)}. Total akan dihitung ulang oleh sistem.`}
           >
             <FieldGrid>
               <FormField label="Diskon toko" htmlFor="store_discount">

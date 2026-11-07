@@ -37,11 +37,19 @@ export async function getReportTrend({ group, from, to }) {
  * sort: units | revenue | profit, limit 1-100, page.
  * Mengembalikan { data, paging, period, sort }.
  */
-export async function getReportProducts({ from, to, sort, limit, page } = {}) {
+export async function getReportProducts({
+  from,
+  to,
+  sort,
+  search,
+  limit,
+  page,
+} = {}) {
   const response = await api.get("/owner/reports/products", {
     params: {
       ...periodParams({ from, to }),
       ...(hasValue(sort) && { sort }),
+      ...(hasValue(search) && { search }),
       ...(hasValue(limit) && { limit }),
       ...(hasValue(page) && { page }),
     },
@@ -49,7 +57,6 @@ export async function getReportProducts({ from, to, sort, limit, page } = {}) {
 
   return response.data;
 }
-
 /**
  * GET /owner/reports/categories (tanpa paging)
  * sort: units | revenue | profit. Mengembalikan { period, sort, data }.
@@ -105,6 +112,9 @@ export async function getReportTransactions({
   to,
   type,
   search,
+  product,
+  category_id,
+  camera_id,
   limit,
   page,
 } = {}) {
@@ -113,6 +123,9 @@ export async function getReportTransactions({
       ...periodParams({ from, to }),
       ...(hasValue(type) && { type }),
       ...(hasValue(search) && { search }),
+      ...(hasValue(product) && { product }),
+      ...(hasValue(category_id) && { category_id }),
+      ...(hasValue(camera_id) && { camera_id }),
       ...(hasValue(limit) && { limit }),
       ...(hasValue(page) && { page }),
     },
@@ -120,7 +133,6 @@ export async function getReportTransactions({
 
   return response.data;
 }
-
 /**
  * GET /owner/reports/stock-value
  * Nilai persediaan saat ini (posisi hari ini, bukan per periode).

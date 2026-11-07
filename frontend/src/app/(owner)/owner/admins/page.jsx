@@ -24,6 +24,7 @@ import {
 import { useFindEmployeeByEmail } from "../../../features/employees/hooks.js";
 import notify from "../../../../lib/notify.js";
 import { normalizeApiError } from "../../../../lib/api/errors.js";
+import PrimaryButton from "./../../../../components/primary-button";
 
 /* -------------------------------------------------------------------------- */
 /*  Design rules (SAMAKAN DENGAN INVOICE)                                     */
@@ -860,9 +861,9 @@ export default function AdminsPage() {
             className={`transition-opacity duration-200 ${isFetching ? "opacity-40" : "opacity-100"}`}
           >
             {/* Tabel desktop */}
-            <div className="hidden overflow-hidden rounded-2xl border border-second/30 bg-primary shadow-xl shadow-second/5 md:block">
+            <div className="hidden overflow-hidden rounded-2xl bg-primary shadow-xl shadow-second/5 md:block">
               <table className="min-w-full text-left">
-                <thead className="bg-second/[0.03] text-xs text-second/70">
+                <thead className="bg-grad text-sm text-primary">
                   <tr>
                     <th scope="col" className="px-4 py-3 font-semibold">
                       Nama
@@ -883,10 +884,10 @@ export default function AdminsPage() {
                 </thead>
 
                 <tbody className="divide-y divide-second/10">
-                  {admins.map((admin) => (
+                  {admins.map((admin, i) => (
                     <tr
                       key={admin.id}
-                      className="transition-colors hover:bg-second4/5"
+                      className={`align-top transition-colors hover:bg-second/20 ${i % 2 === 0 ? "" : "bg-second3/20"}`}
                     >
                       <td className="px-4 py-4 text-sm font-semibold text-second">
                         {admin.name}
@@ -897,14 +898,12 @@ export default function AdminsPage() {
                       <td className="px-4 py-4">
                         <AdminTags admin={admin} />
                       </td>
+
                       <td className="px-4 py-4 text-right">
-                        <Link
-                          href={ADMIN_PATH(admin.id)}
-                          className={`${BTN_BASE} border border-second/30 text-second hover:border-second4 hover:text-second4 ${FOCUS_RING}`}
-                        >
+                        <PrimaryButton href={ADMIN_PATH(admin.id)}>
                           Detail
                           <FiChevronRight size={16} aria-hidden="true" />
-                        </Link>
+                        </PrimaryButton>
                       </td>
                     </tr>
                   ))}

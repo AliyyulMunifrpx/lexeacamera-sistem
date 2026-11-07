@@ -19,7 +19,8 @@ import {
 
 import { useGetReportCustomers } from "../../../../features/reports/hooks.js";
 import { normalizeApiError } from "../../../../../lib/api/errors.js";
-import * as XLSX from "xlsx";
+import notify from "../../../../../lib/notify.js";
+import PrimaryButton from "../../../../../components/primary-button.jsx";
 
 /* -------------------------------------------------------------------------- */
 /*  Design rules (SAMAKAN DENGAN INVOICE)                                     */
@@ -143,6 +144,356 @@ function formatRupiah(value = 0) {
 function formatPercent(value) {
   if (value === null || value === undefined) return "—";
   return `${String(Number(value.toFixed(2))).replace(".", ",")}%`;
+}
+
+/* ------------------------------ Excel export ------------------------------ */
+
+const XLSX_COLORS = {
+  brand: "FF4F46E5",
+  brandText: "FFFFFFFF",
+  title: "FF1E1B4B",
+  muted: "FF6B7280",
+  zebra: "FFF5F5FB",
+  border: "FFD9D9E3",
+  total: "FFE8E8F5",
+  profit: "FF047857",
+  warning: "FFB45309",
+};
+
+const XLSX_RUPIAH = '"Rp" #,##0;[Red]-"Rp" #,##0';
+const XLSX_NUMBER = "#,##0";
+const XLSX_PERCENT = "0.00%";
+
+const XLSX_HEADER_ROW = 10;
+
+const XLSX_HEADERS = [
+  { label: "No", width: 6, align: "center" },
+  { label: "Customer", width: 30, align: "left" },
+  { label: "WhatsApp", width: 18, align: "left" },
+  { label: "Instagram", width: 18, align: "left" },
+  { label: "Tipe", width: 12, align: "center" },
+  { label: "Jumlah order", width: 14, align: "right" },
+  { label: "Nilai refund", width: 18, align: "right" },
+  { label: "Omzet bersih", width: 20, align: "right" },
+  { label: "Laba bersih", width: 20, align: "right" },
+  { label: "Margin", width: 12, align: "right" },
+  { label: "Order terakhir", width: 18, align: "center" },
+];
+
+const XLSX_COLUMN_COUNT = XLSX_HEADERS.length;
+
+function formatExportTimestamp() {
+  const text = new Date().toLocaleString("id-ID", {
+    timeZone: "Asia/Jakarta",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return `${text} WIB`;
+}
+
+function formatLastOrder(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleDateString("id-ID", {
+    timeZone: "Asia/Jakarta",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function typeLabel(type) {
+  if (type === "NEW") return "Baru";
+  if (type === "RETURNING") return "Berulang";
+  return "-";
+}
+
+async function exportCustomersXlsx({
+  customers,
+  range,
+  sortLabel,
+  search,
+  paging,
+}) {
+  const ExcelJS = (await import("exceljs")).default;
+
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "Laporan Customer";
+  workbook.created = new Date();
+
+  const sheet = workbook.addWorksheet("Laporan Customer", {
+    views: [{ showGridLines: false }],
+    pageSetup: {
+      paperSize: 9,
+      orientation: "landscape",
+      fitToPage: true,
+      fitToWidth: 1,
+      fitToHeight: 0,
+      printTitlesRow: `${XLSX_HEADER_ROW}:${XLSX_HEADER_ROW}`,
+      margins: {
+        left: 0.4,
+        right: 0.4,
+        top: 0.5,
+        bottom: 0.5,
+        header: 0.3,
+        footer: 0.3,
+      },
+    },
+    headerFooter: {
+      oddFooter: "&LLaporan Customer&RHalaman &P dari &N",
+    },
+  });
+
+  sheet.columns = XLSX_HEADERS.map((column) => ({ width: column.width }));
+
+  const lastColumn = XLSX_COLUMN_COUNT;
+  const thinBorder = {
+    top: { style: "thin", color: { argb: XLSX_COLORS.border } },
+    left: { style: "thin", color: { argb: XLSX_COLORS.border } },
+    bottom: { style: "thin", color: { argb: XLSX_COLORS.border } },
+    right: { style: "thin", color: { argb: XLSX_COLORS.border } },
+  };
+
+  /* ----- Judul ----- */
+  sheet.mergeCells(1, 1, 1, lastColumn);
+  const titleCell = sheet.getCell(1, 1);
+  titleCell.value = "LAPORAN CUSTOMER";
+  titleCell.font = { size: 18, bold: true, color: { argb: XLSX_COLORS.title } };
+  titleCell.alignment = { vertical: "middle", horizontal: "left" };
+  sheet.getRow(1).height = 30;
+
+  sheet.mergeCells(2, 1, 2, lastColumn);
+  const subtitleCell = sheet.getCell(2, 1);
+  subtitleCell.value =
+    "Customer yang bertransaksi lunas di periode ini, sudah dikurangi refund.";
+  subtitleCell.font = {
+    size: 10,
+    italic: true,
+    color: { argb: XLSX_COLORS.muted },
+  };
+  subtitleCell.alignment = { vertical: "middle", horizontal: "left" };
+
+  /* ----- Keterangan ----- */
+  const total = paging?.total ?? customers.length;
+  const totalPages = Math.max(1, paging?.total_pages ?? 1);
+  const page = paging?.page ?? 1;
+
+  const meta = [
+    [
+      "Periode",
+      `${formatPeriod(range.from, range.to)} (${daysBetween(range.from, range.to)} hari)`,
+    ],
+    ["Diekspor pada", formatExportTimestamp()],
+    ["Diurutkan berdasarkan", sortLabel],
+    ["Pencarian", search || "Semua customer"],
+    [
+      "Cakupan data",
+      `Halaman ${page} dari ${totalPages} (${customers.length} dari ${total} customer)`,
+    ],
+  ];
+
+  meta.forEach(([label, value], index) => {
+    const rowNumber = 4 + index;
+    sheet.mergeCells(rowNumber, 1, rowNumber, 2);
+    sheet.mergeCells(rowNumber, 3, rowNumber, lastColumn);
+
+    const labelCell = sheet.getCell(rowNumber, 1);
+    labelCell.value = label;
+    labelCell.font = {
+      bold: true,
+      size: 10,
+      color: { argb: XLSX_COLORS.title },
+    };
+    labelCell.alignment = { vertical: "middle", horizontal: "left" };
+
+    const valueCell = sheet.getCell(rowNumber, 3);
+    valueCell.value = value;
+    valueCell.font = { size: 10 };
+    valueCell.alignment = { vertical: "middle", horizontal: "left" };
+  });
+
+  /* ----- Header tabel ----- */
+  const headerRow = sheet.getRow(XLSX_HEADER_ROW);
+  headerRow.height = 26;
+  XLSX_HEADERS.forEach((column, index) => {
+    const cell = headerRow.getCell(index + 1);
+    cell.value = column.label;
+    cell.font = { bold: true, color: { argb: XLSX_COLORS.brandText } };
+    cell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: XLSX_COLORS.brand },
+    };
+    cell.alignment = {
+      vertical: "middle",
+      horizontal: column.align === "left" ? "left" : "center",
+      wrapText: true,
+    };
+    cell.border = thinBorder;
+  });
+
+  /* ----- Data ----- */
+  const firstDataRow = XLSX_HEADER_ROW + 1;
+  const sums = { orders: 0, refund: 0, revenue: 0, profit: 0 };
+
+  customers.forEach((customer, index) => {
+    const orders = customer.sales?.orders ?? 0;
+    const refund = customer.refunds?.amount ?? 0;
+    const revenue = customer.net?.revenue ?? 0;
+    const profit = customer.net?.profit ?? 0;
+    const margin = customer.net?.margin_pct;
+
+    sums.orders += orders;
+    sums.refund += refund;
+    sums.revenue += revenue;
+    sums.profit += profit;
+
+    const row = sheet.getRow(firstDataRow + index);
+    row.values = [
+      index + 1,
+      customer.name,
+      customer.whatsapp ? String(customer.whatsapp) : "-",
+      customer.instagram || "-",
+      typeLabel(customer.type),
+      orders,
+      refund,
+      revenue,
+      profit,
+      margin === null || margin === undefined ? "-" : margin / 100,
+      formatLastOrder(customer.last_order_at),
+    ];
+
+    row.eachCell({ includeEmpty: true }, (cell, col) => {
+      if (col > lastColumn) return;
+      cell.border = thinBorder;
+      cell.alignment = {
+        vertical: "middle",
+        horizontal: XLSX_HEADERS[col - 1].align,
+        wrapText: col === 2,
+      };
+      if (index % 2 === 1) {
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: XLSX_COLORS.zebra },
+        };
+      }
+    });
+
+    row.getCell(3).numFmt = "@";
+    row.getCell(6).numFmt = XLSX_NUMBER;
+    [7, 8, 9].forEach((col) => (row.getCell(col).numFmt = XLSX_RUPIAH));
+    row.getCell(10).numFmt = XLSX_PERCENT;
+    row.getCell(9).font = { bold: true, color: { argb: XLSX_COLORS.profit } };
+  });
+
+  const lastDataRow = firstDataRow + customers.length - 1;
+
+  /* ----- Total ----- */
+  const totalRowNumber = lastDataRow + 1;
+  const totalRow = sheet.getRow(totalRowNumber);
+  totalRow.height = 24;
+  sheet.mergeCells(totalRowNumber, 1, totalRowNumber, 5);
+  totalRow.getCell(1).value = "Total halaman ini";
+
+  const sumCell = (col, letter, result, numFmt) => {
+    const cell = totalRow.getCell(col);
+    cell.value = {
+      formula: `SUM(${letter}${firstDataRow}:${letter}${lastDataRow})`,
+      result,
+    };
+    cell.numFmt = numFmt;
+  };
+
+  sumCell(6, "F", sums.orders, XLSX_NUMBER);
+  sumCell(7, "G", sums.refund, XLSX_RUPIAH);
+  sumCell(8, "H", sums.revenue, XLSX_RUPIAH);
+  sumCell(9, "I", sums.profit, XLSX_RUPIAH);
+
+  const marginCell = totalRow.getCell(10);
+  marginCell.value = {
+    formula: `IF(H${totalRowNumber}=0,"-",I${totalRowNumber}/H${totalRowNumber})`,
+    result: sums.revenue > 0 ? sums.profit / sums.revenue : "-",
+  };
+  marginCell.numFmt = XLSX_PERCENT;
+
+  for (let col = 1; col <= lastColumn; col += 1) {
+    const cell = totalRow.getCell(col);
+    cell.font = { bold: true, color: { argb: XLSX_COLORS.title } };
+    cell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: XLSX_COLORS.total },
+    };
+    cell.border = {
+      ...thinBorder,
+      top: { style: "medium", color: { argb: XLSX_COLORS.brand } },
+    };
+    cell.alignment = {
+      vertical: "middle",
+      horizontal: col === 1 ? "left" : "right",
+    };
+  }
+
+  /* ----- Catatan ----- */
+  const notes = [
+    "Catatan:",
+    "• Hanya order berstatus lunas yang dihitung. Omzet dan laba sudah dikurangi refund yang sudah lunas.",
+    "• Jumlah order = jumlah order penjualan lunas di periode ini (refund tidak dihitung sebagai order).",
+    "• Tipe Baru = pembelian lunas pertama customer jatuh di periode ini. Berulang = sudah pernah membeli sebelum periode ini. Tanda “-” = hanya ada refund di periode ini.",
+    "• Margin = laba bersih dibagi omzet bersih.",
+  ];
+  if (totalPages > 1) {
+    notes.push(
+      "• File ini hanya berisi customer pada halaman yang dipilih. Pindah halaman lalu export lagi untuk customer lainnya.",
+    );
+  }
+
+  notes.forEach((text, index) => {
+    const rowNumber = totalRowNumber + 2 + index;
+    sheet.mergeCells(rowNumber, 1, rowNumber, lastColumn);
+    const cell = sheet.getCell(rowNumber, 1);
+    cell.value = text;
+    cell.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
+    cell.font =
+      index === 0
+        ? { bold: true, size: 10, color: { argb: XLSX_COLORS.title } }
+        : {
+            size: 10,
+            color: {
+              argb:
+                totalPages > 1 && index === notes.length - 1
+                  ? XLSX_COLORS.warning
+                  : XLSX_COLORS.muted,
+            },
+          };
+  });
+
+  sheet.autoFilter = {
+    from: { row: XLSX_HEADER_ROW, column: 1 },
+    to: { row: lastDataRow, column: lastColumn },
+  };
+
+  /* ----- Unduh ----- */
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `laporan-customer_${range.from}_sd_${range.to}${
+    totalPages > 1 ? `_hal-${page}` : ""
+  }.xlsx`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 /* ------------------------------ Error Mapping ----------------------------- */
@@ -299,6 +650,7 @@ export default function CustomersReportPage() {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [isExporting, setIsExporting] = useState(false);
 
   const invalidRange =
     draft.from !== "" && draft.to !== "" && draft.from > draft.to;
@@ -334,8 +686,8 @@ export default function CustomersReportPage() {
     return customers.reduce(
       (acc, c) => ({
         orders: acc.orders + (c.sales?.orders ?? 0),
-        revenue: acc.revenue + (c.sales?.revenue ?? 0),
-        profit: acc.profit + (c.sales?.profit ?? 0),
+        revenue: acc.revenue + (c.net?.revenue ?? 0),
+        profit: acc.profit + (c.net?.profit ?? 0),
       }),
       { orders: 0, revenue: 0, profit: 0 },
     );
@@ -372,20 +724,26 @@ export default function CustomersReportPage() {
     setCurrentPage(1);
   }
 
-  function handleExport() {
-    const ws = XLSX.utils.json_to_sheet(
-      customers.map((c) => ({
-        Customer: c.name,
-        WhatsApp: c.whatsapp ?? "",
-        Tipe: c.type === "NEW" ? "Baru" : "Berulang",
-        Order: c.sales.orders,
-        Omzet: c.sales.revenue,
-        Laba: c.sales.profit,
-      })),
-    );
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Customer");
-    XLSX.writeFile(wb, `customer-${range.from}-${range.to}.xlsx`);
+  async function handleExport() {
+    if (isExporting || customers.length === 0) return;
+
+    setIsExporting(true);
+    try {
+      await exportCustomersXlsx({
+        customers,
+        range,
+        sortLabel:
+          SORT_OPTIONS.find((option) => option.value === metric)?.label ??
+          metric,
+        search,
+        paging,
+      });
+    } catch (error) {
+      console.error(error);
+      notify.error("Gagal membuat file Excel. Coba lagi.");
+    } finally {
+      setIsExporting(false);
+    }
   }
 
   if (query.isPending) {
@@ -435,7 +793,7 @@ export default function CustomersReportPage() {
                 Laporan <span className="text-grad">Customer</span>
               </h1>
               <p className="mt-2 text-pretty text-sm text-second/60">
-                Customer yang bertransaksi lunas di periode ini. Belum dikurangi
+                Customer yang bertransaksi lunas di periode ini. Sudah dikurangi
                 refund.
               </p>
             </div>
@@ -463,11 +821,20 @@ export default function CustomersReportPage() {
             <button
               type="button"
               onClick={handleExport}
-              disabled={customers.length === 0}
+              disabled={customers.length === 0 || isExporting}
+              aria-busy={isExporting}
               className={`${BTN_BASE} w-full bg-grad text-primary shadow-lg shadow-second4/25 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto ${FOCUS_RING}`}
             >
-              <FiDownload size={16} aria-hidden="true" />
-              Export Excel
+              {isExporting ? (
+                <FiLoader
+                  size={16}
+                  className="animate-spin motion-reduce:animate-none"
+                  aria-hidden="true"
+                />
+              ) : (
+                <FiDownload size={16} aria-hidden="true" />
+              )}
+              {isExporting ? "Menyiapkan file…" : "Export Excel"}
             </button>
           </div>
         </div>
@@ -676,9 +1043,9 @@ export default function CustomersReportPage() {
             className={`transition-opacity duration-200 ${query.isFetching ? "opacity-40" : "opacity-100"}`}
           >
             {/* Tabel desktop */}
-            <div className="hidden overflow-hidden rounded-2xl border border-second/30 bg-primary shadow-xl shadow-second/5 md:block">
+            <div className="hidden overflow-hidden rounded-2xl  bg-primary shadow-xl shadow-second/5 md:block">
               <table className="min-w-full text-left">
-                <thead className="bg-second/[0.03] text-xs text-second/70">
+                <thead className="bg-grad text-sm text-primary">
                   <tr>
                     <th scope="col" className="px-4 py-3 font-semibold">
                       Customer
@@ -714,10 +1081,10 @@ export default function CustomersReportPage() {
                 </thead>
 
                 <tbody className="divide-y divide-second/10">
-                  {customers.map((customer) => (
+                  {customers.map((customer, i) => (
                     <tr
                       key={customer.id}
-                      className="transition-colors hover:bg-second4/5"
+                      className={`align-top transition-colors hover:bg-second/20 ${i % 2 === 0 ? "" : "bg-second3/20"}`}
                     >
                       <td className="px-4 py-4">
                         <p className="break-words text-sm font-semibold text-second">
@@ -726,6 +1093,12 @@ export default function CustomersReportPage() {
                         {customer.whatsapp && (
                           <p className="mt-2 text-xs tabular-nums text-second/60">
                             {customer.whatsapp}
+                          </p>
+                        )}
+                        {customer.refunds?.orders > 0 && (
+                          <p className="mt-2 text-xs tabular-nums text-second/60">
+                            Sudah dikurangi refund{" "}
+                            {formatRupiah(customer.refunds.amount)}
                           </p>
                         )}
                       </td>
@@ -739,18 +1112,15 @@ export default function CustomersReportPage() {
                         {formatNumber(customer.sales.orders)}
                       </td>
                       <td className="whitespace-nowrap px-4 py-4 text-right text-sm tabular-nums text-second">
-                        {formatRupiah(customer.sales.revenue)}
+                        {formatRupiah(customer.net.revenue)}
                       </td>
                       <td className="whitespace-nowrap px-4 py-4 text-right text-sm font-semibold tabular-nums text-second3">
-                        {formatRupiah(customer.sales.profit)}
+                        {formatRupiah(customer.net.profit)}
                       </td>
                       <td className="px-4 py-4 text-right">
-                        <Link
-                          href={CUSTOMER_DETAIL_PATH(customer.id)}
-                          className={`${BTN_BASE} border border-second/30 text-second hover:border-second4 hover:text-second4 ${FOCUS_RING}`}
-                        >
+                        <PrimaryButton href={CUSTOMER_DETAIL_PATH(customer.id)}>
                           Detail
-                        </Link>
+                        </PrimaryButton>
                       </td>
                     </tr>
                   ))}
@@ -776,6 +1146,12 @@ export default function CustomersReportPage() {
                             {customer.whatsapp}
                           </p>
                         )}
+                        {customer.refunds?.orders > 0 && (
+                          <p className="mt-2 text-xs tabular-nums text-second/60">
+                            Sudah dikurangi refund{" "}
+                            {formatRupiah(customer.refunds.amount)}
+                          </p>
+                        )}
                       </div>
                       <div className="flex flex-wrap justify-end gap-2">
                         {customer.type === "NEW" && <Tag tone="blue">Baru</Tag>}
@@ -795,13 +1171,13 @@ export default function CustomersReportPage() {
                       <div>
                         <dt className="text-xs text-second/60">Omzet</dt>
                         <dd className="mt-2 font-semibold tabular-nums text-second">
-                          {formatRupiah(customer.sales.revenue)}
+                          {formatRupiah(customer.net.revenue)}
                         </dd>
                       </div>
                       <div>
                         <dt className="text-xs text-second/60">Laba</dt>
                         <dd className="mt-2 font-semibold tabular-nums text-second3">
-                          {formatRupiah(customer.sales.profit)}
+                          {formatRupiah(customer.net.profit)}
                         </dd>
                       </div>
                     </dl>

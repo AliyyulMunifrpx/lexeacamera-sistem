@@ -29,6 +29,7 @@ adminRouter.put(
   adminCameraController.updateMarketplace,
 );
 adminRouter.get("/admin/customers", customerController.getAll);
+adminRouter.get("/admin/customers/summary", customerController.getSummary);
 adminRouter.post("/admin/customers", customerController.create);
 adminRouter.get("/admin/customers/:id", customerController.get);
 adminRouter.put("/admin/customers/:id", customerController.update);

@@ -258,7 +258,10 @@ const sortRows = (rows, sort, label) => {
 
 const getProducts = async (request) => {
   const req = validate(productsReportValidation, request);
-  const raw = await productRows(req.from, req.to);
+  const needle = req.search?.toLowerCase();
+  const raw = (await productRows(req.from, req.to)).filter(
+    (row) => !needle || String(row.name).toLowerCase().includes(needle),
+  );
 
   const products = raw.map((row) => {
     const { sales, refunds, net } = shape(row);
@@ -410,7 +413,21 @@ const getCustomers = async (request) => {
     GROUP BY c.id, fs.first_paid_at
   `;
 
-  const customers = rows.map((row) => {
+  const needle = req.search?.toLowerCase();
+  const matched = needle
+    ? rows.filter(
+        (row) =>
+          String(row.name).toLowerCase().includes(needle) ||
+          String(row.whatsapp ?? "")
+            .toLowerCase()
+            .includes(needle) ||
+          String(row.instagram ?? "")
+            .toLowerCase()
+            .includes(needle),
+      )
+    : rows;
+
+  const customers = matched.map((row) => {
     const { sales, refunds, net } = shape(row);
     const { avg_order_value, ...rest } = sales;
     const hasSale = rest.orders > 0;
@@ -532,7 +549,68 @@ const getTransactions = async (request) => {
   const type = req.type ?? null;
   const search = req.search ?? null;
 
+  const categoryId = req.category_id ?? null;
+  const cameraId = req.camera_id ?? null;
+  const product = req.product ?? null;
+  const category = req.category ?? null;
+  const filtered =
+    categoryId !== null ||
+    cameraId !== null ||
+    product !== null ||
+    category !== null;
+
+  // Saat filter produk/kategori aktif, angka tiap order hanya dari item yang cocok.
+  // total_amount dibagi ke item dengan cara yang sama seperti laporan produk,
+  // jadi jumlahnya cocok dengan laporan produk/kategori.
   const rows = await prisma.$queryRaw`
+    WITH weighted AS (
+      SELECT
+        o.id AS order_id,
+        o.total_amount,
+        o.type,
+        oi.id AS item_id,
+        oi.camera_id,
+        oi.camera_name,
+        oi.quantity,
+        oi.camera_modal,
+        oi.restocked,
+        CASE
+          WHEN SUM(oi.camera_price::bigint * oi.quantity) OVER (PARTITION BY o.id) > 0
+            THEN oi.camera_price::bigint * oi.quantity
+          ELSE oi.quantity::bigint
+        END AS w
+      FROM "Order" o
+      JOIN "OrderItem" oi ON oi.order_id = o.id
+      WHERE o.payment_status = 'PAID'
+        AND o.paid_at >= ${start}::timestamp
+        AND o.paid_at < ${end}::timestamp
+    ),
+    running AS (
+      SELECT
+        *,
+        SUM(w) OVER (PARTITION BY order_id) AS w_total,
+        SUM(w) OVER (PARTITION BY order_id ORDER BY item_id) AS w_cum
+      FROM weighted
+    ),
+    items AS (
+      SELECT
+        r.order_id,
+        r.quantity,
+        c.category_id,
+        cat.name AS category_name,
+        r.camera_id,
+        r.camera_name,
+        CASE
+          WHEN r.type = 'SALE' OR r.restocked THEN r.camera_modal::bigint * r.quantity
+          ELSE 0
+        END AS cost,
+        floor((r.total_amount::numeric * r.w_cum + r.w_total::numeric / 2) / r.w_total)::bigint
+          - floor((r.total_amount::numeric * (r.w_cum - r.w) + r.w_total::numeric / 2) / r.w_total)::bigint
+          AS amount
+      FROM running r
+      LEFT JOIN "Camera" c ON c.id = r.camera_id
+      LEFT JOIN "Category" cat ON cat.id = c.category_id
+    )
     SELECT
       o.id,
       o.type,
@@ -541,19 +619,22 @@ const getTransactions = async (request) => {
       o.total_amount,
       to_char(o.paid_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS paid_at,
       inv.no_invoice,
-      COALESCE(SUM(oi.quantity), 0) AS units,
-      COALESCE(
-        SUM(oi.camera_modal::bigint * oi.quantity)
-          FILTER (WHERE o.type = 'SALE' OR oi.restocked),
-        0
-      ) AS cost
+      COALESCE(SUM(i.quantity), 0) AS units,
+      COALESCE(SUM(i.cost), 0) AS cost,
+      COALESCE(SUM(i.amount), 0) AS item_amount
     FROM "Order" o
-    LEFT JOIN "OrderItem" oi ON oi.order_id = o.id
     LEFT JOIN "Invoice" inv ON inv.order_id = o.id
+    LEFT JOIN items i
+      ON i.order_id = o.id
+      AND (${categoryId}::text IS NULL OR i.category_id = ${categoryId}::text)
+      AND (${cameraId}::text IS NULL OR i.camera_id = ${cameraId}::text)
+      AND (${product}::text IS NULL OR strpos(lower(i.camera_name), lower(${product}::text)) > 0)
+      AND (${category}::text IS NULL OR strpos(lower(COALESCE(i.category_name, '')), lower(${category}::text)) > 0)
     WHERE o.payment_status = 'PAID'
       AND o.paid_at >= ${start}::timestamp
       AND o.paid_at < ${end}::timestamp
       AND (${type}::text IS NULL OR o.type::text = ${type}::text)
+      AND (${filtered}::boolean = false OR i.order_id IS NOT NULL)
       AND (
         ${search}::text IS NULL
         OR strpos(lower(o.customer_name), lower(${search}::text)) > 0
@@ -567,7 +648,7 @@ const getTransactions = async (request) => {
   // Nilai refund dibuat negatif supaya jumlah kolom = angka net di ringkasan.
   const all = rows.map((row) => {
     const sign = row.type === "SALE" ? 1 : -1;
-    const revenue = sign * num(row.total_amount);
+    const revenue = sign * num(filtered ? row.item_amount : row.total_amount);
     const cost = sign * num(row.cost);
 
     return {
@@ -608,10 +689,16 @@ const getTransactions = async (request) => {
   if (page.length > 0) {
     const ids = page.map((row) => row.id);
     const items = await prisma.$queryRaw`
-      SELECT order_id, camera_id, camera_name, quantity, camera_price, camera_modal, restocked
-      FROM "OrderItem"
-      WHERE order_id = ANY(${ids}::text[])
-      ORDER BY camera_name ASC, id ASC
+      SELECT oi.order_id, oi.camera_id, oi.camera_name, oi.quantity, oi.camera_price, oi.camera_modal, oi.restocked
+      FROM "OrderItem" oi
+      LEFT JOIN "Camera" c ON c.id = oi.camera_id
+      LEFT JOIN "Category" cat ON cat.id = c.category_id
+      WHERE oi.order_id = ANY(${ids}::text[])
+        AND (${categoryId}::text IS NULL OR c.category_id = ${categoryId}::text)
+        AND (${cameraId}::text IS NULL OR oi.camera_id = ${cameraId}::text)
+        AND (${product}::text IS NULL OR strpos(lower(oi.camera_name), lower(${product}::text)) > 0)
+        AND (${category}::text IS NULL OR strpos(lower(COALESCE(cat.name, '')), lower(${category}::text)) > 0)
+      ORDER BY oi.camera_name ASC, oi.id ASC
     `;
 
     const byOrder = new Map();

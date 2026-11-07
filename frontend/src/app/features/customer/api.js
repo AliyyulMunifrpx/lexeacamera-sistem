@@ -1,5 +1,4 @@
 import api from "../../../lib/api/client.js";
-
 export async function getCustomers({ search, page = 1 } = {}) {
   const params = {
     ...(search && { search }),
@@ -7,6 +6,11 @@ export async function getCustomers({ search, page = 1 } = {}) {
   };
 
   const response = await api.get("/admin/customers", { params });
+  return response.data;
+}
+
+export async function getCustomerSummary() {
+  const response = await api.get("/admin/customers/summary");
   return response.data;
 }
 export async function createCustomer(payload) {

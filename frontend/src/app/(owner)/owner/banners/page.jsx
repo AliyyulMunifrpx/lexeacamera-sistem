@@ -376,7 +376,7 @@ export default function BannersPage() {
                       src={banner.banner_url}
                       alt={`Banner dibuat ${formatDate(banner.created_at)}`}
                       loading="lazy"
-                      className="h-full w-full rounded-xl object-cover transition-transform duration-300 group-hover:scale-105"
+                      className="h-full w-full rounded-xl transition-transform duration-300 group-hover:scale-105"
                     />
 
                     {(banner.is_promo || banner.is_best_seller) && (

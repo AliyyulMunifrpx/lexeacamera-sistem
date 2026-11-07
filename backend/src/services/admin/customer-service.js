@@ -37,24 +37,35 @@ const ORDER_SELECT = {
   invoice: { select: { no_invoice: true, id: true } },
 };
 
+// Ganti fungsi buildSearch di customer service dengan ini.
 const buildSearch = (search) => {
   const conditions = [
     { name: { contains: search, mode: "insensitive" } },
     { id: { contains: search, mode: "insensitive" } },
+    { instagram: { contains: search, mode: "insensitive" } },
+    { address: { contains: search, mode: "insensitive" } },
   ];
 
   if (/^\+?[\d\s-]+$/.test(search)) {
     const digits = search.replace(/\D/g, "");
-    const normalized = digits.startsWith("0") ? `62${digits.slice(1)}` : digits;
 
     if (digits.length >= 3) {
+      const normalized = digits.startsWith("0")
+        ? `62${digits.slice(1)}`
+        : digits.startsWith("62")
+          ? digits
+          : `62${digits}`;
+
+      // Cocokkan angka apa adanya (potongan nomor) dan bentuk kanonik 62...
+      conditions.push({ whatsapp: { contains: digits } });
       conditions.push({ whatsapp: { contains: normalized } });
     }
   }
 
   return conditions;
 };
-
+// Aturan total belanja: hanya order PAID yang dihitung, untuk SALE (+) maupun REFUND (-).
+// order_count: semua order SALE, termasuk yang belum lunas.
 const statsQueries = (ids) => [
   prisma.order.groupBy({
     by: ["customer_id"],
@@ -68,7 +79,7 @@ const statsQueries = (ids) => [
   }),
   prisma.order.groupBy({
     by: ["customer_id"],
-    where: { customer_id: { in: ids }, type: "REFUND" },
+    where: { customer_id: { in: ids }, type: "REFUND", payment_status: "PAID" },
     _sum: { total_amount: true },
   }),
 ];
@@ -130,6 +141,36 @@ const getAllCustomer = async (request) => {
       total,
       total_pages: Math.ceil(total / PER_PAGE),
     },
+  };
+};
+
+// Ringkasan untuk 3 stat card: dihitung dari SELURUH pelanggan, bukan satu halaman.
+const getCustomerSummary = async () => {
+  const [total_customers, [row]] = await Promise.all([
+    prisma.customer.count(),
+    prisma.$queryRaw`
+      SELECT
+        COUNT(DISTINCT o.customer_id) FILTER (WHERE o.type = 'SALE')
+          AS customers_with_orders,
+        COALESCE(
+          SUM(o.total_amount::bigint)
+            FILTER (WHERE o.type = 'SALE' AND o.payment_status = 'PAID'),
+          0
+        )
+        - COALESCE(
+          SUM(o.total_amount::bigint)
+            FILTER (WHERE o.type = 'REFUND' AND o.payment_status = 'PAID'),
+          0
+        ) AS total_spent
+      FROM "Order" o
+      WHERE o.customer_id IS NOT NULL
+    `,
+  ]);
+
+  return {
+    total_customers,
+    customers_with_orders: Number(row?.customers_with_orders ?? 0),
+    total_spent: Number(row?.total_spent ?? 0),
   };
 };
 
@@ -265,6 +306,7 @@ const deleteCustomer = async (request) => {
 
 export default {
   getAllCustomer,
+  getCustomerSummary,
   getCustomer,
   createCustomer,
   updateCustomer,

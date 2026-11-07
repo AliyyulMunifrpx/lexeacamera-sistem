@@ -9,14 +9,21 @@ import {
   deleteCustomer,
   getCustomer,
   getCustomers,
+  getCustomerSummary,
   updateCustomer,
 } from "./api.js";
-
 export function useGetCustomers(filters = {}) {
   return useQuery({
     queryKey: ["customers", filters],
     queryFn: () => getCustomers(filters),
     placeholderData: (previousData) => previousData,
+  });
+}
+
+export function useGetCustomerSummary() {
+  return useQuery({
+    queryKey: ["customers", "summary"],
+    queryFn: getCustomerSummary,
   });
 }
 export function useCreateCustomer() {

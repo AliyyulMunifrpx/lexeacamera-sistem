@@ -403,7 +403,7 @@ function InvoiceSummary({
       </dl>
 
       <p className="text-xs text-second/50">
-        Preview saja. Backend tetap menghitung subtotal dan total akhir.
+        Preview saja. Sistem tetap menghitung subtotal dan total akhir.
       </p>
     </section>
   );
@@ -1059,7 +1059,7 @@ export default function CreateInvoicePage() {
           <FormSection
             sectionRef={itemsRef}
             title="Pilih kamera"
-            description="Cari kamera dan tambahkan ke invoice. Harga yang ditampilkan hanya estimasi; server akan memakai harga aktual dari data kamera."
+            description="Cari kamera dan tambahkan ke invoice. Harga yang ditampilkan hanya estimasi; sistem akan memakai harga aktual dari data kamera."
             aside={
               <Tag tone="soft">
                 {selectedItems.length}/{MAX_ITEMS} jenis
@@ -1370,7 +1370,7 @@ export default function CreateInvoicePage() {
 
           <FormSection
             title="Diskon dan status"
-            description="Nilai diskon dikurangkan dari subtotal. Backend tetap menghitung total akhir."
+            description="Nilai diskon dikurangkan dari subtotal. Sistem tetap menghitung total akhir."
           >
             <FieldGrid>
               <FormField label="Diskon toko" htmlFor="store_discount">
