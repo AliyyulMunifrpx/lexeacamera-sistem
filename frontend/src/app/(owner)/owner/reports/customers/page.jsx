@@ -145,6 +145,18 @@ function formatPercent(value) {
   if (value === null || value === undefined) return "—";
   return `${String(Number(value.toFixed(2))).replace(".", ",")}%`;
 }
+/* Kalau yang diketik berupa nomor (08…, +62 8…, 62…), kirim ke backend sebagai 62… */
+function toSearchTerm(input) {
+  const text = String(input ?? "").trim();
+  if (!/^\+?[\d\s-]+$/.test(text)) return text;
+
+  let digits = text.replace(/\D/g, "");
+  if (digits.length < 3) return text;
+
+  if (digits.startsWith("0")) digits = digits.slice(1);
+  if (!digits.startsWith("62")) digits = `62${digits}`;
+  return digits;
+}
 
 /* ------------------------------ Excel export ------------------------------ */
 
@@ -657,7 +669,7 @@ export default function CustomersReportPage() {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      setSearch(searchInput.trim());
+      setSearch(toSearchTerm(searchInput));
       setCurrentPage(1);
     }, 400);
     return () => clearTimeout(timer);
