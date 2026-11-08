@@ -24,6 +24,7 @@ import { normalizeApiError } from "../../../../lib/api/errors.js";
 import RefreshButton from "../../../../components/refresh-button.jsx";
 import PrimaryButton from "../../../../components/primary-button.jsx";
 import CancelButton from "./../../../../components/cancel-button";
+import ExportCamerasButton from "../../../../components/owner/expres-cameras-button.jsx";
 
 /* -------------------------------------------------------------------------- */
 /*  Design rules (SAMAKAN DENGAN INVOICE)                                     */
@@ -345,6 +346,7 @@ export default function CamerasPage() {
             isFetching={isFetching}
             ariaLabel="Perbarui data produk"
           ></RefreshButton>
+          <ExportCamerasButton disabled={totalCameras === 0} />
           <PrimaryButton
             type="button"
             onClick={handleCreateCamera}
