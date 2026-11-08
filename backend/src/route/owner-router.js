@@ -98,7 +98,6 @@ ownerRouter.put("/owner/attendance-networks/:id", networkController.update);
 ownerRouter.delete("/owner/attendance-networks/:id", networkController.remove);
 ownerRouter.get("/owner/attendance-settings", networkController.getSetting);
 ownerRouter.put("/owner/attendance-settings", networkController.updateSetting);
-ownerRouter.get("/owner/attendances", attendanceController.getAll);
 ownerRouter.patch("/owner/attendances/:id", attendanceController.fixCheckout);
 ownerRouter.post("/owner/admins", adminController.create);
 ownerRouter.get("/owner/admins", adminController.getAll);

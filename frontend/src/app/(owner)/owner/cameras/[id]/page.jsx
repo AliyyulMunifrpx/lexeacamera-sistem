@@ -10,6 +10,7 @@ import {
   FiCheck,
   FiCopy,
   FiDollarSign,
+  FiDownload,
   FiExternalLink,
   FiLayers,
   FiLoader,
@@ -303,6 +304,8 @@ export default function CameraDetailPage() {
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedImageKey, setSelectedImageKey] = useState(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [includeFinance, setIncludeFinance] = useState(false);
 
   const deleteCam = useDeleteCamera();
 
@@ -341,6 +344,24 @@ export default function CameraDetailPage() {
     } catch (error) {
       const apiError = normalizeApiError(error);
       notify.error(apiError.message);
+    }
+  }
+
+  async function handleExportPdf() {
+    if (!camera || isExporting) return;
+
+    setIsExporting(true);
+    try {
+      // Dimuat saat dibutuhkan agar jsPDF tidak masuk bundle awal.
+      const { exportCameraPdf } =
+        await import("../../../../../components/owner/product-pdf.js");
+      await exportCameraPdf(camera, { includeFinance });
+      notify.success("PDF produk berhasil dibuat.");
+    } catch (e) {
+      notify.error("Gagal membuat PDF. Silakan coba lagi.");
+      console.log(e);
+    } finally {
+      setIsExporting(false);
     }
   }
 
@@ -808,6 +829,42 @@ export default function CameraDetailPage() {
                 {formatDate(camera.category?.created_at)}
               </DetailItem>
             </dl>
+          </div>
+
+          {/* Export PDF */}
+          <div className="flex flex-col gap-2 rounded-2xl border border-second/30 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-second">
+                Export lembar produk
+              </p>
+              <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs text-second/60">
+                <input
+                  type="checkbox"
+                  checked={includeFinance}
+                  onChange={(event) => setIncludeFinance(event.target.checked)}
+                  className="size-4 shrink-0 accent-second4"
+                />
+                Sertakan informasi keuangan (modal &amp; profit, hanya internal)
+              </label>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleExportPdf}
+              disabled={isExporting}
+              className={`${BTN_BASE} shrink-0 border border-second/30 text-second hover:border-second4 hover:text-second4 disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING}`}
+            >
+              {isExporting ? (
+                <FiLoader
+                  className="animate-spin motion-reduce:animate-none"
+                  size={16}
+                  aria-hidden="true"
+                />
+              ) : (
+                <FiDownload size={16} aria-hidden="true" />
+              )}
+              {isExporting ? "Membuat PDF…" : "Export PDF"}
+            </button>
           </div>
 
           {/* Aksi */}

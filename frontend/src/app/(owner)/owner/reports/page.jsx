@@ -75,16 +75,16 @@ const TREND_LIMIT_DAYS = { day: 366, week: 1100, month: 3700 };
 
 /* ------------------------------ Error Mapping ----------------------------- */
 
-function explainError(error, { context = "laporan" } = {}) {
+function explainError(error, { context = "reports" } = {}) {
   const status = error?.response?.status;
   const code = error?.response?.data?.errors;
 
   if (code === "ORDER_NOT_FOUND") {
     return {
       tone: "failure",
-      title: "Data laporan tidak ditemukan",
+      title: "Data reports tidak ditemukan",
       description:
-        "Laporan tidak tersedia untuk periode ini. Coba ubah rentang tanggal atau perbarui data.",
+        "Reports tidak tersedia untuk periode ini. Coba ubah rentang tanggal atau perbarui data.",
       canRetry: true,
     };
   }
@@ -103,7 +103,7 @@ function explainError(error, { context = "laporan" } = {}) {
     return {
       tone: "pending",
       title: "Sesi Anda telah berakhir",
-      description: "Silakan login ulang untuk memuat laporan ini.",
+      description: "Silakan login ulang untuk memuat reports ini.",
       canRetry: false,
     };
   }
@@ -113,7 +113,7 @@ function explainError(error, { context = "laporan" } = {}) {
       tone: "pending",
       title: "Anda tidak punya akses",
       description:
-        "Akun Anda tidak punya izin untuk membuka laporan ini. Hubungi pemilik toko.",
+        "Akun Anda tidak punya izin untuk membuka reports ini. Hubungi pemilik toko.",
       canRetry: false,
     };
   }
@@ -150,7 +150,7 @@ function explainError(error, { context = "laporan" } = {}) {
 
   return {
     tone: "failure",
-    title: "Gagal memuat laporan",
+    title: "Gagal memuat reports",
     description:
       normalizeApiError(error).message || "Terjadi kesalahan tak terduga.",
     canRetry: true,
@@ -493,7 +493,7 @@ function Panel({
   emptyText,
   children,
   skeletonHeight,
-  context = "laporan",
+  context = "reports",
 }) {
   const showSkeleton = query.isPending;
   const showError = query.isError && !query.data;
@@ -1273,7 +1273,7 @@ export default function ReportsOverviewPage() {
           </div>
           <div className="min-w-0">
             <h1 className="text-balance text-2xl font-bold tracking-tight text-second sm:text-3xl">
-              <span className="text-grad">Laporan</span>
+              <span className="text-grad">Reports</span>
             </h1>
             <p className="mt-2 text-pretty text-sm text-second/60">
               Ringkasan penjualan, laba, produk, dan customer. Hanya order lunas
@@ -1287,7 +1287,7 @@ export default function ReportsOverviewPage() {
             type="button"
             onClick={refreshAll}
             disabled={summaryQuery.isFetching}
-            aria-label="Perbarui laporan"
+            aria-label="Perbarui reports"
             className={`${BTN_BASE} w-full border border-second/30 text-second hover:border-second4 hover:text-second4 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto ${FOCUS_RING}`}
           >
             <FiRefreshCw
@@ -1306,7 +1306,7 @@ export default function ReportsOverviewPage() {
 
       {/* Periode */}
       <section
-        aria-label="Periode laporan"
+        aria-label="Periode reports"
         className="flex min-w-0 flex-col gap-8 rounded-2xl border border-second/30 bg-primary p-4 shadow-xl shadow-second/5 sm:p-8"
       >
         <div>
@@ -1369,7 +1369,7 @@ export default function ReportsOverviewPage() {
               className="mt-0.5 shrink-0"
               aria-hidden="true"
             />
-            Tanggal awal tidak boleh lebih besar dari tanggal akhir. Laporan
+            Tanggal awal tidak boleh lebih besar dari tanggal akhir. Reports
             masih menampilkan periode sebelumnya.
           </p>
         ) : (
@@ -1384,7 +1384,7 @@ export default function ReportsOverviewPage() {
       {summaryQuery.isError && !summary && (
         <QueryErrorState
           error={summaryQuery.error}
-          context="ringkasan laporan"
+          context="ringkasan reports"
           onRetry={() => summaryQuery.refetch()}
           isFetching={summaryQuery.isFetching}
         />

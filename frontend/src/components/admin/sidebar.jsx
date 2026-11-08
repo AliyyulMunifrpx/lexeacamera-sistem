@@ -26,6 +26,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useLogoutCurrentUser } from "../../app/features/users/hooks.js";
 import { normalizeApiError } from "../../lib/api/errors.js";
 import notify from "../../lib/notify.js";
+import { TbFileReport, TbReportSearch } from "react-icons/tb";
+import { LuUserRoundCheck } from "react-icons/lu";
 
 /*
   Hanya 4 menu, jadi tidak perlu dikelompokkan. Urutan mengikuti frekuensi
@@ -36,14 +38,18 @@ const navigation = [
   { label: "Dashboard", href: "/admin", icon: FiHome },
   { label: "Invoice", href: "/admin/invoices", icon: FiFileText },
   { label: "Pelanggan", href: "/admin/customers", icon: FiUsers },
+  { label: "Report", href: "/admin/reports", icon: TbReportSearch },
   { label: "Produk", href: "/admin/cameras", icon: FiBox },
+  { label: "Absensi", href: "/admin/attendances", icon: LuUserRoundCheck },
 ];
 
 const pageTitles = {
   "/admin": "Dashboard",
   "/admin/invoices": "Invoice",
   "/admin/customers": "Pelanggan",
+  "/admin/reports": "Reports",
   "/admin/cameras": "Produk",
+  "/admin/attendances": "Absensi",
 };
 
 /* Hindari warning useLayoutEffect saat render di server */

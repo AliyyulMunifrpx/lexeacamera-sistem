@@ -66,7 +66,7 @@ function explainError(error) {
   if (status === 403) {
     return {
       title: "Anda tidak punya akses",
-      description: "Akun Anda tidak punya izin untuk membuka laporan ini.",
+      description: "Akun Anda tidak punya izin untuk membuka reports ini.",
     };
   }
   if (status >= 500) {
@@ -203,7 +203,7 @@ export default function StockReportPage() {
             className={`inline-flex h-8 w-fit items-center gap-2 rounded-full pr-4 text-sm font-medium text-second/60 transition-colors hover:text-second4 touch-manipulation ${FOCUS_RING}`}
           >
             <FiArrowLeft size={16} aria-hidden="true" />
-            Kembali ke laporan
+            Kembali ke reports
           </Link>
         </header>
         <ErrorState
@@ -224,7 +224,7 @@ export default function StockReportPage() {
           className={`inline-flex h-8 w-fit items-center gap-2 rounded-full pr-4 text-sm font-medium text-second/60 transition-colors hover:text-second4 touch-manipulation ${FOCUS_RING}`}
         >
           <FiArrowLeft size={16} aria-hidden="true" />
-          Kembali ke laporan
+          Kembali ke reports
         </Link>
 
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

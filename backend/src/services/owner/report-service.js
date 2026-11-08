@@ -219,8 +219,10 @@ const productRows = async (from, to) => {
       FROM running
     )
     SELECT
-      c.id AS camera_id,
+  c.id AS camera_id,
       c.name,
+      c.sku,
+      c.serial_number,
       c.is_deleted,
       cat.id AS category_id,
       cat.name AS category_name,
@@ -270,6 +272,8 @@ const getProducts = async (request) => {
     return {
       id: row.camera_id,
       name: row.name,
+      sku: row.sku,
+      serial_number: row.serial_number,
       deleted: row.is_deleted,
       category: row.category_id
         ? { id: row.category_id, name: row.category_name }

@@ -10,6 +10,8 @@ import dashboardController from "../controller/admin/dashboard-controller.js";
 import refundController from "../controller/admin/refund-controller.js";
 import storeController from "../controller/owner/store-controller.js";
 import termsController from "../controller/owner/terms-controller.js";
+import salesController from "../controller/admin/sales-controller.js";
+import attendanceController from "../controller/owner/attendance-controller.js";
 const adminRouter = express.Router();
 adminRouter.put("/users/pin", userController.setPin);
 adminRouter.get("/users/current", userController.get);
@@ -49,5 +51,7 @@ adminRouter.get(
 );
 adminRouter.get("/store", storeController.getStore);
 adminRouter.get("/terms", termsController.getTerms);
+adminRouter.get("/admin/sales", salesController.get);
+adminRouter.get("/owner/attendances", attendanceController.getAll);
 
 export default adminRouter;

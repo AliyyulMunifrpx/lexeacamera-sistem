@@ -166,12 +166,14 @@ const XLSX_RUPIAH = '"Rp" #,##0;[Red]-"Rp" #,##0';
 const XLSX_NUMBER = "#,##0";
 const XLSX_PERCENT = "0.00%";
 
-const XLSX_COLUMN_COUNT = 10;
+const XLSX_COLUMN_COUNT = 12;
 const XLSX_HEADER_ROW = 10;
 
 const XLSX_HEADERS = [
   { label: "No", width: 6, align: "center" },
   { label: "Produk", width: 40, align: "left" },
+  { label: "SKU", width: 18, align: "left" },
+  { label: "Serial number", width: 22, align: "left" },
   { label: "Kategori", width: 20, align: "left" },
   { label: "Unit terjual", width: 14, align: "right" },
   { label: "Unit refund", width: 14, align: "right" },
@@ -204,10 +206,10 @@ async function exportProductsXlsx({
   const ExcelJS = (await import("exceljs")).default;
 
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "Laporan Produk";
+  workbook.creator = "Reports Produk";
   workbook.created = new Date();
 
-  const sheet = workbook.addWorksheet("Laporan Produk", {
+  const sheet = workbook.addWorksheet("Reports Produk", {
     views: [{ showGridLines: false }],
     pageSetup: {
       paperSize: 9,
@@ -226,7 +228,7 @@ async function exportProductsXlsx({
       },
     },
     headerFooter: {
-      oddFooter: "&LLaporan Produk&RHalaman &P dari &N",
+      oddFooter: "&LReports Produk&RHalaman &P dari &N",
     },
   });
 
@@ -349,6 +351,8 @@ async function exportProductsXlsx({
     row.values = [
       index + 1,
       product.name,
+      product.sku || "-",
+      product.serial_number || "-",
       product.category?.name ?? "Tanpa kategori",
       sold,
       refunded,
@@ -376,10 +380,10 @@ async function exportProductsXlsx({
       }
     });
 
-    [4, 5, 6].forEach((col) => (row.getCell(col).numFmt = XLSX_NUMBER));
-    [7, 8, 9].forEach((col) => (row.getCell(col).numFmt = XLSX_RUPIAH));
-    row.getCell(10).numFmt = XLSX_PERCENT;
-    row.getCell(9).font = { bold: true, color: { argb: XLSX_COLORS.profit } };
+    [6, 7, 8].forEach((col) => (row.getCell(col).numFmt = XLSX_NUMBER));
+    [9, 10, 11].forEach((col) => (row.getCell(col).numFmt = XLSX_RUPIAH));
+    row.getCell(12).numFmt = XLSX_PERCENT;
+    row.getCell(11).font = { bold: true, color: { argb: XLSX_COLORS.profit } };
   });
 
   const lastDataRow = firstDataRow + products.length - 1;
@@ -388,7 +392,7 @@ async function exportProductsXlsx({
   const totalRowNumber = lastDataRow + 1;
   const totalRow = sheet.getRow(totalRowNumber);
   totalRow.height = 24;
-  sheet.mergeCells(totalRowNumber, 1, totalRowNumber, 3);
+  sheet.mergeCells(totalRowNumber, 1, totalRowNumber, 5);
   totalRow.getCell(1).value = "Total halaman ini";
 
   const sumCell = (col, letter, result, numFmt) => {
@@ -400,16 +404,16 @@ async function exportProductsXlsx({
     cell.numFmt = numFmt;
   };
 
-  sumCell(4, "D", sums.sold, XLSX_NUMBER);
-  sumCell(5, "E", sums.refunded, XLSX_NUMBER);
-  sumCell(6, "F", sums.units, XLSX_NUMBER);
-  sumCell(7, "G", sums.revenue, XLSX_RUPIAH);
-  sumCell(8, "H", sums.cost, XLSX_RUPIAH);
-  sumCell(9, "I", sums.profit, XLSX_RUPIAH);
+  sumCell(6, "F", sums.sold, XLSX_NUMBER);
+  sumCell(7, "G", sums.refunded, XLSX_NUMBER);
+  sumCell(8, "H", sums.units, XLSX_NUMBER);
+  sumCell(9, "I", sums.revenue, XLSX_RUPIAH);
+  sumCell(10, "J", sums.cost, XLSX_RUPIAH);
+  sumCell(11, "K", sums.profit, XLSX_RUPIAH);
 
-  const marginCell = totalRow.getCell(10);
+  const marginCell = totalRow.getCell(12);
   marginCell.value = {
-    formula: `IF(G${totalRowNumber}=0,"-",I${totalRowNumber}/G${totalRowNumber})`,
+    formula: `IF(I${totalRowNumber}=0,"-",K${totalRowNumber}/I${totalRowNumber})`,
     result: sums.revenue > 0 ? sums.profit / sums.revenue : "-",
   };
   marginCell.numFmt = XLSX_PERCENT;
@@ -479,7 +483,7 @@ async function exportProductsXlsx({
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `laporan-produk_${range.from}_sd_${range.to}${
+  link.download = `reports-produk_${range.from}_sd_${range.to}${
     totalPages > 1 ? `_hal-${page}` : ""
   }.xlsx`;
   document.body.appendChild(link);
@@ -503,13 +507,13 @@ function explainError(error) {
   if (status === 401) {
     return {
       title: "Sesi Anda telah berakhir",
-      description: "Silakan login ulang untuk memuat laporan ini.",
+      description: "Silakan login ulang untuk memuat reports ini.",
     };
   }
   if (status === 403) {
     return {
       title: "Anda tidak punya akses",
-      description: "Akun Anda tidak punya izin untuk membuka laporan ini.",
+      description: "Akun Anda tidak punya izin untuk membuka reports ini.",
     };
   }
   if (status >= 500) {
@@ -525,7 +529,7 @@ function explainError(error) {
     };
   }
   return {
-    title: "Gagal memuat laporan produk",
+    title: "Gagal memuat reports produk",
     description:
       normalizeApiError(error).message || "Terjadi kesalahan tak terduga.",
   };
@@ -666,7 +670,6 @@ export default function ProductsReportPage() {
   const products = query.data?.data ?? [];
   const paging = query.data?.paging;
   const metric = query.data?.sort ?? sort;
-
   const total = paging?.total ?? 0;
   const totalPages = Math.max(1, paging?.total_pages ?? 1);
   const safePage = paging?.page ?? currentPage;
@@ -751,7 +754,7 @@ export default function ProductsReportPage() {
             className={`inline-flex h-8 w-fit items-center gap-2 rounded-full pr-4 text-sm font-medium text-second/60 transition-colors hover:text-second4 touch-manipulation ${FOCUS_RING}`}
           >
             <FiArrowLeft size={16} aria-hidden="true" />
-            Kembali ke laporan
+            Kembali ke reports
           </Link>
         </header>
         <ErrorState
@@ -772,7 +775,7 @@ export default function ProductsReportPage() {
           className={`inline-flex h-8 w-fit items-center gap-2 rounded-full pr-4 text-sm font-medium text-second/60 transition-colors hover:text-second4 touch-manipulation ${FOCUS_RING}`}
         >
           <FiArrowLeft size={16} aria-hidden="true" />
-          Kembali ke laporan
+          Kembali ke reports
         </Link>
 
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -782,7 +785,7 @@ export default function ProductsReportPage() {
             </div>
             <div className="min-w-0">
               <h1 className="text-balance text-2xl font-bold tracking-tight text-second sm:text-3xl">
-                Laporan <span className="text-grad">Produk</span>
+                Reports <span className="text-grad">Produk</span>
               </h1>
               <p className="mt-2 text-pretty text-sm text-second/60">
                 Produk terjual berdasarkan order lunas. Sudah dikurangi refund.
@@ -834,7 +837,7 @@ export default function ProductsReportPage() {
 
       {/* Filter */}
       <section
-        aria-label="Filter laporan produk"
+        aria-label="Filter reports produk"
         className="flex min-w-0 flex-col gap-8 rounded-2xl border border-second/30 bg-primary p-4 shadow-xl shadow-second/5 sm:p-8"
       >
         <div>
@@ -1034,38 +1037,43 @@ export default function ProductsReportPage() {
           <div
             className={`transition-opacity duration-200 ${query.isFetching ? "opacity-40" : "opacity-100"}`}
           >
-            {/* Tabel desktop */}
-            <div className="hidden overflow-hidden rounded-2xl  bg-primary shadow-xl shadow-second/5 md:block">
+            {/* Tabel: bisa digeser ke samping bila lebih lebar dari layar */}
+            <div
+              role="region"
+              aria-label="Tabel reports produk, geser ke samping untuk melihat kolom lain"
+              tabIndex={0}
+              className={`overflow-x-auto overscroll-x-contain rounded-2xl border border-second/30 bg-primary shadow-xl shadow-second/5 ${FOCUS_RING}`}
+            >
               <table className="min-w-full text-left">
                 <thead className="bg-grad text-sm text-primary">
                   <tr>
-                    <th scope="col" className="px-4 py-3 font-semibold">
+                    <th
+                      scope="col"
+                      className="whitespace-nowrap px-4 py-2 font-semibold"
+                    >
                       Produk
                     </th>
                     <th
                       scope="col"
-                      className="px-4 py-3 text-right font-semibold"
+                      className="whitespace-nowrap px-4 py-2 font-semibold"
                     >
-                      Unit
+                      SKU
                     </th>
                     <th
                       scope="col"
-                      className="px-4 py-3 text-right font-semibold"
+                      className="whitespace-nowrap px-4 py-2 font-semibold"
                     >
-                      Omzet
+                      Serial number
                     </th>
-                    <th
-                      scope="col"
-                      className="px-4 py-3 text-right font-semibold"
-                    >
-                      Laba
-                    </th>
-                    <th
-                      scope="col"
-                      className="px-4 py-3 text-right font-semibold"
-                    >
-                      Margin
-                    </th>
+                    {["Unit", "Omzet", "Laba", "Margin"].map((label) => (
+                      <th
+                        key={label}
+                        scope="col"
+                        className="whitespace-nowrap px-4 py-2 text-right font-semibold"
+                      >
+                        {label}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
 
@@ -1077,21 +1085,22 @@ export default function ProductsReportPage() {
                         key={product.id}
                         className={`align-top transition-colors hover:bg-second/20 ${i % 2 === 0 ? "" : "bg-second3/20"}`}
                       >
-                        <td className="px-4 py-4">
+                        <td className="min-w-64 px-4 py-4">
                           <p className="break-words text-sm font-semibold text-second">
                             {product.name}
                           </p>
-                          {product.sku && (
-                            <p className="mt-2 font-mono text-xs text-second/60">
-                              SKU {product.sku}
-                            </p>
-                          )}
                           {product.refunds?.units > 0 && (
                             <p className="mt-2 text-xs tabular-nums text-second/60">
                               Sudah dikurangi refund{" "}
                               {formatNumber(product.refunds.units)} unit
                             </p>
                           )}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-4 font-mono text-xs text-second/70">
+                          {product.sku || "—"}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-4 font-mono text-xs text-second/70">
+                          {product.serial_number || "—"}
                         </td>
                         <td className="whitespace-nowrap px-4 py-4 text-right text-sm font-semibold tabular-nums text-second">
                           {formatNumber(netUnits(product))}
@@ -1111,62 +1120,6 @@ export default function ProductsReportPage() {
                 </tbody>
               </table>
             </div>
-
-            {/* Card mobile */}
-            <ul className="flex flex-col gap-4 md:hidden">
-              {products.map((product) => {
-                const margin = product.net.margin_pct;
-                return (
-                  <li key={product.id}>
-                    <article className="flex min-w-0 flex-col gap-4 rounded-2xl border border-second/30 bg-primary p-4 shadow-xl shadow-second/5">
-                      <div className="min-w-0">
-                        <p className="break-words text-sm font-semibold text-second">
-                          {product.name}
-                        </p>
-                        {product.sku && (
-                          <p className="mt-2 font-mono text-xs text-second/60">
-                            SKU {product.sku}
-                          </p>
-                        )}
-                        {product.refunds?.units > 0 && (
-                          <p className="mt-2 text-xs tabular-nums text-second/60">
-                            Sudah dikurangi refund{" "}
-                            {formatNumber(product.refunds.units)} unit
-                          </p>
-                        )}
-                      </div>
-
-                      <dl className="grid grid-cols-2 gap-4 border-t border-second/30 pt-4 text-sm">
-                        <div>
-                          <dt className="text-xs text-second/60">Unit</dt>
-                          <dd className="mt-2 font-semibold tabular-nums text-second">
-                            {formatNumber(netUnits(product))}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs text-second/60">Omzet</dt>
-                          <dd className="mt-2 font-semibold tabular-nums text-second">
-                            {formatRupiah(product.net.revenue)}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs text-second/60">Laba</dt>
-                          <dd className="mt-2 font-semibold tabular-nums text-second3">
-                            {formatRupiah(product.net.profit)}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs text-second/60">Margin</dt>
-                          <dd className="mt-2 font-semibold tabular-nums text-second">
-                            {formatPercent(margin)}
-                          </dd>
-                        </div>
-                      </dl>
-                    </article>
-                  </li>
-                );
-              })}
-            </ul>
           </div>
         ) : (
           <div className="flex min-h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-second/20 bg-primary px-4 py-16 text-center">

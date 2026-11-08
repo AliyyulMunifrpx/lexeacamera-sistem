@@ -230,10 +230,10 @@ async function exportCustomersXlsx({
   const ExcelJS = (await import("exceljs")).default;
 
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "Laporan Customer";
+  workbook.creator = "Reports Customer";
   workbook.created = new Date();
 
-  const sheet = workbook.addWorksheet("Laporan Customer", {
+  const sheet = workbook.addWorksheet("Reports Customer", {
     views: [{ showGridLines: false }],
     pageSetup: {
       paperSize: 9,
@@ -252,7 +252,7 @@ async function exportCustomersXlsx({
       },
     },
     headerFooter: {
-      oddFooter: "&LLaporan Customer&RHalaman &P dari &N",
+      oddFooter: "&LReports Customer&RHalaman &P dari &N",
     },
   });
 
@@ -495,7 +495,7 @@ async function exportCustomersXlsx({
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `laporan-customer_${range.from}_sd_${range.to}${
+  link.download = `reports-customer_${range.from}_sd_${range.to}${
     totalPages > 1 ? `_hal-${page}` : ""
   }.xlsx`;
   document.body.appendChild(link);
@@ -525,7 +525,7 @@ function explainError(error) {
   if (status === 403) {
     return {
       title: "Anda tidak punya akses",
-      description: "Akun Anda tidak punya izin untuk membuka laporan ini.",
+      description: "Akun Anda tidak punya izin untuk membuka reports ini.",
     };
   }
   if (status >= 500) {
@@ -541,7 +541,7 @@ function explainError(error) {
     };
   }
   return {
-    title: "Gagal memuat laporan customer",
+    title: "Gagal memuat reports customer",
     description:
       normalizeApiError(error).message || "Terjadi kesalahan tak terduga.",
   };
@@ -767,7 +767,7 @@ export default function CustomersReportPage() {
             className={`inline-flex h-8 w-fit items-center gap-2 rounded-full pr-4 text-sm font-medium text-second/60 transition-colors hover:text-second4 touch-manipulation ${FOCUS_RING}`}
           >
             <FiArrowLeft size={16} aria-hidden="true" />
-            Kembali ke laporan
+            Kembali ke reports
           </Link>
         </header>
         <ErrorState
@@ -788,7 +788,7 @@ export default function CustomersReportPage() {
           className={`inline-flex h-8 w-fit items-center gap-2 rounded-full pr-4 text-sm font-medium text-second/60 transition-colors hover:text-second4 touch-manipulation ${FOCUS_RING}`}
         >
           <FiArrowLeft size={16} aria-hidden="true" />
-          Kembali ke laporan
+          Kembali ke reports
         </Link>
 
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -798,7 +798,7 @@ export default function CustomersReportPage() {
             </div>
             <div className="min-w-0">
               <h1 className="text-balance text-2xl font-bold tracking-tight text-second sm:text-3xl">
-                Laporan <span className="text-grad">Customer</span>
+                Reports <span className="text-grad">Customer</span>
               </h1>
               <p className="mt-2 text-pretty text-sm text-second/60">
                 Customer yang bertransaksi lunas di periode ini. Sudah dikurangi
@@ -850,7 +850,7 @@ export default function CustomersReportPage() {
 
       {/* Filter */}
       <section
-        aria-label="Filter laporan customer"
+        aria-label="Filter reports customer"
         className="flex min-w-0 flex-col gap-8 rounded-2xl border border-second/30 bg-primary p-4 shadow-xl shadow-second/5 sm:p-8"
       >
         <div>

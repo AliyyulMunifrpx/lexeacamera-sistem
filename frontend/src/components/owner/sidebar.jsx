@@ -66,7 +66,7 @@ const navigation = [
     group: "Penjualan",
   },
   {
-    label: "Laporan",
+    label: "Report",
     href: "/owner/reports",
     icon: TbReportSearch,
     group: "Penjualan",
@@ -161,7 +161,7 @@ const pageTitles = {
   "/owner/profile": "Edit Profil",
   "/owner/settings": "Pengaturan",
   "/owner/account": "Akun Saya",
-  "/owner/reports": "Laporan",
+  "/owner/reports": "Reports",
   "/owner/admins": "Tim Admin",
   "/owner/employees": "Karyawan",
   "/owner/attendances": "Absensi",
