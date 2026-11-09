@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getAdminCamera,
   getAdminCameras,
+  updateAdminCameraDetails,
   updateAdminCameraImages,
   updateAdminCameraMarketplace,
 } from "./api.js";
@@ -49,5 +50,22 @@ export function useUpdateAdminCameraImages() {
   return useMutation({
     mutationFn: ({ id, formData }) => updateAdminCameraImages(id, formData),
     onSuccess: (_data, { id }) => invalidate(id),
+  });
+}
+// Tambahkan ke hooks feature admin-cameras. Samakan invalidasi queryKey dengan
+// yang dipakai useUpdateAdminCameraImages / useUpdateAdminCameraMarketplace,
+// supaya detail dan daftar kamera ikut segar setelah disimpan.
+
+export function useUpdateAdminCameraDetails() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: updateAdminCameraDetails,
+    onSuccess: (_result, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-cameras"] });
+      queryClient.invalidateQueries({
+        queryKey: ["admin-camera", variables.id],
+      });
+    },
   });
 }

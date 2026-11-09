@@ -17,6 +17,7 @@ import {
 
 import {
   useGetAdminCamera,
+  useUpdateAdminCameraDetails,
   useUpdateAdminCameraImages,
   useUpdateAdminCameraMarketplace,
 } from "../../../../../features/admin-cameras/hooks.js";
@@ -30,13 +31,15 @@ import { useGetAdminMarketplaces } from "../../../../../features/admin-marketpla
 /*  Design rules (SAMA DENGAN HALAMAN EDIT OWNER)                             */
 /*  Spacing : only 2, 4, 8, 16                                                */
 /*  Color   : primary + second (+ second2 error, second3 sukses, second4 fokus) */
-/*  Admin hanya boleh mengubah galeri gambar dan link marketplace.            */
+/*  Admin hanya boleh mengubah deskripsi, kelengkapan, galeri gambar, dan     */
+/*  link marketplace.                                                         */
 /* -------------------------------------------------------------------------- */
 
 const MAX_IMAGES = 12;
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_URL_LENGTH = 2048;
+const MAX_TEXT_LENGTH = 1000;
 
 const FOCUS_RING =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-second4/40";
@@ -159,6 +162,50 @@ function FormSection({ title, description, aside, children, sectionRef }) {
 
       <div className="flex flex-col gap-4">{children}</div>
     </section>
+  );
+}
+
+function TextAreaField({
+  id,
+  label,
+  value,
+  onChange,
+  error,
+  disabled,
+  placeholder,
+}) {
+  return (
+    <div className="min-w-0">
+      <label htmlFor={id} className={labelClass}>
+        {label}
+        <span className="ml-2 text-xs font-normal text-second/50">
+          Opsional
+        </span>
+      </label>
+
+      <textarea
+        id={id}
+        name={id}
+        value={value}
+        onChange={onChange}
+        rows={5}
+        maxLength={MAX_TEXT_LENGTH}
+        disabled={disabled}
+        placeholder={placeholder}
+        className={`${inputClass(Boolean(error))} resize-y`}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? `${id}-desc` : undefined}
+      />
+
+      <div className="mt-2 flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          {error && <ErrorText id={`${id}-desc`}>{error}</ErrorText>}
+        </div>
+        <p className="shrink-0 text-xs tabular-nums text-second/50">
+          {value.length}/{MAX_TEXT_LENGTH}
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -317,7 +364,8 @@ function ProductSummary({ camera, preview }) {
 
       <p className="flex items-start gap-2 text-sm text-second/60">
         <FiInfo size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
-        Admin hanya dapat mengubah galeri gambar dan tautan marketplace.
+        Admin dapat mengubah deskripsi, kelengkapan, galeri gambar, dan tautan
+        marketplace.
       </p>
     </section>
   );
@@ -332,6 +380,7 @@ export default function AdminEditCameraPage() {
 
   const initializedId = useRef(null);
   const galleryRef = useRef(null);
+  const detailsRef = useRef(null);
 
   const cameraQuery = useGetAdminCamera(id);
   const marketplacesQuery = useGetAdminMarketplaces();
@@ -339,6 +388,7 @@ export default function AdminEditCameraPage() {
     ? marketplacesQuery.data
     : (marketplacesQuery.data?.data ?? []);
 
+  const updateDetails = useUpdateAdminCameraDetails();
   const updateMarketplace = useUpdateAdminCameraMarketplace();
   const updateImages = useUpdateAdminCameraImages();
 
@@ -351,6 +401,8 @@ export default function AdminEditCameraPage() {
   const [errors, setErrors] = useState({});
   const [urlErrors, setUrlErrors] = useState({});
 
+  const [description, setDescription] = useState("");
+  const [inclusions, setInclusions] = useState("");
   const [keptImages, setKeptImages] = useState([]);
   const [newImages, setNewImages] = useState([]);
   const [primarySelection, setPrimarySelection] = useState(null);
@@ -358,7 +410,10 @@ export default function AdminEditCameraPage() {
   const [marketplaceUrls, setMarketplaceUrls] = useState({});
   const [dragging, setDragging] = useState(false);
 
-  const isSaving = updateMarketplace.isPending || updateImages.isPending;
+  const isSaving =
+    updateDetails.isPending ||
+    updateMarketplace.isPending ||
+    updateImages.isPending;
 
   useEffect(() => {
     if (!camera || initializedId.current === camera.id) return;
@@ -367,6 +422,8 @@ export default function AdminEditCameraPage() {
 
     const images = camera.images ?? [];
 
+    setDescription(camera.description ?? "");
+    setInclusions(camera.inclusions ?? "");
     setKeptImages(images);
     setNewImages([]);
     setGalleryDirty(false);
@@ -400,6 +457,15 @@ export default function AdminEditCameraPage() {
 
     notify.error(describeError(marketplacesQuery.error));
   }, [marketplacesQuery.isError, marketplacesQuery.error]);
+
+  function handleTextChange(field, setter) {
+    return (event) => {
+      setter(event.target.value);
+      setErrors((previous) =>
+        previous[field] ? { ...previous, [field]: undefined } : previous,
+      );
+    };
+  }
 
   function addFiles(selectedFiles) {
     if (selectedFiles.length === 0) return;
@@ -543,6 +609,17 @@ export default function AdminEditCameraPage() {
     const found = {};
     const foundUrls = {};
 
+    const descriptionValue = description.trim();
+    const inclusionsValue = inclusions.trim();
+
+    if (descriptionValue.length > MAX_TEXT_LENGTH) {
+      found.description = `Deskripsi maksimal ${MAX_TEXT_LENGTH} karakter.`;
+    }
+
+    if (inclusionsValue.length > MAX_TEXT_LENGTH) {
+      found.inclusions = `Kelengkapan maksimal ${MAX_TEXT_LENGTH} karakter.`;
+    }
+
     if (galleryDirty && keptImages.length + newImages.length === 0) {
       found.images = "Produk harus memiliki minimal satu gambar.";
     }
@@ -562,6 +639,11 @@ export default function AdminEditCameraPage() {
     setErrors(found);
     setUrlErrors(foundUrls);
 
+    if (found.description || found.inclusions) {
+      detailsRef.current?.scrollIntoView({ block: "center" });
+      return;
+    }
+
     if (found.images) {
       galleryRef.current?.scrollIntoView({ block: "center" });
       return;
@@ -573,6 +655,19 @@ export default function AdminEditCameraPage() {
       document.getElementById(`marketplace-url-${firstUrlError}`)?.focus();
       return;
     }
+
+    // Deskripsi dan kelengkapan: hanya kirim field yang berubah.
+    const detailsPayload = {};
+
+    if (descriptionValue !== (camera.description ?? "").trim()) {
+      detailsPayload.description = descriptionValue;
+    }
+
+    if (inclusionsValue !== (camera.inclusions ?? "").trim()) {
+      detailsPayload.inclusions = inclusionsValue;
+    }
+
+    const detailsChanged = Object.keys(detailsPayload).length > 0;
 
     // Marketplace: hanya kirim jika berubah.
     const marketplaceLinks = availableMarketplaces
@@ -586,23 +681,35 @@ export default function AdminEditCameraPage() {
       JSON.stringify(normalizeLinks(marketplaceLinks)) !==
       JSON.stringify(normalizeLinks(camera.marketplaceLinks ?? []));
 
-    if (!marketplaceChanged && !galleryDirty) {
+    if (!detailsChanged && !marketplaceChanged && !galleryDirty) {
       notify.error("Tidak ada perubahan untuk disimpan.");
       return;
     }
 
-    let marketplaceSaved = false;
+    const savedParts = [];
+    let currentPart = "";
 
     try {
+      if (detailsChanged) {
+        currentPart = "deskripsi dan kelengkapan";
+
+        await updateDetails.mutateAsync({ id, data: detailsPayload });
+        savedParts.push("Deskripsi dan kelengkapan");
+      }
+
       if (marketplaceChanged) {
+        currentPart = "tautan marketplace";
+
         await updateMarketplace.mutateAsync({
           id,
           marketplace: marketplaceLinks,
         });
-        marketplaceSaved = true;
+        savedParts.push("Tautan marketplace");
       }
 
       if (galleryDirty) {
+        currentPart = "galeri";
+
         const formData = new FormData();
 
         formData.append(
@@ -632,9 +739,9 @@ export default function AdminEditCameraPage() {
     } catch (error) {
       const message = describeError(error);
 
-      if (marketplaceSaved && galleryDirty) {
+      if (savedParts.length > 0) {
         notify.error(
-          `Tautan marketplace berhasil disimpan, tetapi galeri gagal diperbarui. ${message}`,
+          `${savedParts.join(" dan ")} berhasil disimpan, tetapi ${currentPart} gagal diperbarui. ${message}`,
         );
       } else {
         notify.error(message);
@@ -777,7 +884,8 @@ export default function AdminEditCameraPage() {
               Edit <span className="text-grad">produk</span>
             </h1>
             <p className="mt-2 text-pretty text-sm text-second/60">
-              Perbarui galeri gambar dan tautan marketplace produk.
+              Perbarui deskripsi, kelengkapan, galeri gambar, dan tautan
+              marketplace produk.
             </p>
           </div>
         </div>
@@ -789,6 +897,32 @@ export default function AdminEditCameraPage() {
         className="grid grid-cols-1 items-start gap-8 xl:grid-cols-3"
       >
         <div className="flex min-w-0 flex-col gap-8 xl:col-span-2">
+          <FormSection
+            sectionRef={detailsRef}
+            title="Deskripsi dan kelengkapan"
+            description="Deskripsi produk dan isi paket yang ikut dijual. Kosongkan kolom untuk menghapus isinya."
+          >
+            <TextAreaField
+              id="description"
+              label="Deskripsi"
+              value={description}
+              onChange={handleTextChange("description", setDescription)}
+              error={errors.description}
+              disabled={isSaving}
+              placeholder="Contoh: Body mulus, shutter count rendah…"
+            />
+
+            <TextAreaField
+              id="inclusions"
+              label="Kelengkapan"
+              value={inclusions}
+              onChange={handleTextChange("inclusions", setInclusions)}
+              error={errors.inclusions}
+              disabled={isSaving}
+              placeholder="Contoh: Charger, strap, kotak original…"
+            />
+          </FormSection>
+
           <FormSection
             sectionRef={galleryRef}
             title="Galeri gambar"
@@ -901,8 +1035,8 @@ export default function AdminEditCameraPage() {
               </div>
             ) : availableMarketplaces.length === 0 ? (
               <p className="rounded-xl bg-second/5 p-4 text-sm text-second/60">
-                Belum ada marketplace aktif. Galeri gambar tetap dapat
-                diperbarui.
+                Belum ada marketplace aktif. Deskripsi, kelengkapan, dan galeri
+                gambar tetap dapat diperbarui.
               </p>
             ) : (
               <div className="flex flex-col gap-4">

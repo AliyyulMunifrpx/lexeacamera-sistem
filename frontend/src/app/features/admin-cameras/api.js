@@ -59,3 +59,9 @@ export async function updateAdminCameraImages(id, formData) {
 
   return response.data.data;
 }
+// Tambahkan ke api feature admin-cameras (pakai instance `api` yang sama dengan
+// fungsi lain di file itu).
+export async function updateAdminCameraDetails({ id, data }) {
+  const response = await api.patch(`/admin/cameras/${id}`, data);
+  return response.data;
+}

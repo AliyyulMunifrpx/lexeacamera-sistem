@@ -25,3 +25,11 @@ export const adminUpdateCameraMarketplaceValidation = Joi.object({
     .unique("marketplace_id")
     .required(),
 });
+
+// Admin hanya boleh mengubah deskripsi dan kelengkapan. Field lain ditolak
+// karena tidak dikenal. "" berarti dikosongkan.
+export const adminUpdateCameraDetailsValidation = Joi.object({
+  id: Joi.string().uuid().required(),
+  description: Joi.string().max(1000).allow(""),
+  inclusions: Joi.string().max(1000).allow(""),
+}).or("description", "inclusions");

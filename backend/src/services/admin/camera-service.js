@@ -1,11 +1,11 @@
+import { ResponseError } from "../../error/response-error.js";
+import { prisma } from "../../lib/database.js";
 import {
   adminGetAllCameraValidation,
+  adminUpdateCameraDetailsValidation,
   adminUpdateCameraMarketplaceValidation,
 } from "../../validation/admin/camera-validation.js";
 import { getCameraValidation } from "../../validation/owner/camera-validation.js";
-import { ResponseError } from "../../error/response-error.js";
-import { prisma } from "../../lib/database.js";
-
 import { validate } from "../../validation/validation.js";
 
 const PER_PAGE = 20;
@@ -100,10 +100,12 @@ const getAllCamera = async (request) => {
 
 const getCamera = async (request) => {
   const req = validate(getCameraValidation, request);
+
   const camera = await prisma.camera.findUnique({
     where: { id: req.id, is_deleted: false },
     select: DETAIL_SELECT,
   });
+
   if (!camera) {
     throw new ResponseError(404, "CAMERA_NOT_FOUND");
   }
@@ -189,8 +191,34 @@ const updateCameraMarketplace = async (request) => {
   }
 };
 
+const updateCameraDetails = async (request) => {
+  const req = validate(adminUpdateCameraDetailsValidation, request);
+
+  // Hanya field yang dikirim. `!== undefined` supaya "" tetap masuk
+  const data = {};
+  if (req.description !== undefined) data.description = req.description;
+  if (req.inclusions !== undefined) data.inclusions = req.inclusions;
+
+  try {
+    // Satu UPDATE dengan syarat is_deleted = false, jadi kamera yang dihapus
+    // di waktu yang sama tidak ikut terubah
+    return await prisma.camera.update({
+      where: { id: req.id, is_deleted: false },
+      data,
+      select: { id: true, description: true, inclusions: true },
+    });
+  } catch (error) {
+    if (error.code === "P2025") {
+      throw new ResponseError(404, "CAMERA_NOT_FOUND");
+    }
+
+    throw error;
+  }
+};
+
 export default {
   getAllCamera,
   getCamera,
+  updateCameraDetails,
   updateCameraMarketplace,
 };

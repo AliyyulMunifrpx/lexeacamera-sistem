@@ -17,6 +17,7 @@ import {
   FiEdit2,
   FiExternalLink,
   FiFileText,
+  FiLoader,
   FiLock,
   FiMapPin,
   FiMoreHorizontal,
@@ -32,6 +33,7 @@ import {
   useGetInvoice,
   useDeleteInvoice,
 } from "../../../../features/admin-invoices/hooks.js";
+import { useUpdateOrderPaymentStatus } from "../../../../features/admin-orders/hooks.js";
 import { useGetStore } from "../../../../features/store/hooks.js";
 import { useGetCurrentUser } from "../../../../features/users/hooks.js";
 
@@ -60,6 +62,36 @@ const PAYMENT_STATUS = {
   PAID: { label: "Lunas", tone: "blue", icon: FiCheckCircle },
   UNPAID: { label: "Belum dibayar", tone: "violet", icon: FiClock },
   PENDING: { label: "Menunggu pembayaran", tone: "violet", icon: FiClock },
+};
+
+const PAYMENT_VALUE = {
+  PAID: "PAID",
+  UNPAID: "UNPAID",
+};
+
+const PAYMENT_OPTIONS = [
+  {
+    value: PAYMENT_VALUE.PAID,
+    title: "Lunas",
+    description: "Order sudah dibayar. Tanggal lunas dipakai oleh laporan.",
+  },
+  {
+    value: PAYMENT_VALUE.UNPAID,
+    title: "Belum lunas",
+    description: "Order belum dibayar. Tanggal lunas dikosongkan.",
+  },
+];
+
+const PAYMENT_KIND_INFO = {
+  pay: { button: "Tandai lunas", success: "Order ditandai lunas." },
+  unpay: {
+    button: "Tandai belum lunas",
+    success: "Order ditandai belum lunas.",
+  },
+  correct: {
+    button: "Simpan tanggal lunas",
+    success: "Tanggal lunas diperbarui.",
+  },
 };
 
 const TYPE_LABEL = {
@@ -146,6 +178,81 @@ function parseTerms(text) {
   }
 
   return blocks;
+}
+
+/* ISO (UTC) -> nilai <input type="datetime-local"> dalam WIB ("YYYY-MM-DDTHH:mm") */
+function toWibInput(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Date(date.getTime() + 7 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 16);
+}
+
+/* Nilai <input type="datetime-local"> (WIB) -> ISO 8601 dengan offset */
+function wibInputToIso(value) {
+  return `${value}:00+07:00`;
+}
+
+function formatDateTimeWib(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return `${date.toLocaleString("id-ID", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Jakarta",
+  })} WIB`;
+}
+
+/* Data order bisa datang langsung di invoice atau di dalam invoice.order. */
+function getOrderPayment(invoice) {
+  const orderId = invoice?.order_id ?? invoice?.order?.id ?? null;
+  const status = invoice?.payment_status ?? invoice?.order?.payment_status;
+  const paidAt = invoice?.paid_at ?? invoice?.order?.paid_at ?? null;
+
+  if (
+    !orderId ||
+    (status !== PAYMENT_VALUE.PAID && status !== PAYMENT_VALUE.UNPAID)
+  ) {
+    return null;
+  }
+
+  return { orderId, status, paidAt };
+}
+
+/* Kode error PATCH /admin/orders/:id/payment-status -> pesan Indonesia */
+function describePaymentError(error) {
+  const data = error?.response?.data;
+  const code = data?.errors;
+
+  switch (code) {
+    case "INSUFFICIENT_STOCK": {
+      const list = Array.isArray(data?.cameras)
+        ? data.cameras
+            .map(
+              (camera) =>
+                `${camera.name} (diminta ${camera.requested}, stok ${camera.stock})`,
+            )
+            .join(", ")
+        : "";
+      return list
+        ? `Stok tidak cukup: ${list}. Tidak ada perubahan yang disimpan.`
+        : "Stok tidak cukup. Tidak ada perubahan yang disimpan.";
+    }
+    case "ORDER_HAS_REFUNDS":
+      return "Tidak bisa kembali ke belum lunas karena order ini sudah punya refund.";
+    case "PAID_AT_BEFORE_ORDER":
+      return "Tanggal lunas tidak boleh sebelum order dibuat.";
+    case "ORDER_NOT_FOUND":
+      return "Order tidak ditemukan atau sudah dihapus.";
+    default:
+      return normalizeApiError(error).message;
+  }
 }
 
 /* ---------- Komponen kecil ---------- */
@@ -362,6 +469,204 @@ function TermsContent({ text }) {
   );
 }
 
+/* ---------- Status pembayaran order ---------- */
+
+function PaymentStatusSection({
+  orderId,
+  currentStatus,
+  currentPaidAt,
+  onUpdated,
+}) {
+  const mutation = useUpdateOrderPaymentStatus();
+  const isSaving = mutation.isPending;
+
+  const savedPaidAt = toWibInput(currentPaidAt);
+
+  const [status, setStatus] = useState(currentStatus);
+  const [paidAt, setPaidAt] = useState(savedPaidAt);
+
+  // Sinkronkan dengan data terbaru dari server (misalnya setelah disimpan).
+  useEffect(() => {
+    setStatus(currentStatus);
+    setPaidAt(toWibInput(currentPaidAt));
+  }, [currentStatus, currentPaidAt]);
+
+  let kind = null;
+  if (status === PAYMENT_VALUE.PAID && currentStatus !== PAYMENT_VALUE.PAID) {
+    kind = "pay";
+  } else if (
+    status === PAYMENT_VALUE.UNPAID &&
+    currentStatus !== PAYMENT_VALUE.UNPAID
+  ) {
+    kind = "unpay";
+  } else if (
+    status === PAYMENT_VALUE.PAID &&
+    paidAt !== "" &&
+    paidAt !== savedPaidAt
+  ) {
+    kind = "correct";
+  }
+
+  const showDateField = status === PAYMENT_VALUE.PAID;
+  const paidAtIso = paidAt ? wibInputToIso(paidAt) : "";
+  const paidAtError =
+    showDateField && paidAtIso && new Date(paidAtIso).getTime() > Date.now()
+      ? "Tanggal lunas tidak boleh di masa depan."
+      : "";
+
+  const maxPaidAt = toWibInput(new Date().toISOString());
+  const info = kind ? PAYMENT_KIND_INFO[kind] : null;
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    if (!kind || isSaving) return;
+
+    if (paidAtError) {
+      notify.error(paidAtError);
+      return;
+    }
+
+    const payload =
+      status === PAYMENT_VALUE.PAID
+        ? {
+            payment_status: PAYMENT_VALUE.PAID,
+            ...(paidAtIso ? { paid_at: paidAtIso } : {}),
+          }
+        : { payment_status: PAYMENT_VALUE.UNPAID };
+
+    try {
+      await mutation.mutateAsync({ id: orderId, data: payload });
+      notify.success(info.success);
+      await onUpdated?.();
+    } catch (error) {
+      notify.error(describePaymentError(error));
+    }
+  }
+
+  return (
+    <DetailSection
+      icon={FiCreditCard}
+      title="Status pembayaran"
+      className="no-print"
+    >
+      <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
+        <p className="text-sm text-second/60">
+          Ubah status bayar order ini atau koreksi tanggal lunas. Bisa dilakukan
+          walau invoice sudah final.
+        </p>
+
+        <fieldset className="flex flex-col gap-2">
+          <legend className="sr-only">Pilihan status pembayaran</legend>
+          {PAYMENT_OPTIONS.map((option) => {
+            const checked = status === option.value;
+            return (
+              <label
+                key={option.value}
+                className={`flex cursor-pointer items-center gap-4 rounded-xl border p-4 transition-colors ${
+                  checked ? "border-second4 bg-second4/5" : "border-second/30"
+                } ${isSaving ? "pointer-events-none opacity-50" : ""}`}
+              >
+                <input
+                  type="radio"
+                  name="payment_status"
+                  value={option.value}
+                  checked={checked}
+                  onChange={() => setStatus(option.value)}
+                  disabled={isSaving}
+                  className={`size-4 shrink-0 cursor-pointer accent-second4 ${FOCUS_RING}`}
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold">
+                    {option.title}
+                  </span>
+                  <span className="mt-1 block text-sm text-second/60">
+                    {option.description}
+                  </span>
+                </span>
+              </label>
+            );
+          })}
+        </fieldset>
+
+        {showDateField && (
+          <div className="min-w-0">
+            <label
+              htmlFor="paid_at"
+              className="mb-2 block text-sm font-semibold"
+            >
+              Tanggal lunas (WIB)
+              <span className="ml-2 text-xs font-normal text-second/50">
+                Opsional
+              </span>
+            </label>
+            <input
+              id="paid_at"
+              name="paid_at"
+              type="datetime-local"
+              value={paidAt}
+              max={maxPaidAt}
+              onChange={(event) => setPaidAt(event.target.value)}
+              disabled={isSaving}
+              aria-invalid={paidAtError ? true : undefined}
+              aria-describedby="paid_at-desc"
+              className={`w-full min-w-0 rounded-xl border bg-primary px-4 py-2 text-base tabular-nums text-second outline-none transition-colors focus:ring-4 disabled:cursor-not-allowed disabled:opacity-50 ${
+                paidAtError
+                  ? "border-second2 focus:border-second2 focus:ring-second2/15"
+                  : "border-second/30 focus:border-second4 focus:ring-second4/15"
+              }`}
+            />
+            {paidAtError ? (
+              <p
+                id="paid_at-desc"
+                role="alert"
+                className="mt-2 flex items-start gap-2 text-sm text-second2"
+              >
+                <FiAlertCircle
+                  size={16}
+                  className="mt-0.5 shrink-0"
+                  aria-hidden="true"
+                />
+                {paidAtError}
+              </p>
+            ) : (
+              <p id="paid_at-desc" className="mt-2 text-sm text-second/60">
+                {currentStatus === PAYMENT_VALUE.PAID
+                  ? `Tersimpan: ${formatDateTimeWib(currentPaidAt)}. Ubah untuk mengoreksi.`
+                  : "Kosongkan untuk memakai waktu sekarang."}
+              </p>
+            )}
+          </div>
+        )}
+
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <PrimaryButton
+            type="submit"
+            disabled={isSaving || !kind || Boolean(paidAtError)}
+            aria-busy={isSaving}
+            className={`${BTN_BASE} w-full bg-grad text-primary shadow-lg shadow-second4/25 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto ${FOCUS_RING}`}
+          >
+            {isSaving ? (
+              <>
+                <FiLoader
+                  className="animate-spin motion-reduce:animate-none"
+                  size={16}
+                  aria-hidden="true"
+                />
+                Menyimpan…
+              </>
+            ) : (
+              <>
+                <FiCheck size={16} aria-hidden="true" />
+                {info ? info.button : "Tidak ada perubahan"}
+              </>
+            )}
+          </PrimaryButton>
+        </div>
+      </form>
+    </DetailSection>
+  );
+}
+
 /* ---------- Halaman ---------- */
 
 export default function InvoiceDetailPage() {
@@ -426,7 +731,7 @@ export default function InvoiceDetailPage() {
       if (code === "ORDER_ALREADY_PAID") {
         setDeleteOpen(false);
         notify.error(
-          "Invoice yang sudah lunas tidak bisa dihapus. Minta owner mengubah order ke belum lunas terlebih dahulu.",
+          "Invoice yang sudah lunas tidak bisa dihapus. Ubah status pembayaran ke belum lunas dulu di bagian Status pembayaran.",
         );
         return;
       }
@@ -512,6 +817,7 @@ export default function InvoiceDetailPage() {
     icon: FiCreditCard,
   };
   const isPaid = invoice.payment_status === "PAID";
+  const orderPayment = getOrderPayment(invoice);
 
   const totalQuantity = items.reduce(
     (sum, item) => sum + (Number(item.quantity) || 0),
@@ -933,6 +1239,16 @@ export default function InvoiceDetailPage() {
               </div>
             </dl>
           </DetailSection>
+
+          {/* Status pembayaran (bisa diubah walau invoice sudah final) */}
+          {orderPayment && (
+            <PaymentStatusSection
+              orderId={orderPayment.orderId}
+              currentStatus={orderPayment.status}
+              currentPaidAt={orderPayment.paidAt}
+              onUpdated={() => refetch()}
+            />
+          )}
 
           {/* Syarat & ketentuan */}
           <DetailSection

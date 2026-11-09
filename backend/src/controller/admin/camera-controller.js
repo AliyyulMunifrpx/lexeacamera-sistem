@@ -1,10 +1,9 @@
-import cameraService from "../../services/owner/camera-service.js";
-import adminCameraService from "../../services/admin/camera-service.js";
+import cameraService from "../../services/admin/camera-service.js";
 import updateCameraImagesService from "../../services/shared/update-camera-images-service.js";
 
 const getAll = async function (req, res, next) {
   try {
-    const result = await adminCameraService.getAllCamera(req.query);
+    const result = await cameraService.getAllCamera(req.query);
     res.status(200).json(result);
   } catch (e) {
     next(e);
@@ -13,7 +12,7 @@ const getAll = async function (req, res, next) {
 
 const get = async function (req, res, next) {
   try {
-    const result = await adminCameraService.getCamera({ id: req.params.id });
+    const result = await cameraService.getCamera({ id: req.params.id });
     res.status(200).json({
       data: result,
     });
@@ -43,7 +42,23 @@ const updateMarketplace = async function (req, res, next) {
   try {
     // id SESUDAH spread: id di body tidak boleh menimpa id di URL.
     // Field lain selain `marketplace` ditolak oleh validasi.
-    const result = await adminCameraService.updateCameraMarketplace({
+    const result = await cameraService.updateCameraMarketplace({
+      ...req.body,
+      id: req.params.id,
+    });
+    res.status(200).json({
+      data: result,
+    });
+  } catch (e) {
+    next(e);
+  }
+};
+
+const updateDetails = async function (req, res, next) {
+  try {
+    // id SESUDAH spread: id di body tidak boleh menimpa id di URL.
+    // Field selain description dan inclusions ditolak oleh validasi.
+    const result = await cameraService.updateCameraDetails({
       ...req.body,
       id: req.params.id,
     });
@@ -58,6 +73,7 @@ const updateMarketplace = async function (req, res, next) {
 export default {
   getAll,
   get,
+  updateDetails,
   updateImages,
   updateMarketplace,
 };

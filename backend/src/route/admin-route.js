@@ -12,6 +12,7 @@ import storeController from "../controller/owner/store-controller.js";
 import termsController from "../controller/owner/terms-controller.js";
 import salesController from "../controller/admin/sales-controller.js";
 import attendanceController from "../controller/owner/attendance-controller.js";
+import orderPaymentController from "../controller/admin/order-payment-controller.js";
 const adminRouter = express.Router();
 adminRouter.put("/users/pin", userController.setPin);
 adminRouter.get("/users/current", userController.get);
@@ -53,5 +54,9 @@ adminRouter.get("/store", storeController.getStore);
 adminRouter.get("/terms", termsController.getTerms);
 adminRouter.get("/admin/sales", salesController.get);
 adminRouter.get("/owner/attendances", attendanceController.getAll);
-
+adminRouter.patch(
+  "/admin/orders/:id/payment-status",
+  orderPaymentController.updatePaymentStatus,
+);
+adminRouter.patch("/admin/cameras/:id", adminCameraController.updateDetails);
 export default adminRouter;
