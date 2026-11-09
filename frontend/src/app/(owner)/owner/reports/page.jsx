@@ -1234,6 +1234,7 @@ export default function ReportsOverviewPage() {
   const invalidRange =
     draft.from !== "" && draft.to !== "" && draft.from > draft.to;
   const queryClient = useQueryClient();
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const summaryQuery = useGetReportSummary(range);
   const summary = summaryQuery.data;
@@ -1256,8 +1257,20 @@ export default function ReportsOverviewPage() {
     }
   }
 
-  function refreshAll() {
-    queryClient.invalidateQueries({ queryKey: ["reports"] });
+  // Tombol hanya terkunci selama refresh yang dipicu klik ini, bukan selama
+  // query apa pun sedang fetching (load awal, retry, ganti periode).
+  async function refreshAll() {
+    if (isRefreshing) return;
+
+    setIsRefreshing(true);
+    try {
+      await queryClient.refetchQueries({
+        queryKey: ["reports"],
+        type: "active",
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
   }
 
   return (
@@ -1286,20 +1299,19 @@ export default function ReportsOverviewPage() {
           <button
             type="button"
             onClick={refreshAll}
-            disabled={summaryQuery.isFetching}
+            disabled={isRefreshing}
+            aria-busy={isRefreshing}
             aria-label="Perbarui reports"
             className={`${BTN_BASE} w-full border border-second/30 text-second hover:border-second4 hover:text-second4 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto ${FOCUS_RING}`}
           >
             <FiRefreshCw
               size={16}
               className={
-                summaryQuery.isFetching
-                  ? "animate-spin motion-reduce:animate-none"
-                  : ""
+                isRefreshing ? "animate-spin motion-reduce:animate-none" : ""
               }
               aria-hidden="true"
             />
-            {summaryQuery.isFetching ? "Memperbarui…" : "Perbarui"}
+            {isRefreshing ? "Memperbarui…" : "Perbarui"}
           </button>
         </div>
       </header>
