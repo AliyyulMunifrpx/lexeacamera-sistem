@@ -37,7 +37,12 @@ export const INVOICE_INCLUDE = {
           quantity: true,
           restocked: true,
           camera: {
-            select: { sku: true, serial_number: true, color: true },
+            select: {
+              sku: true,
+              serial_number: true,
+              color: true,
+              strikethrough_price: true,
+            },
           },
         },
       },
@@ -291,6 +296,7 @@ const invoiceItems = (order) =>
     restocked: item.restocked,
     sku: item.camera?.sku ?? null,
     serial_number: item.camera?.serial_number ?? null,
+    strikethrough_price: item.camera?.strikethrough_price ?? null,
     line_total: item.camera_price * item.quantity,
   }));
 

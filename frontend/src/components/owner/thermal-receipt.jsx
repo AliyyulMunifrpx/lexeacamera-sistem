@@ -6,10 +6,38 @@ import {
 
 /* Elemen ini hanya muncul saat mencetak struk thermal.
    Style print (termasuk .no-print) ikut didefinisikan di sini. */
+
+/* Diskon produk per unit = harga coret - harga jual. 0 jika tidak ada harga coret.
+   Sama persis dengan logika PDF (unitDiscount). */
+function unitDiscount(item) {
+  const strike = Number(item.strikethrough_price);
+  const price = Number(item.camera_price);
+
+  if (!Number.isFinite(strike) || !Number.isFinite(price)) return 0;
+
+  return strike > price ? strike - price : 0;
+}
+
+/* "- Rp100.000" jika ada diskon, "-" jika tidak. */
+function discountText(value) {
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount > 0
+    ? `- ${formatCurrency(amount)}`
+    : "-";
+}
+
 export default function ThermalReceipt({ invoice, paperWidth }) {
   const items = invoice.items ?? [];
   const isFinal = invoice.is_final === true;
+  const isRefund = invoice.type === "REFUND";
   const receiptWidth = paperWidth === "58" ? "48mm" : "70mm";
+
+  // Diskon produk total: selisih harga coret dan harga jual × qty.
+  const productDiscountTotal = items.reduce(
+    (sum, item) => sum + unitDiscount(item) * (Number(item.quantity) || 0),
+    0,
+  );
+  const showProductDiscount = !isRefund && productDiscountTotal > 0;
 
   return (
     <>
@@ -63,6 +91,12 @@ export default function ThermalReceipt({ invoice, paperWidth }) {
 
           #thermal-receipt .receipt-divider {
             border-color: #888 !important;
+          }
+
+          /* Harga coret & keterangan diskon tetap terbaca di printer thermal
+             (monokrom): pakai garis coret + teks biasa, tanpa warna. */
+          #thermal-receipt .receipt-strike {
+            text-decoration: line-through !important;
           }
 
           .no-print {
@@ -122,25 +156,66 @@ export default function ThermalReceipt({ invoice, paperWidth }) {
         <div className="receipt-divider my-3 border-t border-dashed" />
 
         <div>
-          {items.map((item) => (
-            <div key={item.id} className="mb-3">
-              <p className="break-words font-semibold">{item.camera_name}</p>
+          {items.map((item) => {
+            const perUnitDiscount = unitDiscount(item);
+            const hasItemDiscount = perUnitDiscount > 0;
 
-              <div className="mt-1 flex justify-between gap-2 text-xs">
-                <span>
-                  {item.quantity} × {formatCurrency(item.camera_price)}
-                </span>
-                <span className="shrink-0">
-                  {formatCurrency(item.line_total)}
-                </span>
+            return (
+              <div key={item.id} className="mb-3">
+                <p className="break-words font-semibold">{item.camera_name}</p>
+
+                {/* Harga satuan — coret harga normal jika ada diskon */}
+                <div className="mt-1 flex justify-between gap-2 text-xs">
+                  <span>
+                    {item.quantity} ×{" "}
+                    {hasItemDiscount ? (
+                      <>
+                        <span className="receipt-strike">
+                          {formatCurrency(item.strikethrough_price)}
+                        </span>{" "}
+                        {formatCurrency(item.camera_price)}
+                      </>
+                    ) : (
+                      formatCurrency(item.camera_price)
+                    )}
+                  </span>
+                  <span className="shrink-0">
+                    {formatCurrency(item.line_total)}
+                  </span>
+                </div>
+
+                {/* Keterangan diskon per unit */}
+                {hasItemDiscount && (
+                  <p className="mt-1 text-xs font-semibold">
+                    Diskon produk {formatCurrency(perUnitDiscount)} / unit
+                  </p>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div className="receipt-divider my-3 border-t border-dashed" />
 
         <div className="space-y-1.5 text-xs">
+          {/* Baris "Harga normal" & "Diskon produk" hanya untuk non-refund */}
+          {showProductDiscount && (
+            <>
+              <div className="flex justify-between gap-2">
+                <span>Harga normal</span>
+                <span>
+                  {formatCurrency(
+                    (Number(invoice.subtotal) || 0) + productDiscountTotal,
+                  )}
+                </span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span>Diskon produk</span>
+                <span>{discountText(productDiscountTotal)}</span>
+              </div>
+            </>
+          )}
+
           <div className="flex justify-between gap-2">
             <span>Subtotal</span>
             <span>{formatCurrency(invoice.subtotal)}</span>

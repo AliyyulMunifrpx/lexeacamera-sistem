@@ -50,4 +50,13 @@ const resendVerification = async (req, res, next) => {
   }
 };
 
-export default { create, getAll, get, update, resendVerification };
+const remove = async (req, res, next) => {
+  try {
+    const result = await employeeService.deleteEmployee({ id: req.params.id });
+    res.status(200).json({ data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export default { create, getAll, get, update, resendVerification, remove };

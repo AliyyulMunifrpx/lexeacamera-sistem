@@ -29,7 +29,8 @@ const SELECT = {
 
 const serialize = ({ pin_hash, user_id, ...employee }) => {
   const pinSet = pin_hash !== null;
-  const ready = pinSet && (employee.email_verified_at !== null || user_id !== null);
+  const ready =
+    pinSet && (employee.email_verified_at !== null || user_id !== null);
 
   return {
     ...employee,
@@ -231,7 +232,13 @@ const resendVerification = async (request) => {
 
   const current = await prisma.employee.findUnique({
     where: { id: req.id },
-    select: { id: true, name: true, email: true, user_id: true, is_active: true },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      user_id: true,
+      is_active: true,
+    },
   });
 
   if (!current) {
@@ -266,10 +273,35 @@ const resendVerification = async (request) => {
   return { id: current.id, email: current.email, email_sent: true };
 };
 
+const deleteEmployee = async (request) => {
+  const req = validate(employeeIdValidation, request);
+
+  return prisma.$transaction(async (tx) => {
+    const locked = await tx.$queryRaw`
+      SELECT id
+      FROM "Employee"
+      WHERE id = ${req.id}
+      FOR UPDATE
+    `;
+
+    if (locked.length === 0) {
+      throw new ResponseError(404, "EMPLOYEE_NOT_FOUND");
+    }
+
+    const { count } = await tx.attendance.deleteMany({
+      where: { employee_id: req.id },
+    });
+    await tx.employee.delete({ where: { id: req.id } });
+
+    return { message: "EMPLOYEE_DELETED", deleted_attendances: count };
+  });
+};
+
 export default {
   createEmployee,
   getAllEmployee,
   getEmployee,
   updateEmployee,
   resendVerification,
+  deleteEmployee,
 };

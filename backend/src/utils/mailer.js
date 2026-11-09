@@ -1,8 +1,19 @@
 import { ResponseError } from "../error/response-error.js";
 
-const REQUIRED = ["SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "MAIL_FROM"];
+const REQUIRED = ["BREVO_API_KEY", "MAIL_FROM"];
+const ENDPOINT = "https://api.brevo.com/v3/smtp/email";
+const TIMEOUT_MS = 15000;
 
-let transporter;
+const parseSender = (value) => {
+  const match = value.match(/^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/);
+
+  if (match) {
+    const name = match[1].trim();
+    return name ? { name, email: match[2].trim() } : { email: match[2].trim() };
+  }
+
+  return { email: value.trim() };
+};
 
 export const sendMail = async ({ to, subject, text }) => {
   if (!REQUIRED.every((name) => process.env[name])) {
@@ -14,22 +25,24 @@ export const sendMail = async ({ to, subject, text }) => {
     return;
   }
 
-  if (!transporter) {
-    const { default: nodemailer } = await import("nodemailer");
-    const port = Number(process.env.SMTP_PORT);
-
-    transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port,
-      secure: port === 465,
-      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-    });
-  }
-
-  await transporter.sendMail({
-    from: process.env.MAIL_FROM,
-    to,
-    subject,
-    text,
+  const response = await fetch(ENDPOINT, {
+    method: "POST",
+    headers: {
+      "api-key": process.env.BREVO_API_KEY,
+      "content-type": "application/json",
+      accept: "application/json",
+    },
+    body: JSON.stringify({
+      sender: parseSender(process.env.MAIL_FROM),
+      to: [{ email: to }],
+      subject,
+      textContent: text,
+    }),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
   });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(`Brevo ${response.status}: ${detail.slice(0, 300)}`);
+  }
 };

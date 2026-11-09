@@ -56,3 +56,7 @@ export async function resendEmployeeVerification(id) {
 
   return response.data.data;
 }
+export async function deleteEmployee(id) {
+  const { data } = await api.delete(`/owner/employees/${id}`);
+  return data.data;
+}

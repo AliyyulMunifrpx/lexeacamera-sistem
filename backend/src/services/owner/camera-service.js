@@ -281,6 +281,7 @@ const getAllCamera = async (request) => {
         stock: true,
         serial_number: true,
         capital: true,
+        strikethrough_price: true,
         color: true,
         shutter_count: true,
         images: { where: { is_primary: true }, take: 1 },

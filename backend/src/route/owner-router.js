@@ -119,4 +119,5 @@ ownerRouter.get(
 ownerRouter.get("/owner/reports/transactions", reportController.transactions);
 ownerRouter.get("/owner/reports/stock-value", reportController.stockValue);
 ownerRouter.put("/owner/orders/:id/items", orderController.update);
+ownerRouter.delete("/owner/employees/:id", employeeController.remove);
 export default ownerRouter;

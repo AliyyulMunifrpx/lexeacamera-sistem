@@ -120,6 +120,13 @@ function formatThousands(value) {
   return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 }
 
+/* Diskon produk = harga coret - harga jual (per unit). */
+function discountPerUnit(strike, price) {
+  const s = Number(strike);
+  const p = Number(price);
+  return Number.isFinite(s) && Number.isFinite(p) && s > p ? s - p : 0;
+}
+
 function normalizeWhatsapp(input) {
   let digits = String(input ?? "").replace(/\D/g, "");
   if (!digits) return "";
@@ -337,6 +344,7 @@ function InvoiceSummary({
   itemCount,
   isFinal,
   subtotal,
+  productDiscount,
   customerChoice,
   storeDiscount,
   customerDiscount,
@@ -387,6 +395,16 @@ function InvoiceSummary({
       </div>
 
       <dl className="divide-y divide-second/10 border-y border-second/30">
+        {productDiscount > 0 && (
+          <>
+            <SummaryRow label="Harga normal">
+              {formatCurrency(subtotal + productDiscount)}
+            </SummaryRow>
+            <SummaryRow label="Diskon produk">
+              - {formatCurrency(productDiscount)}
+            </SummaryRow>
+          </>
+        )}
         <SummaryRow label="Subtotal">{formatCurrency(subtotal)}</SummaryRow>
         <SummaryRow label="Diskon toko">
           {storeDiscount > 0 ? `- ${formatCurrency(storeDiscount)}` : "—"}
@@ -539,6 +557,18 @@ export default function CreateInvoicePage() {
         if (!Number.isFinite(price) || price < 0) return total;
         return total + price * item.quantity;
       }, 0),
+    [selectedItems],
+  );
+
+  const productDiscountTotal = useMemo(
+    () =>
+      selectedItems.reduce(
+        (total, item) =>
+          total +
+          discountPerUnit(item.camera.strikethrough_price, item.camera.price) *
+            item.quantity,
+        0,
+      ),
     [selectedItems],
   );
 
@@ -1162,6 +1192,21 @@ export default function CreateInvoicePage() {
                             ? formatCurrency(price)
                             : "Harga tidak tersedia"}
                         </p>
+                        {discountPerUnit(camera.strikethrough_price, price) >
+                          0 && (
+                          <p className="mt-2 text-xs tabular-nums text-second4">
+                            <span className="text-second/40 line-through">
+                              {formatCurrency(camera.strikethrough_price)}
+                            </span>{" "}
+                            Diskon produk{" "}
+                            {formatCurrency(
+                              discountPerUnit(
+                                camera.strikethrough_price,
+                                price,
+                              ),
+                            )}
+                          </p>
+                        )}
                       </div>
                       <button
                         type="button"
@@ -1215,6 +1260,23 @@ export default function CreateInvoicePage() {
                       <p className="mt-2 text-xs tabular-nums text-second/60">
                         {formatCurrency(camera.price)} × {quantity}
                       </p>
+                      {discountPerUnit(
+                        camera.strikethrough_price,
+                        camera.price,
+                      ) > 0 && (
+                        <p className="mt-2 text-xs tabular-nums text-second4">
+                          <span className="text-second/40 line-through">
+                            {formatCurrency(camera.strikethrough_price)}
+                          </span>{" "}
+                          Diskon produk{" "}
+                          {formatCurrency(
+                            discountPerUnit(
+                              camera.strikethrough_price,
+                              camera.price,
+                            ) * quantity,
+                          )}
+                        </p>
+                      )}
                       <p className="mt-2 text-sm font-semibold tabular-nums text-second">
                         {formatCurrency(Number(camera.price) * quantity)}
                       </p>
@@ -1457,6 +1519,7 @@ export default function CreateInvoicePage() {
             itemCount={selectedItems.length}
             isFinal={form.is_final}
             subtotal={subtotal}
+            productDiscount={productDiscountTotal}
             storeDiscount={storeDiscount}
             customerDiscount={customerDiscount}
             totalAmount={totalAmount}

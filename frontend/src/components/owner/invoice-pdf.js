@@ -78,6 +78,16 @@ function hasValue(value) {
   return value !== null && value !== undefined && String(value).trim() !== "";
 }
 
+/* Diskon produk per unit = harga coret - harga jual. 0 jika tidak ada harga coret. */
+function unitDiscount(item) {
+  const strike = Number(item.strikethrough_price);
+  const price = Number(item.camera_price);
+
+  if (!Number.isFinite(strike) || !Number.isFinite(price)) return 0;
+
+  return strike > price ? strike - price : 0;
+}
+
 /* "- Rp100.000" jika ada diskon, "-" jika tidak. */
 function discountText(value) {
   const amount = Number(value);
@@ -252,6 +262,16 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
       : "BELUM DIBAYAR";
   const statusColor = isPaid ? C.blue : C.violet;
   const statusTint = isPaid ? C.blueTint : C.violetTint;
+
+  // Diskon produk: selisih harga coret dan harga jual, dikali jumlah unit.
+  const lineItems = invoice.items ?? [];
+  const productDiscountTotal = lineItems.reduce(
+    (sum, item) => sum + unitDiscount(item) * (Number(item.quantity) || 0),
+    0,
+  );
+  const normalPriceTotal =
+    (Number(invoice.subtotal) || 0) + productDiscountTotal;
+  const showProductDiscount = !isRefund && productDiscountTotal > 0;
 
   /* ---------- Halaman 1: bar gradient + header ---------- */
   gradientRect(0, 0, pageWidth, 3);
@@ -459,7 +479,18 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
       .join("   ·   ");
 
     const metaLines = metaLine ? wrap(metaLine, 7.5, false, 84) : [];
-    const rowH = 4.5 + itemNameLines.length * 4.2 + metaLines.length * 3.6 + 3;
+
+    const perUnitDiscount = unitDiscount(item);
+    const hasItemDiscount = perUnitDiscount > 0;
+
+    const rowH = Math.max(
+      4.5 +
+        itemNameLines.length * 4.2 +
+        metaLines.length * 3.6 +
+        (hasItemDiscount ? 3.8 : 0) +
+        3,
+      hasItemDiscount ? 14 : 0,
+    );
 
     if (y + rowH > bottomLimit) {
       newPage();
@@ -484,6 +515,38 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
       size: 8.5,
       align: "right",
     });
+
+    if (hasItemDiscount) {
+      // Harga coret dicoret di bawah harga jual.
+      const strikeLabel = formatCurrency(item.strikethrough_price);
+      const strikeY = y + 9.8;
+
+      put(strikeLabel, colPrice, strikeY, {
+        size: 7,
+        color: C.faint,
+        align: "right",
+      });
+
+      const strikeW = doc.getTextWidth(strikeLabel);
+      doc.setDrawColor(...C.faint);
+      doc.setLineWidth(0.2);
+      doc.line(colPrice - strikeW, strikeY - 0.9, colPrice, strikeY - 0.9);
+
+      // Keterangan diskon per unit di bawah nama/SKU.
+      const noteY =
+        y + 6 + itemNameLines.length * 4.2 - 0.4 + metaLines.length * 3.6;
+
+      put(
+        `Diskon produk ${formatCurrency(perUnitDiscount)} / unit`,
+        margin + 4,
+        noteY,
+        {
+          size: 7.5,
+          bold: true,
+          color: C.violet,
+        },
+      );
+    }
     put(String(item.quantity), colQty, y + 6, { size: 8.5, align: "right" });
     put(formatCurrency(item.line_total), colTotal, y + 6, {
       size: 8.5,
@@ -497,7 +560,7 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
 
   /* ---------- Ringkasan pembayaran ---------- */
   y += 8;
-  ensure(52);
+  ensure(52 + (showProductDiscount ? 13 : 0));
 
   const summaryTop = y;
   const labelX = rightColX + 6;
@@ -513,6 +576,12 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
         ["Diskon pembelian awal", discountText(refundDiscount)],
       ]
     : [
+        ...(showProductDiscount
+          ? [
+              ["Harga normal", formatCurrency(normalPriceTotal)],
+              ["Diskon produk", discountText(productDiscountTotal)],
+            ]
+          : []),
         ["Subtotal", formatCurrency(invoice.subtotal)],
         ["Diskon toko", discountText(invoice.store_discount)],
         ["Diskon pelanggan", discountText(invoice.customer_discount)],

@@ -2,23 +2,24 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link.js";
-import { useParams } from "next/navigation.js";
+import { useParams, useRouter } from "next/navigation.js";
 import {
   FiAlertCircle,
   FiAlertTriangle,
   FiArrowLeft,
   FiCheck,
   FiClock,
-  FiCopy,
   FiLoader,
   FiMail,
   FiRefreshCw,
   FiSave,
+  FiTrash2,
   FiUser,
   FiX,
 } from "react-icons/fi";
 
 import {
+  useDeleteEmployee,
   useGetEmployee,
   useResendEmployeeVerification,
   useUpdateEmployee,
@@ -162,6 +163,15 @@ function EmployeeForm({ employee }) {
   const [isActive, setIsActive] = useState(Boolean(employee.is_active));
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState("");
+
+  // Reset state saat data server berubah (setelah simpan / refetch).
+  useEffect(() => {
+    setName(employee.name ?? "");
+    setEmail(employee.email ?? "");
+    setIsActive(Boolean(employee.is_active));
+    setErrors({});
+    setFormError("");
+  }, [employee]);
 
   const trimmedName = name.trim();
   const trimmedEmail = email.trim();
@@ -546,6 +556,119 @@ function ResendPanel({ employee }) {
   );
 }
 
+/* --------------------------- Dialog hapus ------------------------------- */
+
+function DeleteDialog({ employee, onClose }) {
+  const router = useRouter();
+  const deleteMutation = useDeleteEmployee();
+  const busy = deleteMutation.isPending;
+
+  const linked = Boolean(employee.linked_to_user);
+
+  async function handleConfirm() {
+    try {
+      const result = await deleteMutation.mutateAsync(employee.id);
+      const count = result?.deleted_attendances ?? 0;
+
+      notify.success(
+        linked
+          ? "Karyawan dihapus. Akun admin tetap tersedia."
+          : `Karyawan dan ${count} riwayat absennya dihapus permanen.`,
+      );
+
+      router.replace(EMPLOYEES_PATH);
+    } catch (err) {
+      const code = err?.response?.data?.errors;
+
+      if (code === "EMPLOYEE_NOT_FOUND") {
+        notify.error("Karyawan sudah tidak ada.");
+        router.replace(EMPLOYEES_PATH);
+        return;
+      }
+
+      notify.error(normalizeApiError(err).message);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-second/40 p-4 backdrop-blur-sm sm:items-center"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="delete-title"
+      aria-describedby="delete-desc"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !busy) onClose();
+      }}
+    >
+      <div className="w-full max-w-md rounded-2xl border border-second/30 bg-primary p-4 shadow-2xl shadow-second/20 sm:p-8">
+        <div className="flex items-start gap-4">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-second2/10 text-second2">
+            <FiTrash2 size={16} aria-hidden="true" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 id="delete-title" className="text-lg font-bold text-second">
+              Hapus karyawan permanen?
+            </h2>
+            <p id="delete-desc" className="mt-2 text-sm text-second/60">
+              <strong className="text-second">{employee.name}</strong> akan
+              dihapus permanen.
+              {linked
+                ? " Akun admin yang terhubung tidak ikut terhapus."
+                : " Seluruh riwayat absennya ikut terhapus dan tidak bisa dikembalikan."}
+            </p>
+
+            <div className="mt-4 rounded-xl border border-second2/30 bg-second2/5 px-4 py-2 text-xs leading-relaxed text-second2">
+              <FiAlertTriangle
+                size={14}
+                className="mr-2 inline"
+                aria-hidden="true"
+              />
+              {linked
+                ? "Karyawan ini terhubung ke akun admin. Yang dihapus hanya data karyawannya."
+                : "Jika ingin riwayat absen tetap tersimpan, gunakan tombol nonaktifkan di form, bukan hapus."}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-8 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className={`${BTN_BASE} w-full border border-second/30 text-second hover:border-second2 hover:text-second2 sm:w-auto ${FOCUS_RING}`}
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            disabled={busy}
+            aria-busy={busy}
+            className={`${BTN_BASE} w-full bg-second2 text-primary shadow-lg shadow-second2/25 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto ${FOCUS_RING}`}
+          >
+            {busy ? (
+              <>
+                <FiLoader
+                  className="animate-spin motion-reduce:animate-none"
+                  size={16}
+                  aria-hidden="true"
+                />
+                Menghapus…
+              </>
+            ) : (
+              <>
+                <FiTrash2 size={16} aria-hidden="true" />
+                Hapus permanen
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------------------------------- Page --------------------------------- */
 
 export default function EmployeeDetailPage() {
@@ -553,10 +676,13 @@ export default function EmployeeDetailPage() {
   const {
     data: employee,
     isPending,
+    isFetching,
     isError,
     error,
     refetch,
   } = useGetEmployee(id);
+
+  const [showDelete, setShowDelete] = useState(false);
 
   const code = error?.response?.data?.errors;
   const notFound =
@@ -644,11 +770,21 @@ export default function EmployeeDetailPage() {
               </div>
             </div>
           </div>
+
+          {/* Tombol hapus di header */}
+          <button
+            type="button"
+            onClick={() => setShowDelete(true)}
+            className={`${BTN_BASE} shrink-0 border border-second2/40 text-second2 hover:bg-second2/5 ${FOCUS_RING}`}
+          >
+            <FiTrash2 size={16} aria-hidden="true" />
+            Hapus karyawan
+          </button>
         </div>
       </header>
 
       <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(0,1fr)_24rem]">
-        <EmployeeForm key={employee.id} employee={employee} />
+        <EmployeeForm employee={employee} />
 
         <aside className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-16">
           <section className="flex min-w-0 flex-col gap-4 rounded-2xl border border-second/30 bg-primary p-4 shadow-xl shadow-second/5 sm:p-8">
@@ -677,8 +813,35 @@ export default function EmployeeDetailPage() {
           </section>
 
           <ResendPanel employee={employee} />
+
+          {/* Danger zone */}
+          <section className="flex min-w-0 flex-col gap-4 rounded-2xl border border-second2/30 bg-primary p-4 shadow-xl shadow-second/5 sm:p-8">
+            <h2 className="text-lg font-bold text-second">Zona berbahaya</h2>
+            <p className="text-sm leading-relaxed text-second/60">
+              Menghapus karyawan bersifat permanen
+              {employee.linked_to_user
+                ? " untuk data karyawannya (akun admin tetap)."
+                : " beserta seluruh riwayat absennya."}{" "}
+              Tidak bisa dibatalkan.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowDelete(true)}
+              className={`${BTN_BASE} w-full border border-second2/40 text-second2 hover:bg-second2/5 ${FOCUS_RING}`}
+            >
+              <FiTrash2 size={16} aria-hidden="true" />
+              Hapus karyawan permanen
+            </button>
+          </section>
         </aside>
       </div>
+
+      {showDelete && (
+        <DeleteDialog
+          employee={employee}
+          onClose={() => setShowDelete(false)}
+        />
+      )}
     </div>
   );
 }

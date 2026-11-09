@@ -77,7 +77,7 @@ const initialForm = {
   name: "",
   price: "", // hanya digit, contoh "1000000". Tampilannya diformat di input.
   capital: "", // modal, hanya digit
-  strikethrough_price: "", // harga coret, hanya digit. Dikirim hanya jika promo aktif.
+  strikethrough_price: "", // harga coret, hanya digit. Opsional, tidak bergantung pada promo.
   condition: "NEW",
   stock: "",
   description: "",
@@ -380,7 +380,7 @@ function PriceSummary({ form, primaryFile }) {
   const hasCapital = form.capital !== "";
   const margin = price - capital;
   const marginPercent = price > 0 ? Math.round((margin / price) * 100) : 0;
-  const hasStrike = form.promo && strike > price && price > 0;
+  const hasStrike = strike > price && price > 0;
   const discountPercent = hasStrike
     ? Math.round(((strike - price) / strike) * 100)
     : 0;
@@ -418,7 +418,7 @@ function PriceSummary({ form, primaryFile }) {
           {hasPrice ? formatMoney(price) : "—"}
         </SummaryRow>
 
-        {form.promo && (
+        {form.strikethrough_price !== "" && (
           <SummaryRow label="Harga coret">
             {strike > 0 ? (
               <span className="text-second/60 line-through">
@@ -501,7 +501,7 @@ export default function CreateCameraPage() {
   const priceNumber = Number(form.price) || 0;
   const strikeNumber = Number(form.strikethrough_price) || 0;
   const strikeLiveError =
-    form.promo && form.strikethrough_price !== "" && strikeNumber <= priceNumber
+    form.strikethrough_price !== "" && strikeNumber <= priceNumber
       ? "Harga coret harus lebih tinggi dari harga jual."
       : "";
 
@@ -543,11 +543,6 @@ export default function CreateCameraPage() {
         ...previous,
         [name]: type === "checkbox" ? checked : value,
       };
-
-      // Harga coret hanya berlaku saat promo aktif.
-      if (name === "promo" && !checked) {
-        next.strikethrough_price = "";
-      }
 
       return next;
     });
@@ -642,13 +637,13 @@ export default function CreateCameraPage() {
     if (form.capital === "") found.capital = "Modal wajib diisi.";
     if (form.stock === "") found.stock = "Stok wajib diisi.";
 
-    if (form.promo) {
-      if (form.strikethrough_price === "") {
-        found.strikethrough_price = "Isi harga coret untuk produk promosi.";
-      } else if (strikeNumber <= priceNumber) {
-        found.strikethrough_price =
-          "Harga coret harus lebih tinggi dari harga jual.";
-      }
+    // Harga coret wajib bila promo dicentang. Tanpa promo tetap opsional.
+    // Jika diisi, harus lebih tinggi dari harga jual.
+    if (form.promo && form.strikethrough_price === "") {
+      found.strikethrough_price = "Isi harga coret untuk produk promosi.";
+    } else if (form.strikethrough_price !== "" && strikeNumber <= priceNumber) {
+      found.strikethrough_price =
+        "Harga coret harus lebih tinggi dari harga jual.";
     }
 
     // Field ini wajib di backend, jadi cegah submit kalau isinya cuma spasi.
@@ -731,8 +726,8 @@ export default function CreateCameraPage() {
     formData.append("promo", String(form.promo));
     formData.append("best_selling", String(form.best_selling));
 
-    // Harga coret hanya dikirim saat produk promosi.
-    if (form.promo) {
+    // Harga coret dikirim bila diisi, dengan atau tanpa promo.
+    if (form.strikethrough_price !== "") {
       formData.append("strikethrough_price", String(strikeNumber));
     }
 
@@ -1004,20 +999,11 @@ export default function CreateCameraPage() {
                   {...fieldProps("stock")}
                 />
               </FormField>
-            </FieldGrid>
 
-            <ToggleCard
-              name="promo"
-              checked={form.promo}
-              onChange={updateField}
-              disabled={isSubmitting}
-              title="Produk promosi"
-              description="Tampilkan harga coret di samping harga jual."
-            >
               <FormField
                 label="Harga coret"
                 htmlFor="strikethrough_price"
-                required
+                required={form.promo}
                 description="Harga sebelum diskon. Harus lebih tinggi dari harga jual."
                 error={errorOf("strikethrough_price")}
               >
@@ -1040,7 +1026,16 @@ export default function CreateCameraPage() {
                   />
                 </PrefixedInput>
               </FormField>
-            </ToggleCard>
+            </FieldGrid>
+
+            <ToggleCard
+              name="promo"
+              checked={form.promo}
+              onChange={updateField}
+              disabled={isSubmitting}
+              title="Produk promosi"
+              description="Tandai produk sebagai promosi. Jika dicentang, harga coret wajib diisi."
+            />
 
             <ToggleCard
               name="best_selling"

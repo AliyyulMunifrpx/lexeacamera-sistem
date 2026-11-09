@@ -241,6 +241,13 @@ function wibInputToIso(value) {
   return `${value}:00+07:00`;
 }
 
+/* Diskon produk = harga coret - harga jual (per unit). */
+function discountPerUnit(strike, price) {
+  const s = Number(strike);
+  const p = Number(price);
+  return Number.isFinite(s) && Number.isFinite(p) && s > p ? s - p : 0;
+}
+
 function normalizeWhatsapp(input) {
   let digits = String(input ?? "").replace(/\D/g, "");
   if (!digits) return "";
@@ -623,6 +630,7 @@ function InvoiceSummary({
   customerChoice,
   isFinal,
   subtotal,
+  productDiscount,
   storeDiscount,
   customerDiscount,
   totalAmount,
@@ -674,6 +682,16 @@ function InvoiceSummary({
       </div>
 
       <dl className="divide-y divide-second/10 border-y border-second/30">
+        {productDiscount > 0 && (
+          <>
+            <SummaryRow label="Harga normal">
+              {formatCurrency(subtotal + productDiscount)}
+            </SummaryRow>
+            <SummaryRow label="Diskon produk">
+              - {formatCurrency(productDiscount)}
+            </SummaryRow>
+          </>
+        )}
         <SummaryRow label="Subtotal">{formatCurrency(subtotal)}</SummaryRow>
         <SummaryRow label="Diskon toko">
           {storeDiscount > 0 ? `- ${formatCurrency(storeDiscount)}` : "—"}
@@ -1168,6 +1186,14 @@ export default function EditInvoicePage() {
     Number.isFinite(totalAmount) && totalAmount < 0
       ? "Total diskon tidak boleh melebihi subtotal."
       : "";
+
+  const productDiscount = (invoice.items ?? []).reduce(
+    (sum, item) =>
+      sum +
+      discountPerUnit(item.strikethrough_price, item.camera_price) *
+        (Number(item.quantity) || 0),
+    0,
+  );
 
   const whatsappDigits = form.customer_whatsapp.replace(/\D/g, "");
   const whatsappLongEnough = whatsappDigits.length >= 8;
@@ -1672,6 +1698,7 @@ export default function EditInvoicePage() {
             customerChoice={customerChoice}
             isFinal={invoice.is_final}
             subtotal={Number(invoice.subtotal)}
+            productDiscount={productDiscount}
             storeDiscount={storeDiscount}
             customerDiscount={customerDiscount}
             totalAmount={totalAmount}

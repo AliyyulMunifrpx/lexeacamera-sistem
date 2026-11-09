@@ -98,6 +98,13 @@ const TYPE_LABEL = {
   SALE: "Penjualan",
 };
 
+/* Diskon produk = harga coret - harga jual (per unit). */
+function discountPerUnit(strike, price) {
+  const s = Number(strike);
+  const p = Number(price);
+  return Number.isFinite(s) && Number.isFinite(p) && s > p ? s - p : 0;
+}
+
 function money(value) {
   return value === null || value === undefined ? "—" : formatCurrency(value);
 }
@@ -825,6 +832,14 @@ export default function InvoiceDetailPage() {
   );
 
   const subtotal = Number(invoice.subtotal) || 0;
+  const productDiscountTotal = items.reduce(
+    (sum, item) =>
+      sum +
+      discountPerUnit(item.strikethrough_price, item.camera_price) *
+        (Number(item.quantity) || 0),
+    0,
+  );
+  const normalPriceTotal = subtotal + productDiscountTotal;
   const totalDiscount =
     (Number(invoice.store_discount) || 0) +
     (Number(invoice.customer_discount) || 0);
@@ -1120,6 +1135,22 @@ export default function InvoiceDetailPage() {
                                 </p>
                               )}
 
+                              {discountPerUnit(
+                                item.strikethrough_price,
+                                item.camera_price,
+                              ) > 0 && (
+                                <p className="mt-2 text-xs font-semibold tabular-nums text-second4">
+                                  Diskon produk{" "}
+                                  {formatCurrency(
+                                    discountPerUnit(
+                                      item.strikethrough_price,
+                                      item.camera_price,
+                                    ),
+                                  )}{" "}
+                                  / unit
+                                </p>
+                              )}
+
                               {item.restocked && (
                                 <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-second4/10 px-2 py-0.5 text-[11px] font-semibold text-second4">
                                   <FiRotateCcw size={11} aria-hidden="true" />
@@ -1132,6 +1163,14 @@ export default function InvoiceDetailPage() {
 
                         <td className="whitespace-nowrap px-4 py-4 text-right text-sm tabular-nums text-second/70">
                           {formatCurrency(item.camera_price)}
+                          {discountPerUnit(
+                            item.strikethrough_price,
+                            item.camera_price,
+                          ) > 0 && (
+                            <span className="mt-2 block text-xs text-second/40 line-through">
+                              {formatCurrency(item.strikethrough_price)}
+                            </span>
+                          )}
                         </td>
 
                         <td className="whitespace-nowrap px-4 py-4 text-right text-sm tabular-nums text-second/70">
@@ -1191,7 +1230,33 @@ export default function InvoiceDetailPage() {
                     <dt className="text-second/55">Harga</dt>
                     <dd className="text-right tabular-nums">
                       {formatCurrency(item.camera_price)}
+                      {discountPerUnit(
+                        item.strikethrough_price,
+                        item.camera_price,
+                      ) > 0 && (
+                        <span className="mt-2 block text-xs text-second/40 line-through">
+                          {formatCurrency(item.strikethrough_price)}
+                        </span>
+                      )}
                     </dd>
+
+                    {discountPerUnit(
+                      item.strikethrough_price,
+                      item.camera_price,
+                    ) > 0 && (
+                      <>
+                        <dt className="text-second/55">Diskon produk</dt>
+                        <dd className="text-right tabular-nums text-second4">
+                          {discountText(
+                            discountPerUnit(
+                              item.strikethrough_price,
+                              item.camera_price,
+                            ),
+                          )}{" "}
+                          / unit
+                        </dd>
+                      </>
+                    )}
 
                     <dt className="text-second/55">Jumlah</dt>
                     <dd className="text-right tabular-nums">
@@ -1222,6 +1287,18 @@ export default function InvoiceDetailPage() {
             className="no-print"
           >
             <dl className="divide-y divide-second/10">
+              {productDiscountTotal > 0 && (
+                <>
+                  <SummaryRow
+                    label="Harga normal"
+                    value={money(normalPriceTotal)}
+                  />
+                  <SummaryRow
+                    label="Diskon produk"
+                    value={discountText(productDiscountTotal)}
+                  />
+                </>
+              )}
               <SummaryRow label="Subtotal" value={money(invoice.subtotal)} />
               <SummaryRow
                 label="Diskon toko"

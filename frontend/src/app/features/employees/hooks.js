@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   createEmployee,
+  deleteEmployee,
   getEmployee,
   getEmployees,
   resendEmployeeVerification,
@@ -86,6 +87,17 @@ export function useFindEmployeeByEmail(email) {
           (employee) => employee.email?.toLowerCase() === email,
         ) ?? null
       );
+    },
+  });
+}
+
+export function useDeleteEmployee() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => deleteEmployee(id),
+    onSuccess: (_result, id) => {
+      queryClient.removeQueries({ queryKey: ["employee", id] });
+      queryClient.invalidateQueries({ queryKey: ["employees"] });
     },
   });
 }
