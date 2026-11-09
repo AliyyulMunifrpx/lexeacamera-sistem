@@ -3,6 +3,7 @@ import { cacheLife } from "next/cache";
 import "./globals.css";
 import Providers from "./providers.jsx";
 import { Toaster } from "react-hot-toast";
+import BackgroundVideo from "../components/public/home/background-video.jsx";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -89,7 +90,8 @@ export default function RootLayout({ children }) {
       lang="id"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-primary">
+      <body className="relative isolate min-h-full flex flex-col bg-primary">
+        <BackgroundVideo />
         <Toaster></Toaster>
         <Providers>{children}</Providers>
       </body>

@@ -132,8 +132,8 @@ export default function Home() {
   ];
 
   return (
-    <div className="min-h-[100dvh] w-full flex flex-col bg-primary">
-      <div className="relative w-full">
+    <div className="min-h-[100dvh] w-full flex flex-col">
+      <div className="relative w-full bg-second/40">
         {/* 1. BAGIAN BANNER UTAMA */}
         <div className="relative aspect-[3/1] w-full overflow-hidden bg-second/10">
           {data?.store?.main_banner_url ? (
@@ -195,7 +195,7 @@ export default function Home() {
       <div
         ref={navRef}
         role="tablist"
-        className="sticky top-0 z-30 mt-4 flex h-fit w-full justify-between border-b border-second/30 bg-primary pt-4 text-sm font-normal text-second"
+        className="sticky top-0 z-30 flex h-fit w-full justify-between bg-second/40 pt-4 text-sm font-normal text-second backdrop-blur-md"
       >
         {TABS.map((tab, index) => {
           const isActive = activeIndex === index;
@@ -211,14 +211,14 @@ export default function Home() {
                 aria-selected={isActive}
                 onClick={() => goToTab(index)}
                 className={`text-center cursor-pointer w-full transition-colors ${
-                  isActive ? "text-grad font-semibold" : ""
+                  isActive ? "text-primary font-semibold" : "text-primary"
                 }`}
               >
                 {tab.label}
               </button>
               <div
                 className={`h-[2px] w-full transition-colors ${
-                  isActive ? "bg-grad" : ""
+                  isActive ? "bg-primary" : ""
                 }`}
               ></div>
             </div>

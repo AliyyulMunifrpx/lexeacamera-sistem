@@ -42,20 +42,20 @@ function ContactItem({ href, icon: Icon, label, value }) {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="group flex items-center gap-3 transition-colors hover:bg-second/5 border-b border-second/30 pb-4"
+      className="group flex items-center gap-3 transition-colors hover:bg-primary/5 border-b border-primary/30 pb-4"
     >
-      <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-second text-primary">
+      <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-second">
         <Icon size={19} />
       </div>
 
       <div className="min-w-0 flex-1">
-        <p className="text-xs text-second/50">{label}</p>
-        <p className="truncate text-sm font-medium text-second">{value}</p>
+        <p className="text-xs text-primary/50">{label}</p>
+        <p className="truncate text-sm font-medium text-primary">{value}</p>
       </div>
 
       <FiArrowUpRight
         size={16}
-        className="shrink-0 text-second/30 transition-colors group-hover:text-second"
+        className="shrink-0 text-primary/30 transition-colors group-hover:text-primary"
       />
     </a>
   );
@@ -73,13 +73,13 @@ function TermsContent({ text }) {
     .filter((line) => line.content !== "");
 
   return (
-    <div className="space-y-2 text-sm text-second/70">
+    <div className="space-y-2 text-sm text-primary/70">
       {lines.map((line, index) => {
         if (/^\d+\.\s/.test(line.content)) {
           return (
             <h3
               key={index}
-              className={`font-semibold text-second ${index > 0 ? "pt-3" : ""}`}
+              className={`font-semibold text-primary ${index > 0 ? "pt-3" : ""}`}
             >
               {line.content}
             </h3>
@@ -97,7 +97,7 @@ function TermsContent({ text }) {
             style={{ paddingLeft: `${line.tabs * 16}px` }}
             className={isBullet ? "flex gap-2" : ""}
           >
-            {isBullet && <span className="text-second/40">•</span>}
+            {isBullet && <span className="text-primary/40">•</span>}
             <span>{content}</span>
           </p>
         );
@@ -111,7 +111,7 @@ export default function ContactHomePage({ data }) {
 
   if (!store) {
     return (
-      <p className="py-10 text-center text-sm text-second/50">
+      <p className="py-10 text-center text-sm text-primary/50">
         Informasi kontak belum tersedia.
       </p>
     );
@@ -183,12 +183,14 @@ export default function ContactHomePage({ data }) {
         <section className="space-y-4 rounded-md">
           {hasAddress && (
             <div className="flex items-start gap-3">
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-second text-primary">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-second">
                 <FiMapPin size={19} />
               </div>
 
               <div className="min-w-0 flex-1 w-full">
-                <p className="text-sm text-second/70 w-full">{store.address}</p>
+                <p className="text-sm text-primary/70 w-full">
+                  {store.address}
+                </p>
               </div>
             </div>
           )}

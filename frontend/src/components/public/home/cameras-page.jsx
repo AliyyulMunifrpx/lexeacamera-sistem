@@ -22,7 +22,7 @@ const SORTS = [
 ];
 
 const selectClass =
-  "w-full rounded-lg border border-second/30 bg-primary px-3 py-2 text-sm text-second outline-none transition-colors focus:border-second";
+  "w-full rounded-full border border-second/30 bg-primary px-3 py-2 text-sm text-second outline-none transition-colors focus:border-second";
 
 function CameraSkeleton() {
   return (
@@ -250,7 +250,7 @@ export default function CamerasHomePage({ searchRequest }) {
       </div>
 
       {/* Ringkasan hasil + kondisi */}
-      <div className="flex items-center justify-between text-xs text-second/60">
+      <div className="flex items-center justify-between text-xs text-primary/60">
         <div className="flex gap-2">
           {CONDITIONS.map((item) => {
             const isActive = condition === item.value;
@@ -262,8 +262,8 @@ export default function CamerasHomePage({ searchRequest }) {
                 onClick={() => setCondition(item.value)}
                 className={`rounded-full border px-4 py-1.5 text-xs font-semibold transition-colors ${
                   isActive
-                    ? "border-second bg-second text-primary"
-                    : "border-second/20 text-second hover:bg-second/5"
+                    ? "border-primary bg-primary text-second"
+                    : "border-primary/20 text-primary hover:bg-primary/5"
                 }`}
               >
                 {item.label}
@@ -292,7 +292,7 @@ export default function CamerasHomePage({ searchRequest }) {
         </div>
       ) : isError && !data ? (
         <div className="space-y-3 rounded-lg border border-second/20 p-6 text-center">
-          <p className="text-sm text-second">Gagal memuat daftar kamera.</p>
+          <p className="text-sm text-primary">Gagal memuat daftar kamera.</p>
           <button
             type="button"
             onClick={() => refetch()}
@@ -303,7 +303,7 @@ export default function CamerasHomePage({ searchRequest }) {
           </button>
         </div>
       ) : cameras.length === 0 ? (
-        <p className="py-10 text-center text-sm text-second/50">
+        <p className="py-10 text-center text-sm text-primary/50">
           {hasActiveFilters
             ? "Tidak ada kamera yang cocok dengan filter."
             : "Belum ada produk."}
@@ -325,7 +325,7 @@ export default function CamerasHomePage({ searchRequest }) {
           {isFetchingNextPage && (
             <div
               role="status"
-              className="flex items-center justify-center gap-2 py-4 text-sm text-second/60"
+              className="flex items-center justify-center gap-2 py-4 text-sm text-primary/60"
             >
               <FiLoader className="animate-spin" size={18} />
               Memuat lebih banyak...
@@ -334,7 +334,7 @@ export default function CamerasHomePage({ searchRequest }) {
 
           {isFetchNextPageError && (
             <div className="flex flex-col items-center gap-2 py-4 text-center">
-              <p className="text-sm text-second/70">
+              <p className="text-sm text-primary/70">
                 Gagal memuat produk berikutnya.
               </p>
               <button
@@ -348,7 +348,7 @@ export default function CamerasHomePage({ searchRequest }) {
           )}
 
           {!hasNextPage && loadedPages > 1 && (
-            <p className="py-4 text-center text-xs text-second/40">
+            <p className="py-4 text-center text-xs text-primary/40">
               -------- Semua {total} produk sudah ditampilkan --------
             </p>
           )}

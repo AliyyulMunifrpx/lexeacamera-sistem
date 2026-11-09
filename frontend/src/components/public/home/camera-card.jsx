@@ -44,13 +44,13 @@ export default function CameraCard({ data }) {
             className="w-full h-full object-cover transition-transform group-hover:scale-105 ease-out duration-300"
           />
         ) : (
-          <div className="flex h-full datas-center justify-center text-xs text-second/40">
+          <div className="flex h-full datas-center justify-center text-xs text-primary/40">
             No image
           </div>
         )}
       </div>
       <div className="flex flex-col gap-2">
-        <h3 className="text-second text-sm font-normal line-clamp-2 break-words">
+        <h3 className="text-primary text-sm font-normal line-clamp-2 break-words">
           <span className="bg-second2 text-primary text-xs px-1 font-semibold">
             {data.condition}
           </span>{" "}
@@ -81,12 +81,12 @@ export default function CameraCard({ data }) {
             )}
         <div className="flex flex-col gap-0.5">
           {hasDiscount && (
-            <p className="text-xs text-second/50 line-through">
+            <p className="text-xs text-primary/50 line-through">
               <span className="text-sm">Rp</span>
               {formatPrice(strikethrough)}
             </p>
           )}
-          <p className="text-base text-grad font-semibold">
+          <p className="text-base text-primary font-semibold">
             <span className="text-sm">Rp</span>
             {formatPrice(price)}
           </p>

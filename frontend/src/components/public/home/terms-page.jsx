@@ -41,7 +41,7 @@ export default function TermsHomePage({ data }) {
 
   if (!text.trim()) {
     return (
-      <p className="py-10 text-center text-sm text-second/50">
+      <p className="py-10 text-center text-sm text-primary/50">
         Syarat dan ketentuan belum tersedia.
       </p>
     );
@@ -54,17 +54,17 @@ export default function TermsHomePage({ data }) {
       {sections.map((section, index) => (
         <section key={index} className="space-y-2 rounded-md">
           {section.title && (
-            <h3 className="font-semibold text-second">{section.title}</h3>
+            <h3 className="font-semibold text-primary">{section.title}</h3>
           )}
 
-          <div className="space-y-2 text-sm text-second/70">
+          <div className="space-y-2 text-sm text-primary/70">
             {section.lines.map((line, lineIndex) => (
               <p
                 key={lineIndex}
                 style={{ paddingLeft: `${line.tabs * 16}px` }}
                 className={line.isBullet ? "flex gap-2" : ""}
               >
-                {line.isBullet && <span className="text-second/40">•</span>}
+                {line.isBullet && <span className="text-primary/40">•</span>}
                 <span>{line.content}</span>
               </p>
             ))}
