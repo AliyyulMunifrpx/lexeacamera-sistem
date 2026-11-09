@@ -37,7 +37,7 @@ export default function StoreHomePage({ data }) {
       )}
       {bestSellingCamera.length > 0 && (
         <div className="hidden lg:grid w-full h-full grid-cols-6 items-center">
-          <h3 className="col-start-1 col-end-3 text-[6rem] font-semibold text-second leading-none">
+          <h3 className="col-start-1 col-end-3 text-[6rem] font-semibold text-primary leading-none">
             Best Seller:
           </h3>
           <div className="grid grid-cols-4 col-start-3 col-end-7 gap-2 w-full">
@@ -54,7 +54,7 @@ export default function StoreHomePage({ data }) {
       )}
       {promoCameras.length > 0 && (
         <div className="hidden lg:grid w-full h-full grid-cols-6 items-center">
-          <h3 className="col-start-1 col-end-3 text-[6rem] font-semibold text-second leading-none">
+          <h3 className="col-start-1 col-end-3 text-[6rem] font-semibold text-primary leading-none">
             Promo:
           </h3>
           <div className="grid grid-cols-4 col-start-3 col-end-7 gap-2 w-full">
