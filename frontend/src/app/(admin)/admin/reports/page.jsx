@@ -16,7 +16,6 @@ import {
 import { useGetAdminSales } from "../../../features/admin-sales/hooks.js";
 import { normalizeApiError } from "../../../../lib/api/errors.js";
 import notify from "../../../../lib/notify.js";
-import RefreshButton from "../../../../components/refresh-button";
 
 /* -------------------------------------------------------------------------- */
 /*  Design rules (SAMAKAN DENGAN DASHBOARD / INVOICE)                         */
@@ -53,6 +52,9 @@ const PERIOD_HINT = {
 };
 
 const DEFAULT_RANGE_DAYS = 30;
+
+// Respons cepat tetap menampilkan animasi putar cukup lama agar terlihat.
+const MIN_REFRESH_MS = 600;
 
 function inputClass(hasError) {
   return [
@@ -238,6 +240,7 @@ export default function AdminSalesPage() {
   const [period, setPeriod] = useState("day");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const rangeIncomplete = period === "range" && (!from || !to);
   const rangeInvalid = period === "range" && from && to && from > to;
@@ -264,6 +267,20 @@ export default function AdminSalesPage() {
 
   const showLoading = canFetch && isPending;
   const showError = canFetch && isError && !data;
+
+  async function handleRefresh() {
+    if (isRefreshing || !canFetch) return;
+
+    const startedAt = Date.now();
+    setIsRefreshing(true);
+
+    try {
+      await refetch();
+    } finally {
+      const remaining = Math.max(0, MIN_REFRESH_MS - (Date.now() - startedAt));
+      setTimeout(() => setIsRefreshing(false), remaining);
+    }
+  }
 
   function handlePeriodChange(next) {
     setPeriod(next);
@@ -296,21 +313,21 @@ export default function AdminSalesPage() {
           </div>
         </div>
 
-        <RefreshButton
+        <button
           type="button"
-          onClick={() => refetch()}
-          disabled={isFetching || !canFetch}
-          ariaLabel="Perbarui data penjualan"
+          onClick={handleRefresh}
+          disabled={isRefreshing || !canFetch}
+          aria-busy={isRefreshing}
+          aria-label="Perbarui data penjualan"
+          className={`${BTN_BASE} w-full border border-second/30 text-second hover:border-second4 hover:text-second4 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto ${FOCUS_RING}`}
         >
           <FiRefreshCw
             size={16}
-            className={
-              isFetching ? "animate-spin motion-reduce:animate-none" : ""
-            }
+            className={isRefreshing ? "animate-spin" : ""}
             aria-hidden="true"
           />
-          {isFetching ? "Memperbarui…" : "Perbarui"}
-        </RefreshButton>
+          {isRefreshing ? "Memperbarui…" : "Perbarui"}
+        </button>
       </header>
 
       {/* Filter periode */}
