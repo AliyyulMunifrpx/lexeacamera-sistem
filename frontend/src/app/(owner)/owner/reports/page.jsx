@@ -71,6 +71,9 @@ const COLOR = {
 const AXIS_TEXT = "rgba(0, 0, 0, 0.6)";
 const GRID = "rgba(0, 0, 0, 0.08)";
 
+// Respons cepat tetap menampilkan animasi putar cukup lama agar terlihat.
+const MIN_REFRESH_MS = 600;
+
 const TREND_LIMIT_DAYS = { day: 366, week: 1100, month: 3700 };
 
 /* ------------------------------ Error Mapping ----------------------------- */
@@ -1257,19 +1260,19 @@ export default function ReportsOverviewPage() {
     }
   }
 
-  // Tombol hanya terkunci selama refresh yang dipicu klik ini, bukan selama
-  // query apa pun sedang fetching (load awal, retry, ganti periode).
+  // Semua query di halaman ini aktif, jadi cukup refetch semua query aktif.
+  // Tidak bergantung pada awalan queryKey di hooks.
   async function refreshAll() {
     if (isRefreshing) return;
 
+    const startedAt = Date.now();
     setIsRefreshing(true);
+
     try {
-      await queryClient.refetchQueries({
-        queryKey: ["reports"],
-        type: "active",
-      });
+      await queryClient.refetchQueries({ type: "active" });
     } finally {
-      setIsRefreshing(false);
+      const remaining = Math.max(0, MIN_REFRESH_MS - (Date.now() - startedAt));
+      setTimeout(() => setIsRefreshing(false), remaining);
     }
   }
 
@@ -1306,9 +1309,7 @@ export default function ReportsOverviewPage() {
           >
             <FiRefreshCw
               size={16}
-              className={
-                isRefreshing ? "animate-spin motion-reduce:animate-none" : ""
-              }
+              className={isRefreshing ? "animate-spin" : ""}
               aria-hidden="true"
             />
             {isRefreshing ? "Memperbarui…" : "Perbarui"}
