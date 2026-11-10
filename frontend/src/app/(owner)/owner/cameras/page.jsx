@@ -13,6 +13,7 @@ import {
   FiX,
   FiRefreshCw,
   FiAlertCircle,
+  FiUpload,
 } from "react-icons/fi";
 
 import CameraFilters from "../../../../components/owner/camera-filters.jsx";
@@ -346,6 +347,13 @@ export default function CamerasPage() {
             isFetching={isFetching}
             ariaLabel="Perbarui data produk"
           ></RefreshButton>
+          <Link
+            href="/owner/cameras/import"
+            className={`${BTN_BASE} border border-second/30 text-second hover:border-second4 hover:text-second4 ${FOCUS_RING}`}
+          >
+            <FiUpload size={16} aria-hidden="true" />
+            Import Excel
+          </Link>
           <ExportCamerasButton disabled={totalCameras === 0} />
           <PrimaryButton
             type="button"

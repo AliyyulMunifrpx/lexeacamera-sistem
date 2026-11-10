@@ -20,6 +20,7 @@ import networkController from "../controller/owner/attendance-network-controller
 import attendanceController from "../controller/owner/attendance-controller.js";
 import adminController from "../controller/owner/admin-controller.js";
 import reportController from "../controller/owner/report-controller.js";
+import cameraImportController from "../controller/owner/camera-import-controller.js";
 
 const ownerRouter = express.Router();
 
@@ -120,4 +121,5 @@ ownerRouter.get("/owner/reports/transactions", reportController.transactions);
 ownerRouter.get("/owner/reports/stock-value", reportController.stockValue);
 ownerRouter.put("/owner/orders/:id/items", orderController.update);
 ownerRouter.delete("/owner/employees/:id", employeeController.remove);
+ownerRouter.post("/cameras/import", cameraImportController.importCameras);
 export default ownerRouter;
