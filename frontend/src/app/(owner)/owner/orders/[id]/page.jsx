@@ -1346,8 +1346,8 @@ export default function OwnerOrderDetailPage() {
           <DetailSection
             icon={FiUser}
             title="Pelanggan"
-            pelanggan
-            id={order.customer.id}
+            pelanggan={Boolean(customer)}
+            id={customer?.id}
           >
             <p className="text-xs font-semibold uppercase tracking-wide text-second/50">
               Saat order dibuat
@@ -1419,8 +1419,8 @@ export default function OwnerOrderDetailPage() {
           <DetailSection
             icon={FiFileText}
             title="Invoice"
-            invoice
-            id={invoice.id}
+            invoice={Boolean(invoice)}
+            id={invoice?.id}
           >
             {invoice ? (
               <dl className="flex flex-col gap-4">

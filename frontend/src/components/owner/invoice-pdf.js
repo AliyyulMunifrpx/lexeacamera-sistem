@@ -563,7 +563,7 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
     hLine(y);
   });
 
-  /* ---------- Ringkasan pembayaran ---------- */
+  /* ---------- Ringkasan pembayaran (kanan) ---------- */
   const refundDiscount = Math.max(
     0,
     (Number(invoice.subtotal) || 0) - (Number(invoice.total_amount) || 0),
@@ -587,7 +587,8 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
 
   const rowStep = 5;
   const totalBarH = 9;
-  const summaryH = Math.max(3.5 + summaryRows.length * rowStep + totalBarH, 28);
+  // Tinggi kolom kanan: baris ringkasan + bar total + ucapan di bawahnya.
+  const summaryH = 3.5 + summaryRows.length * rowStep - 2 + totalBarH + 14;
 
   y += 4;
   ensure(summaryH);
@@ -616,75 +617,69 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
     align: "right",
   });
 
-  // Kolom kiri: status pembayaran + ucapan (sejajar dengan ringkasan,
-  // supaya tidak memakan tinggi halaman tambahan).
-  sectionLabel("STATUS PEMBAYARAN", margin, summaryTop + 3.5);
-  pill(statusLabel, margin, summaryTop + 6, {
-    color: statusColor,
-    tint: statusTint,
-  });
-  put(
-    isPaid && invoice.paid_at
-      ? `${isRefund ? "Dikembalikan" : "Dibayar"} pada ${formatDate(invoice.paid_at)}`
-      : isRefund
-        ? "Menunggu pengembalian dana"
-        : "Menunggu pembayaran",
-    margin,
-    summaryTop + 14.5,
-    { size: 7.5, color: C.muted, maxWidth: rightColX - margin - 8 },
-  );
+  /* ---------- Ucapan di bawah Grand Total ---------- */
+  const thanksY = totalY + totalBarH + 5.5;
 
-  put("Thank you for shopping", margin, summaryTop + 21.5, {
-    size: 10.5,
+  put("Thank you for shopping", contentRight, thanksY, {
+    size: 11,
     bold: true,
     color: C.gradDark,
+    align: "right",
   });
-  put("Selamat & sukses untuk karyamu", margin, summaryTop + 26, {
-    size: 8,
+
+  put("Selamat & sukses untuk karyamu", contentRight, thanksY + 4.8, {
+    size: 8.5,
     color: C.muted,
+    align: "right",
   });
 
-  y = summaryTop + summaryH + 2;
-
-  /* ---------- Syarat dan ketentuan ---------- */
+  /* ---------- Syarat dan ketentuan (kiri, sejajar ringkasan) ----------
+     Bagian atasnya sama dengan bagian atas ringkasan pembayaran. Selama masih
+     di halaman yang sama, lebarnya dibatasi kolom kiri; kalau lanjut ke
+     halaman berikutnya, lebarnya penuh. */
   const terms = String(invoice.terms_and_condition ?? "").trim();
 
   if (terms) {
-    const blocks = parseTerms(terms);
-    const termColGap = 8;
-    const termColW = (contentWidth - termColGap) / 2;
+    y = summaryTop;
 
-    // Tinggi satu blok S&K di lebar tertentu (tanpa menggambar).
-    function termBlockHeight(block, width) {
-      const textW = width - 6;
-      let h = block.title ? wrap(block.title, 8, true, textW).length * 3.8 : 0;
+    let termRight = rightColX - 8;
 
-      block.lines.forEach((line) => {
-        h +=
-          wrap(line.text, 7, false, textW - (line.bullet ? 3.5 : 0)).length *
-          3.3;
-      });
-
-      return h + 2.2;
+    function termEnsure(height) {
+      if (y + height > bottomLimit) {
+        newPage();
+        termRight = contentRight;
+      }
     }
 
-    // Gambar satu blok mulai dari y global. `paged` = boleh pindah halaman.
-    function drawTermBlock(block, x, width, paged) {
-      const textX = x + 6;
-      const textW = width - 6;
+    termEnsure(18);
 
-      const headingLines = block.title ? wrap(block.title, 8, true, textW) : [];
+    gradientRect(margin, y, 1.2, 4.5);
+    put("SYARAT & KETENTUAN", margin + 4, y + 3.5, { size: 8.5, bold: true });
+    y += 8;
+
+    const blocks = parseTerms(terms);
+    const textX = margin + 6;
+
+    blocks.forEach((block) => {
+      let textW = termRight - textX;
+
+      let headingLines = block.title ? wrap(block.title, 8, true, textW) : [];
       const firstLine = block.lines[0]
         ? wrap(block.lines[0].text, 7, false, textW - 3.5)
         : [];
 
       // Judul tidak ditinggal sendirian di bawah halaman.
-      if (paged) ensure(headingLines.length * 3.8 + firstLine.length * 3.3 + 1);
+      const needed = headingLines.length * 3.8 + firstLine.length * 3.3 + 1;
+      if (y + needed > bottomLimit) {
+        termEnsure(needed);
+        textW = termRight - textX;
+        headingLines = block.title ? wrap(block.title, 8, true, textW) : [];
+      }
 
       if (block.number) {
         doc.setFillColor(...C.panel);
-        doc.circle(x + 2.3, y - 1, 2.3, "F");
-        put(block.number, x + 2.3, y, {
+        doc.circle(margin + 2.3, y - 1, 2.3, "F");
+        put(block.number, margin + 2.3, y, {
           size: 6.5,
           bold: true,
           color: C.muted,
@@ -705,11 +700,11 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
           line.text,
           7,
           false,
-          textW - (line.bullet ? 3.5 : 0),
+          termRight - textX - (line.bullet ? 3.5 : 0),
         );
 
         lines.forEach((part, partIndex) => {
-          if (paged) ensure(3.3);
+          termEnsure(3.3);
 
           if (line.bullet && partIndex === 0) {
             put("-", textX, y, { size: 7, color: C.faint });
@@ -724,78 +719,7 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
       });
 
       y += 2.2;
-    }
-
-    // Bagi blok jadi dua kolom berurutan dengan tinggi seimbang.
-    const heights = blocks.map((block) => termBlockHeight(block, termColW));
-    const totalH = heights.reduce((sum, h) => sum + h, 0);
-
-    let splitIndex = blocks.length;
-    let acc = 0;
-    for (let i = 0; i < blocks.length; i += 1) {
-      if (acc >= totalH / 2) {
-        splitIndex = i;
-        break;
-      }
-      acc += heights[i];
-    }
-
-    let leftBlocks = blocks.slice(0, splitIndex);
-    let rightBlocks = blocks.slice(splitIndex);
-    let leftH = heights.slice(0, splitIndex).reduce((sum, h) => sum + h, 0);
-    let twoColH = Math.max(leftH, totalH - leftH);
-
-    const termsHeaderH = 8;
-    const freshSpace = bottomLimit - topStart - termsHeaderH;
-    const remaining = bottomLimit - y - termsHeaderH;
-
-    // Kalau pembagian seimbang tidak muat di sisa halaman ini, isi kolom kiri
-    // sampai penuh dulu, sisanya ke kolom kanan (selama masih muat).
-    if (blocks.length > 1 && twoColH > remaining && remaining > 20) {
-      let used = 0;
-      let cut = 0;
-      while (cut < blocks.length && used + heights[cut] <= remaining) {
-        used += heights[cut];
-        cut += 1;
-      }
-
-      const restH = totalH - used;
-      if (cut > 0 && cut < blocks.length && restH <= remaining) {
-        leftBlocks = blocks.slice(0, cut);
-        rightBlocks = blocks.slice(cut);
-        leftH = used;
-        twoColH = Math.max(used, restH);
-      }
-    }
-
-    const useTwoColumns = blocks.length > 1 && twoColH <= freshSpace;
-
-    ensure(termsHeaderH + (useTwoColumns ? twoColH : 14));
-
-    gradientRect(margin, y, 1.2, 4.5);
-    put("SYARAT & KETENTUAN", margin + 4, y + 3.5, { size: 8.5, bold: true });
-    y += termsHeaderH;
-
-    if (useTwoColumns) {
-      const startY = y;
-
-      leftBlocks.forEach((block) =>
-        drawTermBlock(block, margin, termColW, false),
-      );
-      const leftEnd = y;
-
-      y = startY;
-      rightBlocks.forEach((block) =>
-        drawTermBlock(block, margin + termColW + termColGap, termColW, false),
-      );
-
-      y = Math.max(leftEnd, y);
-    } else {
-      // Terlalu panjang untuk dua kolom satu halaman: alur satu kolom bertingkat halaman.
-      blocks.forEach((block) =>
-        drawTermBlock(block, margin, contentWidth, true),
-      );
-    }
+    });
   }
 
   /* ---------- Footer & nomor halaman di setiap halaman ---------- */
