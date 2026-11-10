@@ -84,3 +84,8 @@ export const updateInvoiceValidation = Joi.object({
   customer_discount: money.allow(null),
   terms_and_condition: nullableText(TERMS_MAX),
 }).or(...EDITABLE_FIELDS);
+
+export const ownerDeleteInvoiceValidation = Joi.object({
+  id: Joi.string().uuid().required(),
+  mode: Joi.string().valid("VOID", "CLEAN").required(),
+});

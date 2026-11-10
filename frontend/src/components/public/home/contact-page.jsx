@@ -2,6 +2,7 @@
 
 import { FiArrowUpRight, FiExternalLink, FiMapPin } from "react-icons/fi";
 import { FaFacebook, FaInstagram, FaTiktok, FaWhatsapp } from "react-icons/fa";
+import Image from "next/image.js";
 
 // Contoh: "@wavcamera" -> "wavcamera"
 function cleanHandle(value) {
@@ -36,7 +37,7 @@ function isGoogleMapsEmbed(url) {
   );
 }
 
-function ContactItem({ href, icon: Icon, label, value }) {
+function ContactItem({ href, icon: Icon, label, value, facebook }) {
   return (
     <a
       href={href}
@@ -45,7 +46,16 @@ function ContactItem({ href, icon: Icon, label, value }) {
       className="group flex items-center gap-3 transition-colors hover:bg-primary/5 border-b border-primary/30 pb-4"
     >
       <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-second">
-        <Icon size={19} />
+        {facebook ? (
+          <Image
+            alt="shopee logo"
+            width={50}
+            height={50}
+            src={"/shopee-logo.png"}
+          ></Image>
+        ) : (
+          <Icon size={19} />
+        )}
       </div>
 
       <div className="min-w-0 flex-1">
@@ -145,11 +155,11 @@ export default function ContactHomePage({ data }) {
       href: `https://www.tiktok.com/@${tiktok}`,
     },
     facebook && {
-      key: "facebook",
+      key: "shopee",
       icon: FaFacebook,
-      label: "Facebook",
+      label: "Shopee",
       value: facebook,
-      href: `https://www.facebook.com/${facebook}`,
+      href: `${facebook}`,
     },
   ].filter(Boolean);
 
@@ -174,6 +184,7 @@ export default function ContactHomePage({ data }) {
               icon={item.icon}
               label={item.label}
               value={item.value}
+              facebook={item.value === facebook ? true : false}
             />
           ))}
         </div>

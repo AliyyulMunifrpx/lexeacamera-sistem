@@ -45,7 +45,10 @@ const updateInvoice = async (req, res, next) => {
 
 const deleteInvoice = async (req, res, next) => {
   try {
-    const result = await invoiceService.deleteInvoice({ id: req.params.id });
+    const result = await invoiceService.deleteInvoice({
+      id: req.params.id,
+      mode: req.query.mode,
+    });
 
     res.status(200).json({ data: result });
   } catch (error) {

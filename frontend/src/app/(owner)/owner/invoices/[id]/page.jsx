@@ -453,18 +453,24 @@ export default function InvoiceDetailPage() {
     window.print();
   }
 
-  async function handleDelete() {
-    if (!invoice?.is_final) return;
+  /* mode: "CLEAN" (invoice dihapus, order tetap) atau "VOID" (invoice + order
+     dihapus, stok kembali kalau order tadinya lunas). */
+  async function handleDelete(mode) {
+    if (!invoice) return;
 
     try {
-      await deleteMutation.mutateAsync(invoice.id);
+      await deleteMutation.mutateAsync({ id: invoice.id, mode });
       setDeleteOpen(false);
 
-      notify.success("Invoice berhasil dihapus.");
+      notify.success(
+        mode === "VOID"
+          ? "Invoice dan order berhasil dihapus."
+          : "Invoice berhasil dihapus. Order tetap tersimpan.",
+      );
       router.replace("/owner/invoices");
     } catch (error) {
       const apiError = normalizeApiError(error);
-      notify.error(apiError.message);
+      notify.error(apiError.message || "Gagal menghapus invoice.");
     }
   }
 
@@ -579,7 +585,6 @@ export default function InvoiceDetailPage() {
 
   return (
     <div className="mx-auto w-full max-w-screen-2xl space-y-6 pb-10 text-second">
-      {/* ============ Header ============ */}
       {/* ============ Header ============ */}
       <header className="no-print flex flex-col gap-8">
         {/* Baris 1: breadcrumb + judul + meta */}
@@ -730,23 +735,14 @@ export default function InvoiceDetailPage() {
                   </PrimaryButton>
                 )}
 
-                {/* Hapus */}
+                {/* Hapus (bisa untuk invoice final maupun belum final) */}
                 <CancelButton
                   type="button"
                   onClick={() => setDeleteOpen(true)}
-                  disabled={!isFinal}
-                  title={
-                    !isFinal
-                      ? "Invoice yang belum final tidak dapat dihapus."
-                      : "Hapus invoice final."
-                  }
-                  className={`${BTN_BASE} w-full justify-center border border-red-500/30 text-red-500 hover:border-red-500 hover:bg-red-500/5 disabled:cursor-not-allowed disabled:opacity-40`}
+                  title="Hapus invoice."
+                  className={`${BTN_BASE} w-full justify-center border border-red-500/30 text-red-500 hover:border-red-500 hover:bg-red-500/5`}
                 >
-                  {isFinal ? (
-                    <FiTrash2 size={16} aria-hidden="true" />
-                  ) : (
-                    <FiLock size={16} aria-hidden="true" />
-                  )}
+                  <FiTrash2 size={16} aria-hidden="true" />
                   Hapus invoice
                 </CancelButton>
               </div>
@@ -760,8 +756,8 @@ export default function InvoiceDetailPage() {
                   className="mt-0.5 shrink-0"
                   aria-hidden="true"
                 />
-                Invoice ini belum final. Download PDF, cetak struk, dan hapus
-                baru tersedia setelah invoice difinalkan.
+                Invoice ini belum final. Download PDF dan cetak struk baru
+                tersedia setelah invoice difinalkan.
               </p>
             )}
           </div>

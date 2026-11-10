@@ -68,7 +68,11 @@ export const createInvoiceOps = ({ toResponse, withCost }) => {
   const getAllInvoice = async (query) => {
     const req = validate(getAllInvoiceValidation, query);
 
-    if (req.created_from && req.created_to && req.created_from > req.created_to) {
+    if (
+      req.created_from &&
+      req.created_to &&
+      req.created_from > req.created_to
+    ) {
       throw new ResponseError(400, "INVALID_DATE_RANGE");
     }
 
@@ -107,7 +111,11 @@ export const createInvoiceOps = ({ toResponse, withCost }) => {
               type: true,
               payment_status: true,
               order_items: {
-                select: { camera_price: true, camera_modal: true, quantity: true },
+                select: {
+                  camera_price: true,
+                  camera_modal: true,
+                  quantity: true,
+                },
               },
             },
           },
@@ -131,7 +139,10 @@ export const createInvoiceOps = ({ toResponse, withCost }) => {
 
         if (withCost) {
           const isSale = order.type === "SALE";
-          const capital = sum(order.order_items, (i) => i.camera_modal * i.quantity);
+          const capital = sum(
+            order.order_items,
+            (i) => i.camera_modal * i.quantity,
+          );
 
           row.capital_total = isSale ? capital : null;
           row.profit = isSale ? invoice.total_amount - capital : null;
@@ -224,7 +235,10 @@ export const createInvoiceOps = ({ toResponse, withCost }) => {
           data.customer_discount = customerDiscount;
         }
 
-        const subtotal = sum(order.order_items, (i) => i.camera_price * i.quantity);
+        const subtotal = sum(
+          order.order_items,
+          (i) => i.camera_price * i.quantity,
+        );
         const total = calculateTotal(subtotal, storeDiscount, customerDiscount);
 
         if (total !== order.total_amount) {
@@ -292,7 +306,10 @@ export const createInvoiceOps = ({ toResponse, withCost }) => {
       }
 
       try {
-        await tx.order.delete({ where: { id: invoice.order_id }, select: { id: true } });
+        await tx.order.delete({
+          where: { id: invoice.order_id },
+          select: { id: true },
+        });
       } catch (error) {
         if (error.code === "P2025") {
           throw new ResponseError(404, "INVOICE_NOT_FOUND");
@@ -304,5 +321,11 @@ export const createInvoiceOps = ({ toResponse, withCost }) => {
     return { message: "INVOICE_DELETED" };
   };
 
-  return { createInvoice, getAllInvoice, getInvoice, updateInvoice, deleteInvoice };
+  return {
+    createInvoice,
+    getAllInvoice,
+    getInvoice,
+    updateInvoice,
+    deleteInvoice,
+  };
 };
