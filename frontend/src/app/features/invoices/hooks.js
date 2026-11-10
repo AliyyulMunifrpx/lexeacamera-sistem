@@ -42,14 +42,10 @@ export function useDeleteInvoice() {
   return useMutation({
     mutationKey: ["invoices", "delete"],
     mutationFn: deleteInvoice,
-    onSuccess: (_, id) => {
-      queryClient.removeQueries({
-        queryKey: ["invoices", id],
-      });
+    onSuccess: (_, { id }) => {
+      queryClient.removeQueries({ queryKey: ["invoices", id] });
 
-      return queryClient.invalidateQueries({
-        queryKey: ["invoices"],
-      });
+      return queryClient.invalidateQueries({ queryKey: ["invoices"] });
     },
   });
 }

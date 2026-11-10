@@ -40,8 +40,9 @@ export async function getInvoice(id) {
   const response = await api.get(`/invoices/${id}`);
   return response.data.data;
 }
-export function deleteInvoice({ id, mode }) {
-  return api.delete(`/owner/invoices/${id}`, { params: { mode } });
+export async function deleteInvoice({ id, mode }) {
+  const response = await api.delete(`/invoices/${id}`, { params: { mode } });
+  return response.data.data;
 }
 export async function updateInvoice(id, payload) {
   const response = await api.patch(`/invoices/${id}`, payload);
