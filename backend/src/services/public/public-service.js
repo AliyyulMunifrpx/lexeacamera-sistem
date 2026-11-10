@@ -18,8 +18,8 @@ const HOME_FEATURED_SIZE = 4;
 const HOME_MAX_CATEGORIES = 100;
 
 // Kamera yang di-soft-delete nggak pernah terlihat publik
-const ACTIVE = { is_deleted: false };
-
+// Kamera yang di-soft-delete atau belum punya foto nggak pernah terlihat publik
+const ACTIVE = { is_deleted: false, images: { some: {} } };
 // Hanya field yang aman untuk publik. id toko sengaja nggak ikut.
 const STORE_SELECT = {
   logo_url: true,
@@ -221,8 +221,8 @@ const getPublicHome = async (query = {}) => {
           orderBy: { id: "asc" },
         }),
         prisma.category.findMany({
+          where: { cameras: { some: ACTIVE } },
           select: { id: true, name: true },
-          // id sebagai tiebreaker supaya urutan stabil
           orderBy: [{ name: "asc" }, { id: "asc" }],
           take: HOME_MAX_CATEGORIES,
         }),
