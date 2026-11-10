@@ -14,6 +14,16 @@ const BTN_BASE =
 
 const labelClass = "mb-2 block text-sm font-semibold text-second";
 
+/* Filter stok dipetakan ke min_stock / max_stock yang sudah ada di endpoint,
+   jadi tidak perlu ubah backend. Nilai berupa string karena state di halaman
+   juga string. */
+const STOCK_OPTIONS = [
+  { value: "all", label: "Semua stok", min: "", max: "" },
+  { value: "out", label: "Habis", min: "0", max: "0" },
+  { value: "low", label: "Sisa 1–3", min: "1", max: "3" },
+  { value: "ok", label: "Di atas 3", min: "4", max: "" },
+];
+
 function inputClass(hasError) {
   return [
     "w-full min-w-0 rounded-xl border bg-primary px-4 py-2 text-base text-second",
@@ -42,10 +52,30 @@ export default function CameraFilters({
   setSearch,
   category,
   setCategory,
+  minStock,
+  setMinStock,
+  maxStock,
+  setMaxStock,
   categories,
   onReset,
   hasFilters,
 }) {
+  // Opsi yang terpilih ditentukan dari nilai min/max stok di halaman.
+  const stockValue =
+    STOCK_OPTIONS.find(
+      (option) => option.min === minStock && option.max === maxStock,
+    )?.value ?? "all";
+
+  function handleStockChange(event) {
+    const option = STOCK_OPTIONS.find(
+      (item) => item.value === event.target.value,
+    );
+    if (!option) return;
+
+    setMinStock(option.min);
+    setMaxStock(option.max);
+  }
+
   return (
     <section className="flex min-w-0 flex-col gap-8 rounded-2xl border border-second/30 bg-primary p-4 shadow-xl shadow-second/5 sm:p-8">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
@@ -71,7 +101,7 @@ export default function CameraFilters({
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {/* Search */}
         <Field id="camera-search" label="Cari nama atau SKU produk">
           <div className="relative">
@@ -105,6 +135,22 @@ export default function CameraFilters({
             {categories.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        {/* Stok */}
+        <Field id="camera-stock" label="Stok">
+          <select
+            id="camera-stock"
+            value={stockValue}
+            onChange={handleStockChange}
+            className={inputClass(false)}
+          >
+            {STOCK_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
               </option>
             ))}
           </select>
