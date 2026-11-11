@@ -2,8 +2,8 @@ import Image from "next/image.js";
 import PrimaryBanner from "./primary-banner.jsx";
 import CameraCard from "./camera-card.jsx";
 
-// Rasio banner di layar lg (lebar:tinggi). Ubah ini kalau tingginya
-// belum pas dengan 2 baris produk. Makin kecil angka kedua, makin pendek.
+// Rasio banner di lg HANYA dipakai kalau tidak ada produk di sampingnya
+// (misalnya 1 baris penuh berisi 3 banner).
 const LG_BANNER_ASPECT = "lg:aspect-[4/5]";
 
 export default function StoreHomePage({ data }) {
@@ -58,7 +58,7 @@ export default function StoreHomePage({ data }) {
     bannerRows.push(lgBanners.slice(i, i + 3));
   }
 
-  // Jumlah produk yang menempel di samping banner (tinggi 2 baris)
+  // Jumlah produk yang menempel di samping banner (2 baris kartu)
   // 2 banner -> 2 kolom x 2 baris = 4 | 1 banner -> 4 kolom x 2 baris = 8
   const SIDE_PRODUCTS = { 1: 8, 2: 4 };
 
@@ -72,13 +72,17 @@ export default function StoreHomePage({ data }) {
   });
   const restCameras = cameras.slice(pointer);
 
-  function renderLgBanner(item) {
+  // stretch = true  -> tinggi banner mengikuti kolom produk di sampingnya
+  // stretch = false -> tidak ada produk di samping, pakai rasio LG_BANNER_ASPECT
+  function renderLgBanner(item, stretch) {
     if (item.type === "primary") {
-      // Rasio bawaan PrimaryBanner (2/3) ditimpa supaya mengikuti tinggi wrapper.
+      // Rasio bawaan PrimaryBanner (2/3) ditimpa: ia mengisi penuh wrapper-nya.
       return (
         <div
           key={item.key}
-          className={`col-span-2 relative w-full ${LG_BANNER_ASPECT} [&>div]:absolute [&>div]:inset-0 [&>div]:aspect-auto`}
+          className={`col-span-2 relative w-full [&>div]:absolute [&>div]:inset-0 [&>div]:aspect-auto ${
+            stretch ? "" : LG_BANNER_ASPECT
+          }`}
         >
           <PrimaryBanner cameras={item.cameras} banner={item.banner} />
         </div>
@@ -88,13 +92,15 @@ export default function StoreHomePage({ data }) {
     return (
       <div
         key={item.key}
-        className={`col-span-2 w-full ${LG_BANNER_ASPECT} relative rounded-xl overflow-hidden`}
+        className={`col-span-2 w-full relative rounded-xl overflow-hidden ${
+          stretch ? "" : LG_BANNER_ASPECT
+        }`}
       >
         <Image
           alt="Standard banner"
           src={item.banner.banner_url}
           fill
-          className="w-full h-full "
+          className="w-full h-full object-cover"
         />
       </div>
     );
@@ -141,30 +147,37 @@ export default function StoreHomePage({ data }) {
 
       {/* ===== LG ===== */}
       <div className="hidden lg:flex flex-col gap-2 w-full">
-        {rows.map((row, rowIndex) => (
-          <div
-            key={rowIndex}
-            className="grid grid-cols-6 gap-2 items-stretch w-full"
-          >
-            {row.banners.map(renderLgBanner)}
+        {rows.map((row, rowIndex) => {
+          const hasSide = row.sideProducts.length > 0;
 
-            {/* Produk di slot sisa: tinggi mengikuti banner,
-                atas sejajar atas banner, bawah sejajar bawah banner */}
-            {row.sideProducts.length > 0 && (
-              <div
-                className={`h-full grid gap-2 content-between ${
-                  row.banners.length === 1
-                    ? "col-span-4 grid-cols-4"
-                    : "col-span-2 grid-cols-2"
-                }`}
-              >
-                {row.sideProducts.map((item) => (
-                  <CameraCard key={item.id} data={item} />
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
+          return (
+            <div
+              key={rowIndex}
+              className="grid grid-cols-6 gap-2 items-stretch w-full"
+            >
+              {row.banners.map((item) => renderLgBanner(item, hasSide))}
+
+              {/* Produk di slot sisa. Baris grid: 2 baris kartu (1fr 1fr) +
+                  1 baris kosong setinggi 0,1 kartu (0.1fr) => tinggi total
+                  2,1 baris. Banner di sebelahnya ikut setinggi ini. */}
+              {hasSide && (
+                <div
+                  className={`h-full grid gap-2 grid-rows-[1fr_1fr_0.1fr] ${
+                    row.banners.length === 1
+                      ? "col-span-4 grid-cols-4"
+                      : "col-span-2 grid-cols-2"
+                  }`}
+                >
+                  {row.sideProducts.map((item) => (
+                    <CameraCard key={item.id} data={item} />
+                  ))}
+                  {/* Baris kosong 0,1 kartu */}
+                  <div className="col-span-full" aria-hidden="true" />
+                </div>
+              )}
+            </div>
+          );
+        })}
 
         {restCameras.length > 0 && (
           <div className="w-full grid gap-2 grid-cols-6">
