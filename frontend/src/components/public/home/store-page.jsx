@@ -6,6 +6,10 @@ import CameraCard from "./camera-card.jsx";
 // (misalnya 1 baris penuh berisi 3 banner).
 const LG_BANNER_ASPECT = "lg:aspect-[4/5]";
 
+// Tinggi minimal banner = lebarnya, supaya 4 kamera (kotak 2x2) di dalam
+// PrimaryBanner selalu muat. Tinggi sebenarnya mengikuti blok produk di samping.
+const MIN_SQUARE = "before:block before:pb-[100%]";
+
 export default function StoreHomePage({ data }) {
   const bestSellingBanner = data?.banners?.find(
     (item) => item.is_best_seller === true,
@@ -58,7 +62,7 @@ export default function StoreHomePage({ data }) {
     bannerRows.push(lgBanners.slice(i, i + 3));
   }
 
-  // Jumlah produk yang menempel di samping banner (2 baris kartu)
+  // Jumlah produk yang menempel di samping banner (tinggi 2 baris)
   // 2 banner -> 2 kolom x 2 baris = 4 | 1 banner -> 4 kolom x 2 baris = 8
   const SIDE_PRODUCTS = { 1: 8, 2: 4 };
 
@@ -72,7 +76,7 @@ export default function StoreHomePage({ data }) {
   });
   const restCameras = cameras.slice(pointer);
 
-  // stretch = true  -> tinggi banner mengikuti kolom produk di sampingnya
+  // stretch = true  -> tinggi banner mengikuti blok produk di sampingnya
   // stretch = false -> tidak ada produk di samping, pakai rasio LG_BANNER_ASPECT
   function renderLgBanner(item, stretch) {
     if (item.type === "primary") {
@@ -81,7 +85,7 @@ export default function StoreHomePage({ data }) {
         <div
           key={item.key}
           className={`col-span-2 relative w-full [&>div]:absolute [&>div]:inset-0 [&>div]:aspect-auto ${
-            stretch ? "" : LG_BANNER_ASPECT
+            stretch ? MIN_SQUARE : LG_BANNER_ASPECT
           }`}
         >
           <PrimaryBanner cameras={item.cameras} banner={item.banner} />
@@ -157,12 +161,11 @@ export default function StoreHomePage({ data }) {
             >
               {row.banners.map((item) => renderLgBanner(item, hasSide))}
 
-              {/* Produk di slot sisa. Baris grid: 2 baris kartu (1fr 1fr) +
-                  1 baris kosong setinggi 0,1 kartu (0.1fr) => tinggi total
-                  2,1 baris. Banner di sebelahnya ikut setinggi ini. */}
+              {/* Produk di slot sisa: 2 baris, tinggi blok ini = tinggi banner.
+                  Atas kartu sejajar atas banner, bawah kartu sejajar bawah banner. */}
               {hasSide && (
                 <div
-                  className={`h-full grid gap-2 grid-rows-[1fr_1fr_0.1fr] ${
+                  className={`h-full grid grid-rows-2 gap-2 ${
                     row.banners.length === 1
                       ? "col-span-4 grid-cols-4"
                       : "col-span-2 grid-cols-2"
@@ -171,8 +174,6 @@ export default function StoreHomePage({ data }) {
                   {row.sideProducts.map((item) => (
                     <CameraCard key={item.id} data={item} />
                   ))}
-                  {/* Baris kosong 0,1 kartu */}
-                  <div className="col-span-full" aria-hidden="true" />
                 </div>
               )}
             </div>
