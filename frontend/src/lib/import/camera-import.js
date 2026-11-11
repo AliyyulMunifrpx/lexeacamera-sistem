@@ -42,14 +42,14 @@ export const IMPORT_COLUMNS = [
     aliases: ["harga"],
   },
   {
-    key: "modal",
+    key: "capital",
     label: "Modal",
     required: true,
     width: 16,
     numeric: true,
     note: "Harga modal. Angka saja.",
     example: 20000000,
-    aliases: ["hargamodal"],
+    aliases: ["modal", "hargamodal"],
   },
   {
     key: "strikethrough_price",
