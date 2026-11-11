@@ -17,10 +17,8 @@ const MAX_BANNER_CAMERAS = 4;
 // lebih pendek dari rasio asli gambar (2/3), sebagian gambar pasti terpotong.
 // Ubah `center` jadi `top` (bagian bawah gambar yang terpotong) atau
 // `bottom` (bagian atas yang terpotong) sesuai desain banner.
-const PRIMARY_IMG_FIT =
-  "[&>div>div:first-child]:aspect-auto [&>div>div:first-child_img]:object-cover [&>div>div:first-child_img]:object-center";
-const STANDARD_IMG_FIT = "object-cover object-center";
-
+const PRIMARY_IMG_FIT = "[&>div>div:first-child]:aspect-auto";
+const STANDARD_IMG_FIT = "";
 export default function StoreHomePage({ data }) {
   const bestSellingBanner = data?.banners?.find(
     (item) => item.is_best_seller === true,
