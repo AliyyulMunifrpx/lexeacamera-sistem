@@ -157,7 +157,7 @@ const importCameras = async (request) => {
         data: cleaned.map((row) => ({
           name: row.name,
           price: row.price,
-          modal: row.modal,
+          capital: row.capital,
           strikethrough_price: row.strikethrough_price,
           condition: CONDITION[row.condition],
           stock: row.stock,

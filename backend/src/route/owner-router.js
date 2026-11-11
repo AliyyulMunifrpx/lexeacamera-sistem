@@ -21,6 +21,7 @@ import attendanceController from "../controller/owner/attendance-controller.js";
 import adminController from "../controller/owner/admin-controller.js";
 import reportController from "../controller/owner/report-controller.js";
 import cameraImportController from "../controller/owner/camera-import-controller.js";
+import payrollController from "../controller/owner/payroll-controller.js";
 
 const ownerRouter = express.Router();
 
@@ -122,4 +123,18 @@ ownerRouter.get("/owner/reports/stock-value", reportController.stockValue);
 ownerRouter.put("/owner/orders/:id/items", orderController.update);
 ownerRouter.delete("/owner/employees/:id", employeeController.remove);
 ownerRouter.post("/owner/cameras/import", cameraImportController.importCameras);
+ownerRouter.post("/owner/payrolls", payrollController.create);
+ownerRouter.get("/owner/payrolls", payrollController.getAll);
+ownerRouter.get("/owner/payrolls/:id", payrollController.get);
+ownerRouter.patch("/owner/payrolls/:id", payrollController.update);
+ownerRouter.patch("/owner/payrolls/:id/status", payrollController.updateStatus);
+ownerRouter.patch(
+  "/owner/payrolls/:id/items/:item_id",
+  payrollController.updateChecklist,
+);
+ownerRouter.delete("/owner/payrolls/:id", payrollController.remove);
+ownerRouter.get(
+  "/owner/employees/:id/payrolls",
+  payrollController.getByEmployee,
+);
 export default ownerRouter;

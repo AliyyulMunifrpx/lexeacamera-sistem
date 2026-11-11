@@ -14,7 +14,7 @@ export const importCameraRowSchema = Joi.object({
   name: Joi.string().trim().max(100).required(),
   category: Joi.string().trim().max(100).required(),
   price: money.required(),
-  modal: money.required(),
+  capital: money.required(),
   strikethrough_price: money.empty("", null).default(null),
   stock: money.required(),
   condition: Joi.string()

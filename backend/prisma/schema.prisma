@@ -44,6 +44,11 @@ enum Role {
   OWNER
 }
 
+enum PayrollStatus {
+  PENDING
+  PAID
+}
+
 enum PaymentStatuses {
   PAID
   UNPAID
@@ -260,6 +265,7 @@ model Employee {
   verify_attempts   Int          @default(0)
   pin_failed_count  Int          @default(0)
   pin_locked_until  DateTime?
+  payrolls          Payroll[]
 }
 
 model Attendance {
@@ -296,4 +302,38 @@ model Customer {
   address    String   @db.Text
   created_at DateTime @default(now())
   orders     Order[]
+}
+
+model Payroll {
+  id                String        @id @default(uuid())
+  employee_id       String?
+  employee          Employee?     @relation(fields: [employee_id], references: [id], onDelete: SetNull)
+  employee_name     String
+  job_title         String
+  bank_name         String
+  account_number    String
+  account_holder    String
+  disbursement_date DateTime      @db.Date
+  status            PayrollStatus @default(PENDING)
+  total_amount      Int
+  created_at        DateTime      @default(now())
+  updated_at        DateTime      @updatedAt
+  items             PayrollItem[]
+
+  @@index([employee_id])
+  @@index([status, disbursement_date])
+}
+
+// Satu baris penerimaan (gaji pokok, insentif, dst.)
+model PayrollItem {
+  id         String  @id @default(uuid())
+  payroll_id String
+  payroll    Payroll @relation(fields: [payroll_id], references: [id], onDelete: Cascade)
+  name       String
+  note       String?
+  checked    Boolean @default(false)
+  amount     Int
+  sort_order Int
+
+  @@index([payroll_id])
 }
