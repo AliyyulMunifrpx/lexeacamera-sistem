@@ -13,6 +13,14 @@ const MIN_SQUARE = "before:block before:pb-[100%]";
 // Kotak di PrimaryBanner cuma muat 2 x 2 foto.
 const MAX_BANNER_CAMERAS = 4;
 
+// Gambar banner di lg: dibuat memenuhi kotak tanpa gepeng. Karena kotaknya
+// lebih pendek dari rasio asli gambar (2/3), sebagian gambar pasti terpotong.
+// Ubah `center` jadi `top` (bagian bawah gambar yang terpotong) atau
+// `bottom` (bagian atas yang terpotong) sesuai desain banner.
+const PRIMARY_IMG_FIT =
+  "[&>div>div:first-child]:aspect-auto [&>div>div:first-child_img]:object-cover [&>div>div:first-child_img]:object-center";
+const STANDARD_IMG_FIT = "object-cover object-center";
+
 export default function StoreHomePage({ data }) {
   const bestSellingBanner = data?.banners?.find(
     (item) => item.is_best_seller === true,
@@ -83,13 +91,14 @@ export default function StoreHomePage({ data }) {
   // stretch = false -> tidak ada produk di samping, pakai rasio LG_BANNER_ASPECT
   function renderLgBanner(item, stretch) {
     if (item.type === "primary") {
-      // Rasio bawaan PrimaryBanner (2/3) ditimpa: ia mengisi penuh wrapper-nya.
-      // Kotak 4 foto di dalamnya sudah `absolute bottom-0`, jadi otomatis
-      // menempel di dasar banner.
+      // - root PrimaryBanner (2/3) ditimpa: mengisi penuh wrapper
+      // - div gambar background (juga 2/3) ditimpa: mengisi penuh root,
+      //   jadi tidak ada lagi bagian bawah gambar yang terpotong
+      // - kotak 4 foto sudah `absolute bottom-0`, jadi menempel di dasar banner
       return (
         <div
           key={item.key}
-          className={`col-span-2 relative w-full [&>div]:absolute [&>div]:inset-0 [&>div]:aspect-auto ${
+          className={`col-span-2 relative w-full [&>div]:absolute [&>div]:inset-0 [&>div]:aspect-auto ${PRIMARY_IMG_FIT} ${
             stretch ? MIN_SQUARE : LG_BANNER_ASPECT
           }`}
         >
@@ -109,7 +118,7 @@ export default function StoreHomePage({ data }) {
           alt="Standard banner"
           src={item.banner.banner_url}
           fill
-          className="w-full h-full object-cover"
+          className={`w-full h-full ${STANDARD_IMG_FIT}`}
         />
       </div>
     );
