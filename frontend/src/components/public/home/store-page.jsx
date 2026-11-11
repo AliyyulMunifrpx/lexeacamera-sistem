@@ -6,9 +6,12 @@ import CameraCard from "./camera-card.jsx";
 // (misalnya 1 baris penuh berisi 3 banner).
 const LG_BANNER_ASPECT = "lg:aspect-[4/5]";
 
-// Tinggi minimal banner = lebarnya, supaya 4 kamera (kotak 2x2) di dalam
-// PrimaryBanner selalu muat. Tinggi sebenarnya mengikuti blok produk di samping.
+// Tinggi minimal banner = lebarnya, supaya kotak 4 foto produk (persegi) di
+// dalam PrimaryBanner selalu muat. Tinggi sebenarnya mengikuti blok produk di samping.
 const MIN_SQUARE = "before:block before:pb-[100%]";
+
+// Kotak di PrimaryBanner cuma muat 2 x 2 foto.
+const MAX_BANNER_CAMERAS = 4;
 
 export default function StoreHomePage({ data }) {
   const bestSellingBanner = data?.banners?.find(
@@ -37,7 +40,7 @@ export default function StoreHomePage({ data }) {
       key: "best-seller",
       type: "primary",
       banner: bestSellingBanner,
-      cameras: bestSellingCamera,
+      cameras: bestSellingCamera.slice(0, MAX_BANNER_CAMERAS),
     });
   }
   if (promoCameras.length > 0) {
@@ -45,7 +48,7 @@ export default function StoreHomePage({ data }) {
       key: "promo",
       type: "primary",
       banner: promoBanner,
-      cameras: promoCameras,
+      cameras: promoCameras.slice(0, MAX_BANNER_CAMERAS),
     });
   }
   standartBanner.forEach((item) => {
@@ -81,6 +84,8 @@ export default function StoreHomePage({ data }) {
   function renderLgBanner(item, stretch) {
     if (item.type === "primary") {
       // Rasio bawaan PrimaryBanner (2/3) ditimpa: ia mengisi penuh wrapper-nya.
+      // Kotak 4 foto di dalamnya sudah `absolute bottom-0`, jadi otomatis
+      // menempel di dasar banner.
       return (
         <div
           key={item.key}
