@@ -87,6 +87,70 @@ function buildFileName(slip) {
   return `Slip-Gaji-${name}-${date}.pdf`;
 }
 
+const SATUAN = [
+  "",
+  "satu",
+  "dua",
+  "tiga",
+  "empat",
+  "lima",
+  "enam",
+  "tujuh",
+  "delapan",
+  "sembilan",
+  "sepuluh",
+  "sebelas",
+];
+
+const SKALA = [
+  [1e12, "triliun"],
+  [1e9, "miliar"],
+  [1e6, "juta"],
+];
+
+/* 1398543 -> "satu juta tiga ratus sembilan puluh delapan ribu lima ratus empat puluh tiga" */
+function spellNumber(n) {
+  if (n < 12) return SATUAN[n];
+  if (n < 20) return `${SATUAN[n - 10]} belas`;
+  if (n < 100) {
+    const rest = n % 10;
+    return `${SATUAN[Math.floor(n / 10)]} puluh${rest ? ` ${spellNumber(rest)}` : ""}`;
+  }
+  if (n < 200) {
+    const rest = n - 100;
+    return `seratus${rest ? ` ${spellNumber(rest)}` : ""}`;
+  }
+  if (n < 1000) {
+    const rest = n % 100;
+    return `${SATUAN[Math.floor(n / 100)]} ratus${rest ? ` ${spellNumber(rest)}` : ""}`;
+  }
+  if (n < 2000) {
+    const rest = n - 1000;
+    return `seribu${rest ? ` ${spellNumber(rest)}` : ""}`;
+  }
+  if (n < 1e6) {
+    const rest = n % 1000;
+    return `${spellNumber(Math.floor(n / 1000))} ribu${rest ? ` ${spellNumber(rest)}` : ""}`;
+  }
+  for (const [scale, label] of SKALA) {
+    if (n >= scale) {
+      const rest = n % scale;
+      return `${spellNumber(Math.floor(n / scale))} ${label}${rest ? ` ${spellNumber(rest)}` : ""}`;
+    }
+  }
+  return "";
+}
+
+/* Ejaan jumlah uang. Null kalau angkanya tidak valid atau terlalu besar. */
+export function terbilangRupiah(value) {
+  const amount = Math.round(Number(value));
+  if (!Number.isFinite(amount) || Math.abs(amount) >= 1e15) return null;
+  if (amount === 0) return "Nol rupiah";
+
+  const words = `${amount < 0 ? "minus " : ""}${spellNumber(Math.abs(amount))} rupiah`;
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 /**
  * @param {{ slip: object, store?: object, ownerName?: string }} params
  */
@@ -121,9 +185,16 @@ export async function downloadPayrollPdf({ slip, store, ownerName }) {
     text,
     x,
     yy,
-    { size = 9, bold = false, color = C.text, align = "left", maxWidth } = {},
+    {
+      size = 9,
+      bold = false,
+      italic = false,
+      color = C.text,
+      align = "left",
+      maxWidth,
+    } = {},
   ) {
-    doc.setFont("helvetica", bold ? "bold" : "normal");
+    doc.setFont("helvetica", bold ? "bold" : italic ? "italic" : "normal");
     doc.setFontSize(size);
     doc.setTextColor(...color);
 
@@ -458,7 +529,18 @@ export async function downloadPayrollPdf({ slip, store, ownerName }) {
 
   const rowStep = 5;
   const totalBarH = 9;
-  const summaryH = 3.5 + summaryRows.length * rowStep - 2 + totalBarH + 4;
+  const spelled = terbilangRupiah(slip.total_amount);
+  const spelledLines = spelled
+    ? wrap(
+        `Terbilang: ${spelled}`,
+        7,
+        false,
+        contentWidth - (rightColX - margin) - 8,
+      )
+    : [];
+  const spelledH = spelledLines.length > 0 ? 2.5 + spelledLines.length * 3 : 0;
+  const summaryH =
+    3.5 + summaryRows.length * rowStep - 2 + totalBarH + spelledH + 4;
   const issuerH = 32;
 
   y += 4;
@@ -488,6 +570,15 @@ export async function downloadPayrollPdf({ slip, store, ownerName }) {
     align: "right",
   });
 
+  if (spelledLines.length > 0) {
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(7);
+    doc.setTextColor(...C.muted);
+    doc.text(spelledLines, valueX, totalY + totalBarH + 3.5, {
+      align: "right",
+    });
+  }
+
   // Penerbit (tanpa gambar tanda tangan), sejajar ringkasan
   gradientRect(margin, summaryTop, 1.2, 4.5);
   put("DITERBITKAN OLEH", margin + 4, summaryTop + 3.5, {
@@ -501,6 +592,70 @@ export async function downloadPayrollPdf({ slip, store, ownerName }) {
     maxWidth: 56,
   });
   put("Owner", margin + 6, summaryTop + 30.5, { size: 7, color: C.muted });
+
+  y = summaryTop + Math.max(summaryH, issuerH) + 6;
+
+  /* ---------- Ucapan terima kasih (nama karyawan tebal) ---------- */
+  const thankMaxW = contentWidth - 20;
+  const hasName = hasValue(slip.employee_name);
+
+  function textWidth(text, size, bold) {
+    doc.setFont("helvetica", bold ? "bold" : "normal");
+    doc.setFontSize(size);
+    return doc.getTextWidth(text);
+  }
+
+  let thankName = hasName ? String(slip.employee_name).trim() : "";
+  const lead = hasName ? "Terima kasih, " : "Terima kasih";
+  const trail = hasName ? "," : "";
+  // Nama yang sangat panjang dipotong supaya satu baris.
+  while (
+    thankName.length > 1 &&
+    textWidth(lead, 8.5, false) +
+      textWidth(thankName, 8.5, true) +
+      textWidth(trail, 8.5, false) >
+      thankMaxW
+  ) {
+    thankName = `${thankName.slice(0, -2).trimEnd()}…`;
+  }
+
+  const tailText = `atas kerja keras dan dedikasi Anda${store?.name ? ` bersama ${store.name}` : ""}.`;
+  const tailLines = wrap(tailText, 8.5, false, thankMaxW);
+  const thankH = 8 + (tailLines.length - 1) * 3.8 + 4.2 + 2;
+
+  ensure(thankH);
+
+  const segments = [
+    [lead, false],
+    ...(hasName ? [[thankName, true]] : []),
+    ...(trail ? [[trail, false]] : []),
+  ];
+  const greetW = segments.reduce(
+    (sum, [text, bold]) => sum + textWidth(text, 8.5, bold),
+    0,
+  );
+  let greetX = pageWidth / 2 - greetW / 2;
+  segments.forEach(([text, bold]) => {
+    put(text, greetX, y + 4, {
+      size: 8.5,
+      bold,
+      color: bold ? C.text : C.muted,
+    });
+    greetX += textWidth(text, 8.5, bold);
+  });
+
+  put(tailText, pageWidth / 2, y + 8, {
+    size: 8.5,
+    color: C.muted,
+    align: "center",
+    maxWidth: thankMaxW,
+  });
+  put(
+    "Semoga sehat dan sukses selalu.",
+    pageWidth / 2,
+    y + 8 + (tailLines.length - 1) * 3.8 + 4.2,
+    { size: 8, italic: true, color: C.faint, align: "center" },
+  );
 
   /* ---------- Footer & nomor halaman di setiap halaman ---------- */
   const totalPages = doc.getNumberOfPages();

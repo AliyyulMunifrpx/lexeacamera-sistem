@@ -27,8 +27,12 @@ export async function getEmployee(id) {
 }
 
 /** POST /owner/employees. Mengembalikan karyawan + `email_sent`. */
-export async function createEmployee({ name, email }) {
-  const response = await api.post("/owner/employees", { name, email });
+export async function createEmployee({ name, email, display_id }) {
+  const response = await api.post("/owner/employees", {
+    name,
+    email,
+    display_id,
+  });
 
   return response.data.data;
 }
@@ -38,10 +42,14 @@ export async function createEmployee({ name, email }) {
  * Minimal satu dari: name, email, is_active.
  * Mengganti email mereset verifikasi & PIN dan mengirim tautan baru (`email_sent`).
  */
-export async function updateEmployee(id, { name, email, is_active }) {
+export async function updateEmployee(
+  id,
+  { name, email, is_active, display_id },
+) {
   const body = {
     ...(name !== undefined && { name }),
     ...(email !== undefined && { email }),
+    ...(display_id !== undefined && { display_id }),
     ...(is_active !== undefined && { is_active }),
   };
 

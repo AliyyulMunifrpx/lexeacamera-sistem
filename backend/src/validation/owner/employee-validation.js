@@ -2,6 +2,7 @@ import Joi from "joi";
 
 const name = Joi.string().trim().min(1).max(100);
 const email = Joi.string().trim().lowercase().email().max(254);
+const display_id = Joi.string().trim().uppercase().max(10);
 
 export const employeeIdValidation = Joi.object({
   id: Joi.string().uuid().required(),
@@ -16,11 +17,13 @@ export const getAllEmployeeValidation = Joi.object({
 export const createEmployeeValidation = Joi.object({
   name: name.required(),
   email: email.required(),
+  display_id: display_id.required(),
 });
 
 export const updateEmployeeValidation = Joi.object({
   id: Joi.string().uuid().required(),
   name,
   email,
+  display_id,
   is_active: Joi.boolean().strict(),
-}).or("name", "email", "is_active");
+}).or("name", "email", "is_active", "display_id");

@@ -118,8 +118,31 @@ export function newItem(values = {}) {
     note: "",
     checked: false,
     amount: "",
+    // Kalkulator: harga per 1 kali x berapa kali (tidak dikirim ke server,
+    // hanya hasilnya yang masuk ke jumlah dan keterangan).
+    calc: false,
+    unit: "",
+    qty: "",
+    noteEdited: false,
     ...values,
   };
+}
+
+function buildCalcNote(item) {
+  const name = item.name.trim();
+  return `${name ? `${name}: ` : ""}Rp ${formatThousands(item.unit)} × ${Number(item.qty)} kali`;
+}
+
+/* Kalau kalkulator aktif, jumlah (dan keterangan) dihitung dari isiannya. */
+function applyCalc(item) {
+  if (!item.calc) return item;
+  const ready = item.unit !== "" && item.qty !== "";
+  const next = {
+    ...item,
+    amount: ready ? String(Number(item.unit) * Number(item.qty)) : "",
+  };
+  if (!item.noteEdited) next.note = ready ? buildCalcNote(item) : "";
+  return next;
 }
 
 /* Bentuk item untuk dikirim / dibandingkan */
@@ -207,7 +230,9 @@ export default function PayrollForm({
 
   function setItem(key, patch) {
     setItems((current) =>
-      current.map((item) => (item.key === key ? { ...item, ...patch } : item)),
+      current.map((item) =>
+        item.key === key ? applyCalc({ ...item, ...patch }) : item,
+      ),
     );
     setItemErrors((current) =>
       current[key] ? { ...current, [key]: {} } : current,
@@ -223,6 +248,19 @@ export default function PayrollForm({
     setItems((current) =>
       current.length > 1 ? current.filter((item) => item.key !== key) : current,
     );
+  }
+
+  function toggleCalc(item, on) {
+    if (on) {
+      setItem(item.key, {
+        calc: true,
+        unit: item.amount,
+        qty: "1",
+        noteEdited: item.note.trim() !== "",
+      });
+    } else {
+      setItem(item.key, { calc: false });
+    }
   }
 
   /* Payload edit = hanya yang berubah */
@@ -302,7 +340,17 @@ export default function PayrollForm({
       const name = item.name.trim();
       if (!name) itemError.name = "Nama penerimaan wajib diisi.";
       else if (name.length > 100) itemError.name = "Maksimal 100 huruf.";
-      if (item.amount === "") itemError.amount = "Jumlah wajib diisi.";
+      if (item.calc) {
+        if (item.unit === "") itemError.unit = "Isi jumlah per 1 kali.";
+        if (item.qty === "" || Number(item.qty) < 1)
+          itemError.qty = "Isi berapa kali (minimal 1).";
+        if (
+          !itemError.unit &&
+          !itemError.qty &&
+          Number(item.amount) > MAX_AMOUNT
+        )
+          itemError.amount = "Jumlah terlalu besar.";
+      } else if (item.amount === "") itemError.amount = "Jumlah wajib diisi.";
       else if (Number(item.amount) > MAX_AMOUNT)
         itemError.amount = "Jumlah terlalu besar.";
       if (item.note.trim().length > 500) itemError.note = "Maksimal 500 huruf.";
@@ -532,37 +580,130 @@ export default function PayrollForm({
                     />
                   </Field>
 
-                  <Field
-                    label="Jumlah"
-                    htmlFor={`${item.key}-amount`}
-                    required
-                    error={itemError.amount}
-                  >
-                    <MoneyInput
-                      id={`${item.key}-amount`}
-                      value={item.amount}
-                      onChange={(digits) =>
-                        setItem(item.key, { amount: digits })
-                      }
-                      hasError={Boolean(itemError.amount)}
-                      disabled={submitting}
-                      describedBy={
-                        itemError.amount ? `${item.key}-amount-desc` : undefined
-                      }
-                    />
-                  </Field>
+                  {item.calc ? (
+                    <Field
+                      label="Total"
+                      htmlFor={`${item.key}-total`}
+                      required
+                      error={itemError.amount}
+                    >
+                      <output
+                        id={`${item.key}-total`}
+                        className="block w-full min-w-0 rounded-xl border border-second/30 bg-second/5 px-4 py-2 text-base font-semibold tabular-nums text-second"
+                      >
+                        {item.amount === "" ? "—" : formatCurrency(item.amount)}
+                      </output>
+                    </Field>
+                  ) : (
+                    <Field
+                      label="Jumlah"
+                      htmlFor={`${item.key}-amount`}
+                      required
+                      error={itemError.amount}
+                    >
+                      <MoneyInput
+                        id={`${item.key}-amount`}
+                        value={item.amount}
+                        onChange={(digits) =>
+                          setItem(item.key, { amount: digits })
+                        }
+                        hasError={Boolean(itemError.amount)}
+                        disabled={submitting}
+                        describedBy={
+                          itemError.amount
+                            ? `${item.key}-amount-desc`
+                            : undefined
+                        }
+                      />
+                    </Field>
+                  )}
                 </div>
+
+                <label className="flex cursor-pointer items-center gap-4">
+                  <input
+                    type="checkbox"
+                    checked={item.calc}
+                    onChange={(event) => toggleCalc(item, event.target.checked)}
+                    disabled={submitting}
+                    className={`size-4 shrink-0 cursor-pointer accent-second4 ${FOCUS_RING}`}
+                  />
+                  <span className="text-sm text-second">
+                    Pakai kalkulator (jumlah per 1 kali × berapa kali)
+                  </span>
+                </label>
+
+                {item.calc && (
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <Field
+                      label="Jumlah per 1 kali"
+                      htmlFor={`${item.key}-unit`}
+                      required
+                      error={itemError.unit}
+                    >
+                      <MoneyInput
+                        id={`${item.key}-unit`}
+                        value={item.unit}
+                        onChange={(digits) =>
+                          setItem(item.key, { unit: digits })
+                        }
+                        hasError={Boolean(itemError.unit)}
+                        disabled={submitting}
+                        describedBy={
+                          itemError.unit ? `${item.key}-unit-desc` : undefined
+                        }
+                      />
+                    </Field>
+
+                    <Field
+                      label="Berapa kali"
+                      htmlFor={`${item.key}-qty`}
+                      required
+                      error={itemError.qty}
+                    >
+                      <input
+                        id={`${item.key}-qty`}
+                        inputMode="numeric"
+                        autoComplete="off"
+                        placeholder="Contoh: 3"
+                        value={item.qty}
+                        onChange={(event) =>
+                          setItem(item.key, {
+                            qty: event.target.value
+                              .replace(/\D/g, "")
+                              .replace(/^0+(?=\d)/, "")
+                              .slice(0, 4),
+                          })
+                        }
+                        maxLength={4}
+                        disabled={submitting}
+                        aria-invalid={itemError.qty ? true : undefined}
+                        aria-describedby={
+                          itemError.qty ? `${item.key}-qty-desc` : undefined
+                        }
+                        className={`${inputClass(itemError.qty)} tabular-nums`}
+                      />
+                    </Field>
+                  </div>
+                )}
 
                 <Field
                   label="Keterangan"
                   htmlFor={`${item.key}-note`}
                   error={itemError.note}
+                  description={
+                    item.calc
+                      ? "Terisi otomatis dari kalkulator, boleh diubah."
+                      : undefined
+                  }
                 >
                   <textarea
                     id={`${item.key}-note`}
                     value={item.note}
                     onChange={(event) =>
-                      setItem(item.key, { note: event.target.value })
+                      setItem(item.key, {
+                        note: event.target.value,
+                        noteEdited: event.target.value.trim() !== "",
+                      })
                     }
                     rows={2}
                     maxLength={500}

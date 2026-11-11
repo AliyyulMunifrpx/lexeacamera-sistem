@@ -22,6 +22,7 @@ const SELECT = {
   is_active: true,
   user_id: true,
   pin_hash: true,
+  display_id: true,
   email_verified_at: true,
   verify_sent_at: true,
   created_at: true,
@@ -93,7 +94,12 @@ const createEmployee = async (request) => {
   let employee;
   try {
     employee = await prisma.employee.create({
-      data: { name: req.name, email: req.email, ...fields },
+      data: {
+        name: req.name,
+        email: req.email,
+        display_id: req.display_id,
+        ...fields,
+      },
       select: SELECT,
     });
   } catch (error) {
@@ -179,6 +185,7 @@ const updateEmployee = async (request) => {
 
   const data = {};
   if (fields.name !== undefined) data.name = fields.name;
+  if (fields.display_id !== undefined) data.display_id = fields.display_id;
   if (fields.is_active !== undefined) data.is_active = fields.is_active;
 
   let token = null;

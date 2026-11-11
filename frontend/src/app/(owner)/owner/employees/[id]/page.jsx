@@ -67,6 +67,7 @@ const STATUS = {
 };
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const ID_PATTERN = /^[A-Za-z0-9]{1,10}$/;
 
 /* -------------------------------- Formatters ------------------------------ */
 
@@ -164,18 +165,21 @@ function EmployeeForm({ employee }) {
 
   const [name, setName] = useState(employee.name ?? "");
   const [email, setEmail] = useState(employee.email ?? "");
+  const [displayId, setDisplayId] = useState(employee.display_id ?? "");
   const [isActive, setIsActive] = useState(Boolean(employee.is_active));
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState("");
 
   const trimmedName = name.trim();
   const trimmedEmail = email.trim();
+  const trimmedId = displayId.trim();
 
   const nameChanged = trimmedName !== employee.name;
   const emailChanged =
     trimmedEmail.toLowerCase() !== (employee.email ?? "").toLowerCase();
+  const idChanged = trimmedId !== (employee.display_id ?? "");
   const activeChanged = isActive !== Boolean(employee.is_active);
-  const dirty = nameChanged || emailChanged || activeChanged;
+  const dirty = nameChanged || idChanged || emailChanged || activeChanged;
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -186,6 +190,13 @@ function EmployeeForm({ employee }) {
     if (!trimmedName) nextErrors.name = "Nama wajib diisi.";
     else if (trimmedName.length > 100)
       nextErrors.name = "Nama maksimal 100 karakter.";
+
+    if (idChanged) {
+      if (!trimmedId) nextErrors.display_id = "ID wajib diisi.";
+      else if (!ID_PATTERN.test(trimmedId))
+        nextErrors.display_id =
+          "ID hanya boleh huruf dan angka, maksimal 10 karakter.";
+    }
 
     if (emailChanged) {
       if (!trimmedEmail) nextErrors.email = "Email wajib diisi.";
@@ -198,6 +209,7 @@ function EmployeeForm({ employee }) {
 
     const data = {
       ...(nameChanged && { name: trimmedName }),
+      ...(idChanged && { display_id: trimmedId }),
       ...(emailChanged && { email: trimmedEmail }),
       ...(activeChanged && { is_active: isActive }),
     };
@@ -220,6 +232,10 @@ function EmployeeForm({ employee }) {
 
       if (code === "EMAIL_ALREADY_USED") {
         setErrors({ email: "Email ini sudah dipakai." });
+        return;
+      }
+      if (typeof code === "string" && code.includes("DISPLAY_ID")) {
+        setErrors({ display_id: "ID ini sudah dipakai." });
         return;
       }
       if (code === "EMPLOYEE_LINKED_TO_USER") {
@@ -284,6 +300,54 @@ function EmployeeForm({ employee }) {
                 aria-hidden="true"
               />
               {errors.name}
+            </p>
+          )}
+        </div>
+
+        <div className="min-w-0">
+          <label htmlFor="emp-id" className={labelClass}>
+            ID
+            <span className="ml-2 text-second2" aria-hidden="true">
+              *
+            </span>
+          </label>
+          <input
+            id="emp-id"
+            type="text"
+            name="display_id"
+            autoComplete="off"
+            autoCapitalize="characters"
+            spellCheck={false}
+            maxLength={10}
+            value={displayId}
+            disabled={busy}
+            onChange={(event) =>
+              setDisplayId(
+                event.target.value.replace(/[^A-Za-z0-9]/g, "").slice(0, 10),
+              )
+            }
+            aria-invalid={errors.display_id ? "true" : undefined}
+            aria-describedby={
+              errors.display_id ? "emp-id-error" : "emp-id-note"
+            }
+            className={inputClass(Boolean(errors.display_id))}
+          />
+          {errors.display_id ? (
+            <p
+              id="emp-id-error"
+              role="alert"
+              className="mt-2 flex items-start gap-2 text-sm text-second2"
+            >
+              <FiAlertCircle
+                size={16}
+                className="mt-0.5 shrink-0"
+                aria-hidden="true"
+              />
+              {errors.display_id}
+            </p>
+          ) : (
+            <p id="emp-id-note" className="mt-2 text-xs text-second/60">
+              Huruf dan angka, maksimal 10 karakter.
             </p>
           )}
         </div>
@@ -902,6 +966,9 @@ export default function EmployeeDetailPage() {
                 {employee.email}
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
+                {employee.display_id && (
+                  <Tag tone="strong">ID {employee.display_id}</Tag>
+                )}
                 <Tag tone={status.tone}>{status.label}</Tag>
                 {employee.linked_to_user && <Tag tone="muted">Akun admin</Tag>}
               </div>

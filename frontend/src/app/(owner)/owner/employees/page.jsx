@@ -65,6 +65,7 @@ const STATUS_FILTERS = [
 ];
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const ID_PATTERN = /^[A-Za-z0-9]{1,10}$/;
 
 /* -------------------------------- Formatters ------------------------------ */
 
@@ -181,6 +182,7 @@ function AddEmployeeDialog({ onClose }) {
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [displayId, setDisplayId] = useState("");
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState("");
 
@@ -222,6 +224,12 @@ function AddEmployeeDialog({ onClose }) {
     else if (!EMAIL_PATTERN.test(trimmedEmail) || trimmedEmail.length > 254)
       nextErrors.email = "Format email tidak valid.";
 
+    const trimmedId = displayId.trim();
+    if (!trimmedId) nextErrors.display_id = "ID wajib diisi.";
+    else if (!ID_PATTERN.test(trimmedId))
+      nextErrors.display_id =
+        "ID hanya boleh huruf dan angka, maksimal 10 karakter.";
+
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
@@ -229,6 +237,7 @@ function AddEmployeeDialog({ onClose }) {
       const result = await createMutation.mutateAsync({
         name: trimmedName,
         email: trimmedEmail,
+        display_id: trimmedId,
       });
 
       if (result?.email_sent === false) {
@@ -247,6 +256,11 @@ function AddEmployeeDialog({ onClose }) {
 
       if (code === "EMAIL_ALREADY_USED") {
         setErrors({ email: "Email ini sudah dipakai." });
+        return;
+      }
+
+      if (typeof code === "string" && code.includes("DISPLAY_ID")) {
+        setErrors({ display_id: "ID ini sudah dipakai." });
         return;
       }
 
@@ -371,6 +385,53 @@ function AddEmployeeDialog({ onClose }) {
                   aria-hidden="true"
                 />
                 {errors.email}
+              </p>
+            )}
+          </div>
+
+          <div className="min-w-0">
+            <label htmlFor="employee-id" className={labelClass}>
+              ID
+              <span className="ml-2 text-second2" aria-hidden="true">
+                *
+              </span>
+            </label>
+            <input
+              id="employee-id"
+              type="text"
+              name="display_id"
+              autoComplete="off"
+              autoCapitalize="characters"
+              spellCheck={false}
+              maxLength={10}
+              value={displayId}
+              disabled={busy}
+              onChange={(event) =>
+                setDisplayId(
+                  event.target.value.replace(/[^A-Za-z0-9]/g, "").slice(0, 10),
+                )
+              }
+              placeholder="Contoh: KRY001"
+              aria-invalid={errors.display_id ? "true" : undefined}
+              aria-describedby="employee-id-hint"
+              className={inputClass(Boolean(errors.display_id))}
+            />
+            {errors.display_id ? (
+              <p
+                id="employee-id-hint"
+                role="alert"
+                className="mt-2 flex items-start gap-2 text-sm text-second2"
+              >
+                <FiAlertCircle
+                  size={16}
+                  className="mt-0.5 shrink-0"
+                  aria-hidden="true"
+                />
+                {errors.display_id}
+              </p>
+            ) : (
+              <p id="employee-id-hint" className="mt-2 text-xs text-second/60">
+                Huruf dan angka, maksimal 10 karakter.
               </p>
             )}
           </div>
@@ -753,6 +814,9 @@ export default function EmployeesPage() {
                 <thead className="bg-grad text-sm text-primary">
                   <tr>
                     <th scope="col" className="px-4 py-3 font-semibold">
+                      ID
+                    </th>
+                    <th scope="col" className="px-4 py-3 font-semibold">
                       Nama
                     </th>
                     <th scope="col" className="px-4 py-3 font-semibold">
@@ -776,6 +840,9 @@ export default function EmployeesPage() {
                       key={employee.id}
                       className={`align-top transition-colors hover:bg-second/20 ${i % 2 === 0 ? "" : "bg-second3/20"}`}
                     >
+                      <td className="px-4 py-4 text-sm tabular-nums text-second/70">
+                        {employee.display_id ?? "—"}
+                      </td>
                       <td className="px-4 py-4 text-sm font-semibold text-second">
                         {employee.name}
                       </td>
@@ -827,6 +894,9 @@ export default function EmployeesPage() {
                     </div>
 
                     <div className="mt-4 flex flex-wrap gap-2">
+                      {employee.display_id && (
+                        <Tag tone="outline">ID {employee.display_id}</Tag>
+                      )}
                       <StatusTag status={employee.status} />
                       {employee.linked_to_user && (
                         <Tag tone="muted">Akun admin</Tag>
