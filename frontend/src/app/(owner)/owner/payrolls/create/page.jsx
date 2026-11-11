@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link.js";
 import { useRouter, useSearchParams } from "next/navigation.js";
 import {
@@ -26,6 +26,23 @@ import {
   describePayrollError,
   inputClass,
 } from "../../../../../components/owner/payroll-shared.jsx";
+
+const PREFILL_FIELDS = [
+  "job_title",
+  "bank_name",
+  "account_number",
+  "account_holder",
+];
+
+/* Ambil nilai pertama yang tidak kosong. */
+function firstFilled(...values) {
+  for (const value of values) {
+    if (value !== undefined && value !== null && String(value).trim() !== "") {
+      return String(value);
+    }
+  }
+  return "";
+}
 
 /* Pemilih karyawan: cari nama atau email, lalu pilih satu. */
 function EmployeePicker({ selected, onSelect, onClear, disabled }) {
@@ -146,9 +163,25 @@ function CreateContent() {
   // Kalau dibuka dari halaman karyawan, karyawannya langsung terpilih.
   const presetQuery = useGetEmployee(presetId || undefined);
   useEffect(() => {
-    if (presetQuery.data && !employee) setEmployee(presetQuery.data);
+    if (presetQuery.data && !employee) {
+      setEmployee(presetQuery.data?.data ?? presetQuery.data);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presetQuery.data]);
+
+  // Detail lengkap karyawan terpilih (bisa terbungkus { data }).
+  const detailQuery = useGetEmployee(employee?.id || undefined);
+  const detail = detailQuery.data?.data ?? detailQuery.data ?? null;
+
+  // Per field: utamakan detail yang terisi, kalau kosong pakai data dari daftar.
+  const prefill = useMemo(() => {
+    if (!employee) return null;
+    const values = {};
+    for (const field of PREFILL_FIELDS) {
+      values[field] = firstFilled(detail?.[field], employee?.[field]);
+    }
+    return values;
+  }, [detail, employee]);
 
   async function handleSubmit(payload) {
     setEmployeeError("");
@@ -188,8 +221,8 @@ function CreateContent() {
               Buat <span className="text-grad">slip gaji</span>
             </h1>
             <p className="mt-2 text-pretty text-sm text-second/60">
-              Pilih karyawan, isi rekening dan penerimaan, lalu tentukan tanggal
-              cair.
+              Pilih karyawan, jabatan dan rekening terisi otomatis, lalu
+              tentukan tanggal cair.
             </p>
           </div>
         </div>
@@ -200,6 +233,8 @@ function CreateContent() {
         employeeId={employee?.id ?? ""}
         employeeName={employee?.name ?? ""}
         employeeError={employeeError}
+        prefill={prefill}
+        prefillLoading={Boolean(employee?.id) && detailQuery.isPending}
         employeeField={
           <EmployeePicker
             selected={employee}

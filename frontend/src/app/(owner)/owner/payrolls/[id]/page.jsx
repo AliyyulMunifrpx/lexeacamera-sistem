@@ -146,8 +146,9 @@ export default function PayrollDetailPage() {
   const toggleMutation = useTogglePayrollItem();
   const deleteMutation = useDeletePayroll();
 
-  // Untuk PDF: logo toko dan nama owner
-  const { data: store } = useGetStore();
+  // Untuk PDF: data toko dan nama owner
+  const storeQuery = useGetStore();
+  const store = storeQuery.data;
   const { data: currentUser } = useGetCurrentUser();
 
   const [modal, setModal] = useState(null); // "pay" | "unpay" | "delete"
@@ -290,15 +291,21 @@ export default function PayrollDetailPage() {
     setExporting(true);
 
     try {
+      // Ambil data toko terbaru, bukan dari cache yang mungkin tidak lengkap.
+      const fresh = await storeQuery.refetch();
+      const storeData = fresh.data ?? store;
+      console.log("store untuk PDF:", storeData);
+
       // Di-import saat diklik supaya library PDF tidak ikut bundle awal halaman.
       const { downloadPayrollPdf } =
         await import("../../../../../components/owner/payroll-pdf.js");
       await downloadPayrollPdf({
         slip,
-        store,
+        store: storeData,
         ownerName: currentUser?.name,
       });
-    } catch {
+    } catch (err) {
+      console.error("Gagal membuat PDF:", err);
       notify.error("Gagal membuat PDF.");
     } finally {
       setExporting(false);

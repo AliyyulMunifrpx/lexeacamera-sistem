@@ -1498,7 +1498,10 @@ export default function ReportsOverviewPage() {
             }
             hint={
               summary?.payroll
-                ? `Omzet setelah gaji ${formatRupiah(summary.net.revenue_after_payroll)}`
+                ? `Laba setelah gaji ${formatRupiah(
+                    summary.net.profit_after_payroll ??
+                      summary.net.profit - summary.payroll.amount,
+                  )}`
                 : ""
             }
           />

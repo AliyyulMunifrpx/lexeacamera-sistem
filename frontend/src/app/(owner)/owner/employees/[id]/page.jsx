@@ -68,6 +68,34 @@ const STATUS = {
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ID_PATTERN = /^[A-Za-z0-9]{1,10}$/;
+const ACCOUNT_PATTERN = /^[\d\s-]+$/;
+
+const BANK_FIELDS = [
+  {
+    name: "job_title",
+    label: "Jabatan",
+    placeholder: "Contoh: Kasir",
+    max: 100,
+  },
+  {
+    name: "bank_name",
+    label: "Nama bank",
+    placeholder: "Contoh: BCA",
+    max: 100,
+  },
+  {
+    name: "account_number",
+    label: "Nomor rekening",
+    placeholder: "1234567890",
+    max: 30,
+  },
+  {
+    name: "account_holder",
+    label: "Atas nama",
+    placeholder: "Nama pemilik rekening",
+    max: 100,
+  },
+];
 
 /* -------------------------------- Formatters ------------------------------ */
 
@@ -157,6 +185,44 @@ function LoadingState() {
   );
 }
 
+/* ------------------------------- Text field ------------------------------- */
+
+function TextField({ id, label, error, ...inputProps }) {
+  return (
+    <div className="min-w-0">
+      <label htmlFor={id} className={labelClass}>
+        {label}
+        <span className="ml-2 text-second2" aria-hidden="true">
+          *
+        </span>
+      </label>
+      <input
+        id={id}
+        type="text"
+        autoComplete="off"
+        aria-invalid={error ? "true" : undefined}
+        aria-describedby={error ? `${id}-error` : undefined}
+        className={inputClass(Boolean(error))}
+        {...inputProps}
+      />
+      {error && (
+        <p
+          id={`${id}-error`}
+          role="alert"
+          className="mt-2 flex items-start gap-2 text-sm text-second2"
+        >
+          <FiAlertCircle
+            size={16}
+            className="mt-0.5 shrink-0"
+            aria-hidden="true"
+          />
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /* ------------------------------- Form edit ------------------------------- */
 
 function EmployeeForm({ employee }) {
@@ -166,6 +232,11 @@ function EmployeeForm({ employee }) {
   const [name, setName] = useState(employee.name ?? "");
   const [email, setEmail] = useState(employee.email ?? "");
   const [displayId, setDisplayId] = useState(employee.display_id ?? "");
+  const [bank, setBank] = useState(() =>
+    Object.fromEntries(
+      BANK_FIELDS.map((field) => [field.name, employee[field.name] ?? ""]),
+    ),
+  );
   const [isActive, setIsActive] = useState(Boolean(employee.is_active));
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState("");
@@ -179,7 +250,15 @@ function EmployeeForm({ employee }) {
     trimmedEmail.toLowerCase() !== (employee.email ?? "").toLowerCase();
   const idChanged = trimmedId !== (employee.display_id ?? "");
   const activeChanged = isActive !== Boolean(employee.is_active);
-  const dirty = nameChanged || idChanged || emailChanged || activeChanged;
+  const bankChanged = Object.fromEntries(
+    BANK_FIELDS.map((field) => [
+      field.name,
+      bank[field.name].trim() !== (employee[field.name] ?? ""),
+    ]),
+  );
+  const anyBankChanged = Object.values(bankChanged).some(Boolean);
+  const dirty =
+    nameChanged || idChanged || emailChanged || activeChanged || anyBankChanged;
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -198,6 +277,23 @@ function EmployeeForm({ employee }) {
           "ID hanya boleh huruf dan angka, maksimal 10 karakter.";
     }
 
+    for (const field of BANK_FIELDS) {
+      if (!bankChanged[field.name]) continue;
+      const value = bank[field.name].trim();
+
+      if (!value) nextErrors[field.name] = `${field.label} wajib diisi.`;
+      else if (field.name === "account_number") {
+        if (!ACCOUNT_PATTERN.test(value))
+          nextErrors.account_number =
+            "Nomor rekening hanya boleh angka, spasi, atau tanda strip.";
+        else if (value.length < 4 || value.length > 30)
+          nextErrors.account_number = "Nomor rekening harus 4–30 karakter.";
+      } else if (value.length > field.max) {
+        nextErrors[field.name] =
+          `${field.label} maksimal ${field.max} karakter.`;
+      }
+    }
+
     if (emailChanged) {
       if (!trimmedEmail) nextErrors.email = "Email wajib diisi.";
       else if (!EMAIL_PATTERN.test(trimmedEmail) || trimmedEmail.length > 254)
@@ -210,6 +306,12 @@ function EmployeeForm({ employee }) {
     const data = {
       ...(nameChanged && { name: trimmedName }),
       ...(idChanged && { display_id: trimmedId }),
+      ...Object.fromEntries(
+        BANK_FIELDS.filter((field) => bankChanged[field.name]).map((field) => [
+          field.name,
+          bank[field.name].trim(),
+        ]),
+      ),
       ...(emailChanged && { email: trimmedEmail }),
       ...(activeChanged && { is_active: isActive }),
     };
@@ -414,6 +516,35 @@ function EmployeeForm({ employee }) {
             </p>
           )}
         </div>
+
+        <p className="pt-2 text-sm font-bold text-second">
+          Jabatan dan rekening
+        </p>
+
+        {BANK_FIELDS.map((field) => (
+          <TextField
+            key={field.name}
+            id={`emp-${field.name}`}
+            name={field.name}
+            label={field.label}
+            error={errors[field.name]}
+            maxLength={field.max}
+            value={bank[field.name]}
+            disabled={busy}
+            placeholder={field.placeholder}
+            inputMode={field.name === "account_number" ? "numeric" : undefined}
+            onChange={(event) => {
+              const raw = event.target.value;
+              const value =
+                field.name === "account_number"
+                  ? raw.replace(/[^\d\s-]/g, "")
+                  : raw;
+              setBank((current) => ({ ...current, [field.name]: value }));
+              if (errors[field.name])
+                setErrors((current) => ({ ...current, [field.name]: "" }));
+            }}
+          />
+        ))}
 
         <div className="flex items-start justify-between gap-4 rounded-xl border border-second/30 p-4">
           <div className="min-w-0">

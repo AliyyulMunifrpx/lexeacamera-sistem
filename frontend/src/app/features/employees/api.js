@@ -25,18 +25,27 @@ export async function getEmployee(id) {
 
   return response.data.data;
 }
-
-/** POST /owner/employees. Mengembalikan karyawan + `email_sent`. */
-export async function createEmployee({ name, email, display_id }) {
+export async function createEmployee({
+  name,
+  email,
+  display_id,
+  job_title,
+  bank_name,
+  account_number,
+  account_holder,
+}) {
   const response = await api.post("/owner/employees", {
     name,
     email,
     display_id,
+    job_title,
+    bank_name,
+    account_number,
+    account_holder,
   });
 
   return response.data.data;
 }
-
 /**
  * PUT /owner/employees/:id
  * Minimal satu dari: name, email, is_active.
@@ -44,11 +53,24 @@ export async function createEmployee({ name, email, display_id }) {
  */
 export async function updateEmployee(
   id,
-  { name, email, is_active, display_id },
+  {
+    name,
+    email,
+    is_active,
+    display_id,
+    job_title,
+    bank_name,
+    account_holder,
+    account_number,
+  },
 ) {
   const body = {
     ...(name !== undefined && { name }),
     ...(email !== undefined && { email }),
+    ...(job_title !== undefined && { job_title }),
+    ...(bank_name !== undefined && { bank_name }),
+    ...(account_holder !== undefined && { account_holder }),
+    ...(account_number !== undefined && { account_number }),
     ...(display_id !== undefined && { display_id }),
     ...(is_active !== undefined && { is_active }),
   };

@@ -252,6 +252,10 @@ model Employee {
   id                String       @id @default(uuid())
   display_id        String?
   name              String
+  job_title         String?
+  bank_name         String?
+  account_number    String?
+  account_holder    String?
   pin_hash          String? // null sampai karyawan membuat PIN lewat link verifikasi
   is_active         Boolean      @default(true)
   user_id           String?      @unique

@@ -23,6 +23,10 @@ const SELECT = {
   user_id: true,
   pin_hash: true,
   display_id: true,
+  job_title: true,
+  bank_name: true,
+  account_number: true,
+  account_holder: true,
   email_verified_at: true,
   verify_sent_at: true,
   created_at: true,
@@ -97,6 +101,10 @@ const createEmployee = async (request) => {
       data: {
         name: req.name,
         email: req.email,
+        job_title: req.job_title,
+        bank_name: req.bank_name,
+        account_number: req.account_number,
+        account_holder: req.account_holder,
         display_id: req.display_id,
         ...fields,
       },
@@ -186,6 +194,12 @@ const updateEmployee = async (request) => {
   const data = {};
   if (fields.name !== undefined) data.name = fields.name;
   if (fields.display_id !== undefined) data.display_id = fields.display_id;
+  if (fields.job_title !== undefined) data.job_title = fields.job_title;
+  if (fields.bank_name !== undefined) data.bank_name = fields.bank_name;
+  if (fields.account_number !== undefined)
+    data.account_number = fields.account_number;
+  if (fields.account_holder !== undefined)
+    data.account_holder = fields.account_holder;
   if (fields.is_active !== undefined) data.is_active = fields.is_active;
 
   let token = null;

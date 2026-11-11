@@ -22,9 +22,9 @@ import {
   useCreateEmployee,
   useGetEmployees,
 } from "../../../features/employees/hooks.js";
-import notify from "../../../../lib/notify.js";
+import PrimaryButton from "./../../../../components/primary-button";
 import { normalizeApiError } from "../../../../lib/api/errors.js";
-import PrimaryButton from "../../../../components/primary-button.jsx";
+import notify from "../../../../lib/notify.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Design rules (SAMAKAN DENGAN INVOICE)                                     */
@@ -66,6 +66,34 @@ const STATUS_FILTERS = [
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ID_PATTERN = /^[A-Za-z0-9]{1,10}$/;
+const ACCOUNT_PATTERN = /^[\d\s-]+$/;
+
+const BANK_FIELDS = [
+  {
+    name: "job_title",
+    label: "Jabatan",
+    placeholder: "Contoh: Kasir",
+    max: 100,
+  },
+  {
+    name: "bank_name",
+    label: "Nama bank",
+    placeholder: "Contoh: BCA",
+    max: 100,
+  },
+  {
+    name: "account_number",
+    label: "Nomor rekening",
+    placeholder: "1234567890",
+    max: 30,
+  },
+  {
+    name: "account_holder",
+    label: "Atas nama",
+    placeholder: "Nama pemilik rekening",
+    max: 100,
+  },
+];
 
 /* -------------------------------- Formatters ------------------------------ */
 
@@ -170,6 +198,44 @@ function LoadingState() {
   );
 }
 
+/* ------------------------------- Text field ------------------------------- */
+
+function TextField({ id, label, error, ...inputProps }) {
+  return (
+    <div className="min-w-0">
+      <label htmlFor={id} className={labelClass}>
+        {label}
+        <span className="ml-2 text-second2" aria-hidden="true">
+          *
+        </span>
+      </label>
+      <input
+        id={id}
+        type="text"
+        autoComplete="off"
+        aria-invalid={error ? "true" : undefined}
+        aria-describedby={error ? `${id}-error` : undefined}
+        className={inputClass(Boolean(error))}
+        {...inputProps}
+      />
+      {error && (
+        <p
+          id={`${id}-error`}
+          role="alert"
+          className="mt-2 flex items-start gap-2 text-sm text-second2"
+        >
+          <FiAlertCircle
+            size={16}
+            className="mt-0.5 shrink-0"
+            aria-hidden="true"
+          />
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /* ------------------------- Add Employee Dialog ---------------------------- */
 
 function AddEmployeeDialog({ onClose }) {
@@ -183,6 +249,12 @@ function AddEmployeeDialog({ onClose }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [displayId, setDisplayId] = useState("");
+  const [bank, setBank] = useState({
+    job_title: "",
+    bank_name: "",
+    account_number: "",
+    account_holder: "",
+  });
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState("");
 
@@ -230,14 +302,40 @@ function AddEmployeeDialog({ onClose }) {
       nextErrors.display_id =
         "ID hanya boleh huruf dan angka, maksimal 10 karakter.";
 
+    const trimmedBank = {};
+    for (const field of BANK_FIELDS) {
+      const value = bank[field.name].trim();
+      trimmedBank[field.name] = value;
+
+      if (!value) nextErrors[field.name] = `${field.label} wajib diisi.`;
+      else if (field.name === "account_number") {
+        if (!ACCOUNT_PATTERN.test(value))
+          nextErrors.account_number =
+            "Nomor rekening hanya boleh angka, spasi, atau tanda strip.";
+        else if (value.length < 4 || value.length > 30)
+          nextErrors.account_number = "Nomor rekening harus 4–30 karakter.";
+      } else if (value.length > field.max) {
+        nextErrors[field.name] =
+          `${field.label} maksimal ${field.max} karakter.`;
+      }
+    }
+
     setErrors(nextErrors);
-    if (Object.keys(nextErrors).length > 0) return;
+    if (Object.keys(nextErrors).length > 0) {
+      requestAnimationFrame(() => {
+        document
+          .querySelector("[role='dialog'] [aria-invalid='true']")
+          ?.scrollIntoView({ block: "center" });
+      });
+      return;
+    }
 
     try {
       const result = await createMutation.mutateAsync({
         name: trimmedName,
         email: trimmedEmail,
         display_id: trimmedId,
+        ...trimmedBank,
       });
 
       if (result?.email_sent === false) {
@@ -435,6 +533,37 @@ function AddEmployeeDialog({ onClose }) {
               </p>
             )}
           </div>
+
+          <p className="pt-2 text-sm font-bold text-second">
+            Jabatan dan rekening
+          </p>
+
+          {BANK_FIELDS.map((field) => (
+            <TextField
+              key={field.name}
+              id={`employee-${field.name}`}
+              name={field.name}
+              label={field.label}
+              error={errors[field.name]}
+              maxLength={field.max}
+              value={bank[field.name]}
+              disabled={busy}
+              placeholder={field.placeholder}
+              inputMode={
+                field.name === "account_number" ? "numeric" : undefined
+              }
+              onChange={(event) => {
+                const raw = event.target.value;
+                const value =
+                  field.name === "account_number"
+                    ? raw.replace(/[^\d\s-]/g, "")
+                    : raw;
+                setBank((current) => ({ ...current, [field.name]: value }));
+                if (errors[field.name])
+                  setErrors((current) => ({ ...current, [field.name]: "" }));
+              }}
+            />
+          ))}
         </div>
 
         {formError && (
@@ -857,6 +986,7 @@ export default function EmployeesPage() {
                           )}
                         </div>
                       </td>
+
                       <td className="px-4 py-4 text-right">
                         <PrimaryButton href={EMPLOYEE_PATH(employee.id)}>
                           Detail

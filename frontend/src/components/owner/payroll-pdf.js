@@ -150,11 +150,29 @@ export function terbilangRupiah(value) {
   const words = `${amount < 0 ? "minus " : ""}${spellNumber(Math.abs(amount))} rupiah`;
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
-
+/* Ambil nilai pertama yang terisi dari beberapa kemungkinan nama field. */
+function pickStoreValue(store, keys) {
+  for (const key of keys) {
+    const value = store?.[key];
+    if (hasValue(value)) return String(value).trim();
+  }
+  return "";
+}
 /**
  * @param {{ slip: object, store?: object, ownerName?: string }} params
  */
-export async function downloadPayrollPdf({ slip, store, ownerName }) {
+/* Terima "wav.camera", "@wav.camera", atau URL instagram.com/wav.camera -> "@wav.camera" */
+function formatInstagram(value) {
+  const handle = String(value ?? "")
+    .trim()
+    .replace(/^https?:\/\/(www\.)?instagram\.com\//i, "")
+    .replace(/[/?#].*$/, "")
+    .replace(/^@/, "");
+  return handle ? `@${handle}` : "";
+}
+export async function downloadPayrollPdf({ slip, store: rawStore, ownerName }) {
+  const store = rawStore?.data ?? rawStore;
+
   const doc = new jsPDF({
     orientation: "portrait",
     unit: "mm",
@@ -342,7 +360,49 @@ export async function downloadPayrollPdf({ slip, store, ownerName }) {
     logoY + 8,
     { size: 11.5, bold: true, maxWidth: 74 },
   );
-  const storeBottom = logoY + 8 + (storeLines - 1) * 4.4;
+  let storeBottom = logoY + 8 + (storeLines - 1) * 4.4;
+  const storeAddress = pickStoreValue(store, [
+    "address",
+    "store_address",
+    "alamat",
+    "full_address",
+    "location",
+  ]);
+  const storePhone = pickStoreValue(store, [
+    "phone",
+    "phone_number",
+    "telephone",
+    "telp",
+    "whatsapp",
+    "mobile",
+    "contact",
+  ]);
+  const storeEmail = pickStoreValue(store, [
+    "email",
+    "store_email",
+    "contact_email",
+  ]);
+  const storeInstagram = formatInstagram(
+    pickStoreValue(store, ["instagram", "instagram_handle", "ig"]),
+  );
+
+  // Urutan seperti invoice: @instagram, alamat, lalu kontak.
+  const storeInfo = [
+    storeInstagram,
+    storeAddress,
+    [storePhone && `Telp: ${storePhone}`, storeEmail]
+      .filter(Boolean)
+      .join("   |   "),
+  ].filter(Boolean);
+  storeInfo.forEach((text) => {
+    storeBottom += 3.8;
+    const lineCount = put(text, storeX, storeBottom, {
+      size: 7.5,
+      color: C.muted,
+      maxWidth: 74,
+    });
+    storeBottom += (lineCount - 1) * 3.1;
+  });
 
   put("SLIP GAJI", contentRight, 16, {
     size: 22,

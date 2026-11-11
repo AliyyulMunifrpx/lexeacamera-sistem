@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link.js";
 import { FiLoader, FiPlus, FiSave, FiTrash2, FiUser } from "react-icons/fi";
 
@@ -169,12 +169,22 @@ function originalItems(slip) {
 
 const ACCOUNT_PATTERN = /^[\d\s-]+$/;
 
+/* Field yang diisi otomatis dari data karyawan saat membuat slip. */
+const PREFILL_FIELDS = [
+  "job_title",
+  "bank_name",
+  "account_number",
+  "account_holder",
+];
+
 /* ---------------------------------- Form ---------------------------------- */
 
 /**
  * mode: "create" | "edit"
  * slip: data slip (edit) atau null
  * employeeId / employeeName / employeeField: dikelola halaman (pemilih karyawan di create)
+ * prefill: { job_title, bank_name, account_number, account_holder } dari data karyawan (create)
+ * prefillLoading: true selama detail karyawan masih dimuat
  * onSubmit(payload): payload siap kirim. Di edit hanya berisi field yang berubah.
  */
 export default function PayrollForm({
@@ -184,7 +194,8 @@ export default function PayrollForm({
   employeeName = "",
   employeeField = null,
   employeeError = "",
-  presetJob = "",
+  prefill = null,
+  prefillLoading = false,
   submitting,
   submitLabel,
   cancelHref,
@@ -193,7 +204,7 @@ export default function PayrollForm({
   const isEdit = mode === "edit";
 
   const [form, setForm] = useState({
-    job_title: slip?.job_title ?? presetJob,
+    job_title: slip?.job_title ?? "",
     bank_name: slip?.bank_name ?? "",
     account_number: slip?.account_number ?? "",
     account_holder: slip?.account_holder ?? "",
@@ -215,6 +226,47 @@ export default function PayrollForm({
   const [errors, setErrors] = useState({});
   const [itemErrors, setItemErrors] = useState({});
 
+  /* Field prefill yang sudah diubah manual oleh pengguna (per karyawan). */
+  const touched = useRef(new Set());
+  const lastEmployeeId = useRef(employeeId);
+
+  useEffect(() => {
+    if (isEdit) return;
+
+    // Ganti karyawan: semua field boleh diisi ulang dari data karyawan baru.
+    if (lastEmployeeId.current !== employeeId) {
+      touched.current = new Set();
+      lastEmployeeId.current = employeeId;
+    }
+
+    setForm((current) => {
+      const next = { ...current };
+      let changed = false;
+      for (const field of PREFILL_FIELDS) {
+        if (touched.current.has(field)) continue;
+        const value = prefill?.[field] ?? "";
+        if (next[field] !== value) {
+          next[field] = value;
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+
+    // Bersihkan error lama di field yang baru terisi.
+    setErrors((current) => {
+      const next = { ...current };
+      let changed = false;
+      for (const field of PREFILL_FIELDS) {
+        if (!touched.current.has(field) && next[field]) {
+          next[field] = "";
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [isEdit, employeeId, prefill]);
+
   const total = items.reduce(
     (sum, item) => sum + (Number(item.amount) || 0),
     0,
@@ -222,6 +274,7 @@ export default function PayrollForm({
   const totalTooLarge = total > MAX_AMOUNT;
 
   function setField(name, value) {
+    if (PREFILL_FIELDS.includes(name)) touched.current.add(name);
     setForm((current) => ({ ...current, [name]: value }));
     setErrors((current) =>
       current[name] ? { ...current, [name]: "" } : current,
@@ -280,12 +333,7 @@ export default function PayrollForm({
     }
 
     const data = {};
-    for (const field of [
-      "job_title",
-      "bank_name",
-      "account_number",
-      "account_holder",
-    ]) {
+    for (const field of PREFILL_FIELDS) {
       const value = form[field].trim();
       if (value !== (slip[field] ?? "")) data[field] = value;
     }
@@ -385,6 +433,12 @@ export default function PayrollForm({
   const status = STATUS[isEdit ? slip.status : form.status];
   const shownEmployee = isEdit ? slip.employee_name : employeeName;
 
+  const accountDescription = prefillLoading
+    ? "Mengambil jabatan dan rekening karyawan…"
+    : !isEdit && employeeId
+      ? "Terisi otomatis dari data karyawan, boleh diubah. Data ini disimpan di slip, jadi slip lama tidak berubah kalau data karyawan diubah nanti."
+      : "Data ini disimpan di slip, jadi slip lama tidak berubah kalau data karyawan diubah nanti.";
+
   return (
     <form
       onSubmit={handleSubmit}
@@ -425,10 +479,7 @@ export default function PayrollForm({
         </Section>
 
         {/* Jabatan & rekening */}
-        <Section
-          title="Jabatan dan rekening"
-          description="Data ini disimpan di slip, jadi slip lama tidak berubah kalau data karyawan diubah nanti."
-        >
+        <Section title="Jabatan dan rekening" description={accountDescription}>
           <Field
             label="Jabatan"
             htmlFor="job_title"
