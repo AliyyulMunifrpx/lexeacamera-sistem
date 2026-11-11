@@ -2,6 +2,10 @@ import Image from "next/image.js";
 import PrimaryBanner from "./primary-banner.jsx";
 import CameraCard from "./camera-card.jsx";
 
+// Rasio banner di layar lg (lebar:tinggi). Ubah ini kalau tingginya
+// belum pas dengan 2 baris produk. Makin kecil angka kedua, makin pendek.
+const LG_BANNER_ASPECT = "lg:aspect-[4/5]";
+
 export default function StoreHomePage({ data }) {
   const bestSellingBanner = data?.banners?.find(
     (item) => item.is_best_seller === true,
@@ -54,9 +58,9 @@ export default function StoreHomePage({ data }) {
     bannerRows.push(lgBanners.slice(i, i + 3));
   }
 
-  // Jumlah produk yang menempel di samping banner
-  // 2 banner -> 2 kolom x 2 baris = 4 | 1 banner -> 4 kolom x 3 baris = 12
-  const SIDE_PRODUCTS = { 1: 12, 2: 4 };
+  // Jumlah produk yang menempel di samping banner (tinggi 2 baris)
+  // 2 banner -> 2 kolom x 2 baris = 4 | 1 banner -> 4 kolom x 2 baris = 8
+  const SIDE_PRODUCTS = { 1: 8, 2: 4 };
 
   // Bagikan produk ke tiap baris banner, sisanya ke grid bawah
   let pointer = 0;
@@ -70,8 +74,12 @@ export default function StoreHomePage({ data }) {
 
   function renderLgBanner(item) {
     if (item.type === "primary") {
+      // Rasio bawaan PrimaryBanner (2/3) ditimpa supaya mengikuti tinggi wrapper.
       return (
-        <div key={item.key} className="col-span-2">
+        <div
+          key={item.key}
+          className={`col-span-2 relative w-full ${LG_BANNER_ASPECT} [&>div]:absolute [&>div]:inset-0 [&>div]:aspect-auto`}
+        >
           <PrimaryBanner cameras={item.cameras} banner={item.banner} />
         </div>
       );
@@ -80,7 +88,7 @@ export default function StoreHomePage({ data }) {
     return (
       <div
         key={item.key}
-        className="col-span-2 w-full aspect-[2/3] relative rounded-xl overflow-hidden"
+        className={`col-span-2 w-full ${LG_BANNER_ASPECT} relative rounded-xl overflow-hidden`}
       >
         <Image
           alt="Standard banner"

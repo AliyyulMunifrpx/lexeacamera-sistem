@@ -12,6 +12,7 @@ import {
   FiCopy,
   FiCreditCard,
   FiDollarSign,
+  FiDownload,
   FiEdit2,
   FiLock,
   FiRefreshCw,
@@ -26,6 +27,8 @@ import {
   useTogglePayrollItem,
   useUpdatePayrollStatus,
 } from "../../../../features/payrolls/hooks.js";
+// Sesuaikan path dua hook ini dengan yang dipakai di InvoiceDetailPage
+import { useGetStore } from "../../../../features/store/hooks.js";
 import notify from "../../../../../lib/notify.js";
 import { normalizeApiError } from "../../../../../lib/api/errors.js";
 import {
@@ -46,6 +49,7 @@ import {
   labelClass,
   todayWib,
 } from "../../../../../components/owner/payroll-shared.jsx";
+import { useGetCurrentUser } from "../../../../features/users/hooks.js";
 
 function Shell({ children }) {
   return (
@@ -142,9 +146,14 @@ export default function PayrollDetailPage() {
   const toggleMutation = useTogglePayrollItem();
   const deleteMutation = useDeletePayroll();
 
+  // Untuk PDF: logo toko dan nama owner
+  const { data: store } = useGetStore();
+  const { data: currentUser } = useGetCurrentUser();
+
   const [modal, setModal] = useState(null); // "pay" | "unpay" | "delete"
   const [paidDate, setPaidDate] = useState("");
   const [copied, setCopied] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     if (isError && error) {
@@ -276,6 +285,26 @@ export default function PayrollDetailPage() {
     }
   }
 
+  async function handleExportPdf() {
+    if (exporting) return;
+    setExporting(true);
+
+    try {
+      // Di-import saat diklik supaya library PDF tidak ikut bundle awal halaman.
+      const { downloadPayrollPdf } =
+        await import("../../../../../components/owner/payroll-pdf.js");
+      await downloadPayrollPdf({
+        slip,
+        store,
+        ownerName: currentUser?.name,
+      });
+    } catch {
+      notify.error("Gagal membuat PDF.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <Shell>
       {/* Header */}
@@ -296,6 +325,16 @@ export default function PayrollDetailPage() {
           </div>
 
           <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
+            <button
+              type="button"
+              onClick={handleExportPdf}
+              disabled={exporting}
+              className={BTN_OUTLINE}
+            >
+              <FiDownload size={16} aria-hidden="true" />
+              {exporting ? "Membuat PDF…" : "Export PDF"}
+            </button>
+
             {isPaid ? (
               <button
                 type="button"
