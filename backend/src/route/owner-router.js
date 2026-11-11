@@ -121,5 +121,5 @@ ownerRouter.get("/owner/reports/transactions", reportController.transactions);
 ownerRouter.get("/owner/reports/stock-value", reportController.stockValue);
 ownerRouter.put("/owner/orders/:id/items", orderController.update);
 ownerRouter.delete("/owner/employees/:id", employeeController.remove);
-ownerRouter.post("/cameras/import", cameraImportController.importCameras);
+ownerRouter.post("/owner/cameras/import", cameraImportController.importCameras);
 export default ownerRouter;
