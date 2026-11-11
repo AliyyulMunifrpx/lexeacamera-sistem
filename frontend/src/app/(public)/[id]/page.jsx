@@ -101,7 +101,7 @@ function ExpandableText({ text }) {
         </p>
 
         {isClamped && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-primary to-transparent" />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-second4 to-transparent" />
         )}
       </div>
 

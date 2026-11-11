@@ -13,6 +13,8 @@ import { validate } from "../../validation/validation.js";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ALL_START = "1900-01-01T00:00:00.000Z";
 const ALL_END = "3000-01-01T00:00:00.000Z";
+const ALL_FROM = "1900-01-01";
+const ALL_TO = "3000-01-01";
 const STEP = { day: "1 day", week: "1 week", month: "1 month" };
 
 // Batas hari WIB -> waktu UTC (paid_at disimpan UTC). WIB tidak mengenal DST.
@@ -69,7 +71,8 @@ const getSummary = async (request) => {
   const req = validate(summaryReportValidation, request);
   const { start, end } = bounds(req.from, req.to);
 
-  const [row] = await prisma.$queryRaw`
+  const [[row], [payrollRow]] = await Promise.all([
+    prisma.$queryRaw`
     WITH per_order AS (
       SELECT
         o.type,
@@ -97,11 +100,34 @@ const getSummary = async (request) => {
       COALESCE(SUM(total_amount::bigint) FILTER (WHERE type = 'REFUND'), 0) AS refund_amount,
       COALESCE(SUM(cost) FILTER (WHERE type = 'REFUND'), 0) AS refund_cost
     FROM per_order
-  `;
+  `,
+    // Gaji dihitung dari slip PAID berdasarkan tanggal cair (tanggal WIB, tipe date).
+    prisma.$queryRaw`
+    SELECT
+      COUNT(*) AS count,
+      COALESCE(SUM(total_amount::bigint), 0) AS amount
+    FROM "Payroll"
+    WHERE status = 'PAID'
+      AND disbursement_date >= ${req.from ?? ALL_FROM}::date
+      AND disbursement_date <= ${req.to ?? ALL_TO}::date
+  `,
+  ]);
+
+  const base = shape(row);
+  const payroll = {
+    count: num(payrollRow.count),
+    amount: num(payrollRow.amount),
+  };
 
   return {
     period: req.from ? { from: req.from, to: req.to } : null,
-    ...shape(row),
+    ...base,
+    payroll,
+    net: {
+      ...base.net,
+      revenue_after_payroll: base.net.revenue - payroll.amount,
+      profit_after_payroll: base.net.profit - payroll.amount,
+    },
   };
 };
 

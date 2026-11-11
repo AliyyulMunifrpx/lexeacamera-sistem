@@ -63,8 +63,8 @@ const CONTACT_FIELDS = [
   { name: "tiktok", label: "TikTok", placeholder: "@namatoko" },
   {
     name: "facebook",
-    label: "Facebook",
-    placeholder: "Nama atau akun Facebook",
+    label: "Shopee",
+    placeholder: "Link toko di Shopee",
   },
 ];
 

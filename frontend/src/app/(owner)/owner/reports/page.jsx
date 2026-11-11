@@ -13,6 +13,7 @@ import {
   FiRefreshCw,
   FiShoppingBag,
   FiTrendingUp,
+  FiUsers,
 } from "react-icons/fi";
 
 import {
@@ -1407,7 +1408,7 @@ export default function ReportsOverviewPage() {
       {(!summaryQuery.isError || summary) && (
         <section
           aria-label="Ringkasan"
-          className={`grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5 ${summaryQuery.isFetching && summary ? "opacity-60" : ""}`}
+          className={`grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 ${summaryQuery.isFetching && summary ? "opacity-60" : ""}`}
         >
           <MiniStatCard
             icon={FiTrendingUp}
@@ -1481,6 +1482,23 @@ export default function ReportsOverviewPage() {
             hint={
               summary
                 ? `${formatNumber(summary.refunds.orders)} order refund`
+                : ""
+            }
+          />
+          <MiniStatCard
+            icon={FiUsers}
+            label="Gaji dibayar"
+            tone="pending"
+            value={
+              summaryQuery.isPending
+                ? "…"
+                : summary?.payroll
+                  ? formatRupiah(summary.payroll.amount)
+                  : "—"
+            }
+            hint={
+              summary?.payroll
+                ? `Omzet setelah gaji ${formatRupiah(summary.net.revenue_after_payroll)}`
                 : ""
             }
           />

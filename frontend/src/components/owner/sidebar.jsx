@@ -23,7 +23,7 @@ import {
   MdQrCode2,
   MdQrCodeScanner,
 } from "react-icons/md";
-import { BiStoreAlt } from "react-icons/bi";
+import { BiMoney, BiStoreAlt } from "react-icons/bi";
 
 import { useGetStore } from "../../app/features/store/hooks.js";
 import Image from "next/image.js";
@@ -104,6 +104,12 @@ const navigation = [
     label: "Admin",
     href: "/owner/admins",
     icon: HiOutlineUserCircle,
+    group: "Tim",
+  },
+  {
+    label: "Gaji",
+    href: "/owner/payrolls",
+    icon: BiMoney,
     group: "Tim",
   },
 

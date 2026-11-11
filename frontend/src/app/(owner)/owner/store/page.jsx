@@ -24,6 +24,7 @@ import {
 import { normalizeApiError } from "../../../../lib/api/errors.js";
 import notify from "../../../../lib/notify.js";
 import { useGetStore } from "../../../features/store/hooks.js";
+import { TbBrandShopee } from "react-icons/tb";
 
 /* -------------------------------------------------------------------------- */
 /*  Design rules (SAMAKAN DENGAN INVOICE)                                     */
@@ -250,7 +251,7 @@ export default function StorePage() {
     { icon: FiMessageCircle, label: "WhatsApp", value: store?.whatsapp },
     { icon: FiInstagram, label: "Instagram", value: store?.instagram },
     { icon: FiMusic, label: "TikTok", value: store?.tiktok },
-    { icon: FiFacebook, label: "Facebook", value: store?.facebook },
+    { icon: TbBrandShopee, label: "Shopee", value: store?.facebook },
   ];
 
   return (
