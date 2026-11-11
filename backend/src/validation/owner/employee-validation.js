@@ -42,7 +42,7 @@ export const updateEmployeeValidation = Joi.object({
   "email",
   "is_active",
   "display_id",
-  "job_tittle",
+  "job_title",
   "bank_name",
   "account_number",
   "account_holder",
