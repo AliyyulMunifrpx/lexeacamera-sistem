@@ -2,7 +2,14 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link.js";
-import { FiLoader, FiPlus, FiSave, FiTrash2, FiUser } from "react-icons/fi";
+import {
+  FiCheck,
+  FiLoader,
+  FiPlus,
+  FiSave,
+  FiTrash2,
+  FiUser,
+} from "react-icons/fi";
 
 import {
   BTN_OUTLINE,
@@ -126,6 +133,29 @@ export function newItem(values = {}) {
     noteEdited: false,
     ...values,
   };
+}
+
+/* Template penerimaan yang sering dipakai owner. */
+const ITEM_TEMPLATES = [
+  "Gaji pokok",
+  "Insentif sales camera",
+  "Insentif sales rental",
+  "Insentif kreator",
+  "Piket",
+  "Tanggal merah",
+  "Shifting",
+  "Paket",
+  "Insentif kinerja",
+];
+
+/* Item yang belum diisi sama sekali (hasil klik "Tambah penerimaan"). */
+function isBlankItem(item) {
+  return (
+    !item.calc &&
+    item.name.trim() === "" &&
+    item.amount === "" &&
+    item.note.trim() === ""
+  );
 }
 
 function buildCalcNote(item) {
@@ -297,6 +327,26 @@ export default function PayrollForm({
     setItems((current) => [...current, newItem()]);
   }
 
+  /* Tambah penerimaan dari template. Item kosong diisi dulu sebelum menambah baris baru. */
+  function addTemplate(name) {
+    const blank = items.find(isBlankItem);
+    let key;
+
+    if (blank) {
+      key = blank.key;
+      setItem(blank.key, { name });
+    } else {
+      if (items.length >= MAX_ITEMS) return;
+      const created = newItem({ name });
+      key = created.key;
+      setItems((current) => [...current, created]);
+    }
+
+    requestAnimationFrame(() => {
+      document.getElementById(`${key}-amount`)?.focus();
+    });
+  }
+
   function removeItem(key) {
     setItems((current) =>
       current.length > 1 ? current.filter((item) => item.key !== key) : current,
@@ -439,6 +489,12 @@ export default function PayrollForm({
       ? "Terisi otomatis dari data karyawan, boleh diubah. Data ini disimpan di slip, jadi slip lama tidak berubah kalau data karyawan diubah nanti."
       : "Data ini disimpan di slip, jadi slip lama tidak berubah kalau data karyawan diubah nanti.";
 
+  const usedNames = new Set(
+    items.map((item) => item.name.trim().toLowerCase()),
+  );
+  const hasBlankItem = items.some(isBlankItem);
+  const itemsFull = items.length >= MAX_ITEMS && !hasBlankItem;
+
   return (
     <form
       onSubmit={handleSubmit}
@@ -577,13 +633,48 @@ export default function PayrollForm({
         {/* Penerimaan */}
         <Section
           title="Penerimaan"
-          description="Isi gaji pokok, insentif, dan penerimaan lain. Total dihitung otomatis."
+          description="Pilih template yang sering dipakai atau tambah sendiri. Total dihitung otomatis."
           aside={
             <Tag tone="soft">
               {items.length}/{MAX_ITEMS} penerimaan
             </Tag>
           }
         >
+          {/* Template penerimaan */}
+          <div className="flex flex-col gap-2">
+            <p className={labelClass}>Tambah cepat</p>
+            <div
+              role="group"
+              aria-label="Template penerimaan"
+              className="flex flex-wrap gap-2"
+            >
+              {ITEM_TEMPLATES.map((name) => {
+                const used = usedNames.has(name.toLowerCase());
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => addTemplate(name)}
+                    disabled={submitting || used || itemsFull}
+                    aria-pressed={used}
+                    className={`inline-flex h-8 items-center gap-2 rounded-full border px-4 text-sm font-medium transition-colors disabled:cursor-not-allowed touch-manipulation ${FOCUS_RING} ${
+                      used
+                        ? "border-second4 bg-second4/5 text-second4"
+                        : "border-second/30 text-second hover:border-second4 hover:text-second4 disabled:opacity-50"
+                    }`}
+                  >
+                    {used ? (
+                      <FiCheck size={14} aria-hidden="true" />
+                    ) : (
+                      <FiPlus size={14} aria-hidden="true" />
+                    )}
+                    {name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {items.map((item, index) => {
             const itemError = itemErrors[item.key] ?? {};
             return (
@@ -794,7 +885,7 @@ export default function PayrollForm({
               className={`${BTN_OUTLINE} w-full sm:w-auto`}
             >
               <FiPlus size={16} aria-hidden="true" />
-              Tambah penerimaan
+              Tambah penerimaan lain
             </button>
           </div>
 
