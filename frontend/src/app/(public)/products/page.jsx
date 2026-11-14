@@ -3,12 +3,20 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation.js";
 import { useGetInfiniteCameras } from "../../features/public/hooks.js";
-import { useGetCategories } from "../../features/categories/hooks.js";
 import ProductFilter, {
   DEFAULT_FILTERS,
   toApiFilters,
 } from "../../../components/public/products/product-filter.jsx";
 import CameraCard from "../../../components/public/home/camera-card.jsx";
+
+/* Ambil kategori dari satu produk. Menangani { category: { id, name } }
+   dan bentuk datar category_id / category_name. */
+function getCategory(item) {
+  const id = item?.category?.id ?? item?.category_id;
+  const name = item?.category?.name ?? item?.category_name;
+  if (id === undefined || id === null || id === "" || !name) return null;
+  return { id, name };
+}
 
 function ProductsContent() {
   const searchParams = useSearchParams();
@@ -16,10 +24,8 @@ function ProductsContent() {
 
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
 
-  const { data: categoriesData } = useGetCategories();
-  const categories = Array.isArray(categoriesData)
-    ? categoriesData
-    : (categoriesData?.data ?? []);
+  // Kategori yang pernah terlihat. Tidak dihapus saat filter berubah.
+  const [knownCategories, setKnownCategories] = useState(() => new Map());
 
   const {
     data,
@@ -40,6 +46,29 @@ function ProductsContent() {
     return [...map.values()];
   }, [data]);
 
+  // Tambahkan kategori baru dari produk yang termuat.
+  useEffect(() => {
+    setKnownCategories((current) => {
+      let next = null;
+      for (const item of items) {
+        const category = getCategory(item);
+        if (category && !current.has(String(category.id))) {
+          next = next ?? new Map(current);
+          next.set(String(category.id), category);
+        }
+      }
+      return next ?? current;
+    });
+  }, [items]);
+
+  const categories = useMemo(
+    () =>
+      [...knownCategories.values()].sort((a, b) =>
+        String(a.name).localeCompare(String(b.name), "id"),
+      ),
+    [knownCategories],
+  );
+
   const total = data?.pages?.at(-1)?.paging?.total ?? items.length;
 
   // Elemen penanda di dasar daftar: kalau terlihat, ambil halaman berikutnya.
@@ -57,8 +86,6 @@ function ProductsContent() {
     );
     observer.observe(node);
     return () => observer.disconnect();
-    // items.length ikut dipantau: kalau halaman baru belum memenuhi layar,
-    // observer dibuat ulang dan langsung memicu ambil halaman berikutnya.
   }, [hasNextPage, isFetchingNextPage, fetchNextPage, items.length]);
 
   return (
