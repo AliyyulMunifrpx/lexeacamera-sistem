@@ -16,8 +16,10 @@ const geistMono = Geist_Mono({
 });
 
 const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/+$/, "");
-const SITE_URL =
-  process.env.NEXT_PUBLIC_FRONTEND_URL ?? "https://lexeacamera.com";
+const rawSiteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "";
+const SITE_URL = /^https?:\/\//.test(rawSiteUrl)
+  ? rawSiteUrl
+  : `https://${rawSiteUrl}`;
 const FALLBACK_NAME = "WAV Camera";
 
 // Data toko diambil dari endpoint publik dan di-cache lewat "use cache".
