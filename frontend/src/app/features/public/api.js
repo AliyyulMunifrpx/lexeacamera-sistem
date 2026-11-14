@@ -51,3 +51,7 @@ export async function createOrder(payload) {
   // { data: { no_invoice, customer_name, total_amount, created_at, items: [...] } }
   return response.data;
 }
+export async function getStorePublic() {
+  const response = await api.get("/public/store");
+  return response.data.data;
+}

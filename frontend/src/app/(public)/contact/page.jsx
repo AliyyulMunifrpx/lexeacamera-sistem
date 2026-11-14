@@ -18,9 +18,9 @@ import {
   FiTrash2,
 } from "react-icons/fi";
 
-import { useGetStore } from "../../features/store/hooks.js";
 import { createOrder, getCameras } from "../../features/public/api.js";
 import { normalizeApiError } from "../../../lib/api/errors.js";
+import { useGetPublicStore } from "../../features/public/hooks.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Aturan dari dokumentasi POST /orders                                      */
@@ -985,7 +985,7 @@ function OrderForm() {
 /* --------------------------------- Halaman -------------------------------- */
 
 export default function ContactPage() {
-  const { data: store } = useGetStore();
+  const { data: store } = useGetPublicStore();
 
   const whatsapp = normalizeWhatsapp(store?.whatsapp);
   const instagram = String(store?.instagram ?? "").trim();

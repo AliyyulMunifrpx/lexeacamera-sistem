@@ -1,8 +1,7 @@
 "use client";
 
 import { FiAlertTriangle, FiRefreshCw } from "react-icons/fi";
-
-import { useGetStore } from "../../features/store/hooks.js";
+import { useGetPublicStore } from "../../features/public/hooks.js";
 
 const FOCUS_RING =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-second4/40";
@@ -52,7 +51,7 @@ export default function TermsPage() {
     isError,
     isFetching,
     refetch,
-  } = useGetStore();
+  } = useGetPublicStore();
 
   const paragraphs = String(store?.terms_and_condition ?? "")
     .replace(/\r\n/g, "\n")

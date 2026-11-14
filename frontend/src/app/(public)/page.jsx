@@ -2,8 +2,7 @@
 
 import Image from "next/image.js";
 import Link from "next/link.js";
-import { useGetStore } from "./../features/store/hooks.js";
-import { useGetHome } from "./../features/public/hooks.js";
+import { useGetHome, useGetPublicStore } from "./../features/public/hooks.js";
 import BannerCarousel, {
   BannerSlide,
 } from "../../components/public/home/banner-carousel.jsx";
@@ -46,7 +45,7 @@ function HomeSkeleton() {
 }
 
 export default function Home() {
-  const { data: store, isPending: storePending } = useGetStore();
+  const { data: store, isPending: storePending } = useGetPublicStore();
   const {
     data: homeData,
     isPending: homePending,
@@ -58,7 +57,7 @@ export default function Home() {
   const cameras = homeData?.cameras;
   const promoCamera = homeData?.promo_cameras ?? [];
   const bestSellingCamera = homeData?.best_selling_cameras ?? [];
-
+  console.log(store?.main_banner_url);
   // Promo / best seller hanya tampil kalau ada produknya. Banner reguler tanpa produk.
   const slides = (homeData?.banners ?? []).flatMap((banner) => {
     if (banner.is_promo) {
@@ -82,7 +81,7 @@ export default function Home() {
         {store?.main_banner_url ? (
           <Image
             alt={`${store?.name || "Store"} main banner`}
-            src={store.main_banner_url}
+            src={store?.main_banner_url}
             fill
             sizes="100vw"
             className="rounded-xl object-cover"

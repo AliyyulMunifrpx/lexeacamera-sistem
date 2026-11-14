@@ -1,5 +1,11 @@
 import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
-import { createOrder, getCamera, getCameras, getHome } from "./api.js";
+import {
+  createOrder,
+  getCamera,
+  getCameras,
+  getHome,
+  getStorePublic,
+} from "./api.js";
 
 export function useGetHome() {
   return useQuery({
@@ -39,5 +45,12 @@ export function useGetCamera(id) {
 export function useCreateOrder() {
   return useMutation({
     mutationFn: createOrder,
+  });
+}
+
+export function useGetPublicStore() {
+  return useQuery({
+    queryKey: ["public store"],
+    queryFn: getStorePublic,
   });
 }
