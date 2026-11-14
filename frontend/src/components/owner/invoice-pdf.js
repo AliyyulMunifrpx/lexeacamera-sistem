@@ -6,24 +6,21 @@ import {
   formatDate,
 } from "./invoice-formatters.js";
 
-/* Warna mengikuti palet aplikasi (global.css):
-   gradient #7b0a67 → #de23e8, hitam, merah #dc2626, biru #2563eb, ungu #7c3aed.
+/* Palet: merah tua #760a16 dan merah terang #d02f1c.
    Abu-abu adalah hitam dengan opasitas, sama seperti text-second/60 di web. */
 const PDF_COLORS = {
-  gradDark: [123, 10, 103], // #7b0a67
-  gradLight: [222, 35, 232], // #de23e8
-  text: [0, 0, 0], // --second
-  muted: [102, 102, 102], // second/60
-  faint: [153, 153, 153], // second/40
-  line: [230, 230, 230], // second/10
-  border: [217, 217, 217], // second/15
-  panel: [245, 245, 245], // second/4
+  dark: [118, 10, 22], // #760a16
+  accent: [208, 47, 28], // #d02f1c
+  text: [0, 0, 0],
+  muted: [102, 102, 102],
+  faint: [153, 153, 153],
+  line: [232, 226, 225],
+  border: [217, 217, 217],
+  tint: [252, 241, 240], // latar panel (merah sangat muda)
+  zebra: [251, 246, 245], // baris selang-seling tabel
+  onDark: [255, 226, 222], // teks sekunder di atas latar merah tua
   white: [255, 255, 255],
-  blue: [37, 99, 235], // #2563eb
-  blueTint: [235, 240, 253],
-  violet: [124, 58, 237], // #7c3aed
-  violetTint: [242, 238, 254],
-  red: [220, 38, 38], // #dc2626
+  green: [21, 128, 61],
 };
 
 const LOGO_MAX_SIDE = 400;
@@ -180,7 +177,7 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
     return doc.splitTextToSize(String(text), maxWidth);
   }
 
-  /* Gradient horizontal: gelap di kiri, terang di kanan (seperti bg-grad). */
+  /* Gradient horizontal: merah tua di kiri, merah terang di kanan. */
   function gradientRect(x, yy, w, h) {
     const steps = Math.max(2, Math.ceil(w / 0.8));
     const stepW = w / steps;
@@ -188,9 +185,9 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
     for (let i = 0; i < steps; i += 1) {
       const t = i / (steps - 1);
       doc.setFillColor(
-        Math.round(C.gradDark[0] + (C.gradLight[0] - C.gradDark[0]) * t),
-        Math.round(C.gradDark[1] + (C.gradLight[1] - C.gradDark[1]) * t),
-        Math.round(C.gradDark[2] + (C.gradLight[2] - C.gradDark[2]) * t),
+        Math.round(C.dark[0] + (C.accent[0] - C.dark[0]) * t),
+        Math.round(C.dark[1] + (C.accent[1] - C.dark[1]) * t),
+        Math.round(C.dark[2] + (C.accent[2] - C.dark[2]) * t),
       );
       doc.rect(x + i * stepW, yy, stepW + 0.25, h, "F");
     }
@@ -220,12 +217,12 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
   function pill(text, x, yy, { color, tint, align = "left" }) {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(7);
-    const w = doc.getTextWidth(text) + 7;
+    const w = doc.getTextWidth(text) + 8;
     const startX = align === "right" ? x - w : x;
 
     doc.setFillColor(...tint);
-    doc.roundedRect(startX, yy, w, 5.2, 2.6, 2.6, "F");
-    put(text, startX + w / 2, yy + 3.7, {
+    doc.roundedRect(startX, yy, w, 5.4, 2.7, 2.7, "F");
+    put(text, startX + w / 2, yy + 3.8, {
       size: 7,
       bold: true,
       color,
@@ -235,8 +232,9 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
     return w;
   }
 
+  /* Label bagian: teks merah terang dengan garis pendek di bawahnya. */
   function sectionLabel(text, x, yy) {
-    put(text, x, yy, { size: 7, bold: true, color: C.muted });
+    put(text, x, yy, { size: 7, bold: true, color: C.accent });
   }
 
   function newPage() {
@@ -260,8 +258,7 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
     : isPaid
       ? "LUNAS"
       : "BELUM DIBAYAR";
-  const statusColor = isPaid ? C.blue : C.violet;
-  const statusTint = isPaid ? C.blueTint : C.violetTint;
+  const statusColor = isPaid ? C.green : C.accent;
 
   // Diskon produk: selisih harga coret dan harga jual, dikali jumlah unit.
   const lineItems = invoice.items ?? [];
@@ -273,94 +270,107 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
     (Number(invoice.subtotal) || 0) + productDiscountTotal;
   const showProductDiscount = !isRefund && productDiscountTotal > 0;
 
-  /* ---------- Halaman 1: bar gradient + header ---------- */
-  gradientRect(0, 0, pageWidth, 2.5);
+  /* ---------- Halaman 1: header band merah tua ---------- */
+  const logoSize = 16;
+  const logoY = 9;
+  const storeX = margin + logoSize + 5;
 
-  const logoSize = 13;
-  const logoY = 8;
-
-  if (logo) {
-    doc.setDrawColor(...C.border);
-    doc.setLineWidth(0.2);
-    doc.roundedRect(margin, logoY, logoSize, logoSize, 2, 2, "S");
-    fitImage(logo, margin + 1, logoY + 1, logoSize - 2, logoSize - 2);
-  } else {
-    gradientRect(margin, logoY, logoSize, logoSize);
-    put(
-      String(invoice.store_name || "S")
-        .charAt(0)
-        .toUpperCase(),
-      margin + logoSize / 2,
-      logoY + 9,
-      { size: 14, bold: true, color: C.white, align: "center" },
-    );
-  }
-
-  const storeX = margin + logoSize + 4;
-  let storeY = logoY + 4;
-
-  storeY +=
-    put(String(invoice.store_name || "-").toUpperCase(), storeX, storeY, {
-      size: 11.5,
-      bold: true,
-      maxWidth: 74,
-    }) * 4.4;
-
-  if (hasValue(invoice.store_address)) {
-    storeY +=
-      put(invoice.store_address, storeX, storeY, {
-        size: 7,
-        color: C.muted,
-        maxWidth: 74,
-      }) * 3.2;
-  }
-
+  const storeNameLines = wrap(
+    String(invoice.store_name || "-").toUpperCase(),
+    12,
+    true,
+    74,
+  );
+  const storeAddrLines = hasValue(invoice.store_address)
+    ? wrap(invoice.store_address, 7, false, 74)
+    : [];
   const storeContacts = [
     hasValue(invoice.whatsapp_store) && `WA ${invoice.whatsapp_store}`,
     hasValue(invoice.instagram_store) && invoice.instagram_store,
   ].filter(Boolean);
 
-  if (storeContacts.length > 0) {
-    put(storeContacts.join("   |   "), storeX, storeY, {
-      size: 7,
-      color: C.muted,
-    });
-    storeY += 3.2;
+  const nameBaseline = 15;
+  const addrBaseline = nameBaseline + (storeNameLines.length - 1) * 5 + 4.4;
+  const contactBaseline =
+    storeAddrLines.length > 0
+      ? addrBaseline + (storeAddrLines.length - 1) * 3.3 + 3.4
+      : addrBaseline;
+  const storeBottom = storeContacts.length > 0 ? contactBaseline : addrBaseline;
+
+  const bandH = Math.max(logoY + logoSize + 7, storeBottom + 6, 36);
+
+  doc.setFillColor(...C.dark);
+  doc.rect(0, 0, pageWidth, bandH, "F");
+  gradientRect(0, bandH, pageWidth, 1.6);
+
+  // Kotak logo putih
+  doc.setFillColor(...C.white);
+  doc.roundedRect(margin, logoY, logoSize, logoSize, 2.5, 2.5, "F");
+
+  if (logo) {
+    fitImage(logo, margin + 1.5, logoY + 1.5, logoSize - 3, logoSize - 3);
+  } else {
+    put(
+      String(invoice.store_name || "S")
+        .charAt(0)
+        .toUpperCase(),
+      margin + logoSize / 2,
+      logoY + 11,
+      { size: 16, bold: true, color: C.dark, align: "center" },
+    );
   }
 
-  put(isRefund ? "NOTA REFUND" : "INVOICE", contentRight, 16, {
-    size: isRefund ? 17 : 22,
+  put(storeNameLines.join("\n"), storeX, nameBaseline, {
+    size: 12,
     bold: true,
-    align: "right",
-  });
-  put(`#${displayValue(invoice.no_invoice)}`, contentRight, 21.5, {
-    size: 8,
-    color: C.muted,
-    align: "right",
-  });
-  pill(statusLabel, contentRight, 24, {
-    color: statusColor,
-    tint: statusTint,
-    align: "right",
+    color: C.white,
   });
 
-  const headerBottom = Math.max(logoY + logoSize, storeY, 30);
-  hLine(headerBottom + 2, C.border);
+  if (storeAddrLines.length > 0) {
+    put(storeAddrLines.join("\n"), storeX, addrBaseline, {
+      size: 7,
+      color: C.onDark,
+    });
+  }
+
+  if (storeContacts.length > 0) {
+    put(storeContacts.join("   |   "), storeX, contactBaseline, {
+      size: 7,
+      color: C.onDark,
+    });
+  }
+
+  put(isRefund ? "NOTA REFUND" : "INVOICE", contentRight, 19, {
+    size: isRefund ? 17 : 24,
+    bold: true,
+    color: C.white,
+    align: "right",
+  });
+  put(`#${displayValue(invoice.no_invoice)}`, contentRight, 25, {
+    size: 8,
+    color: C.onDark,
+    align: "right",
+  });
+  pill(statusLabel, contentRight, 28, {
+    color: statusColor,
+    tint: C.white,
+    align: "right",
+  });
 
   /* ---------- Tagihan kepada + detail invoice ---------- */
-  const infoY = headerBottom + 6;
-  const colGap = 6;
+  const infoY = bandH + 1.6 + 8;
+  const colGap = 8;
   const leftW = rightColX - margin - colGap;
   const rightW = contentRight - rightColX;
 
   const nameLines = wrap(
     displayValue(invoice.customer_name),
-    9.5,
+    10,
     true,
-    leftW - 12,
+    leftW - 2,
   );
   const addrLines = hasValue(invoice.customer_address)
-    ? wrap(invoice.customer_address, 7.5, false, leftW - 12)
+    ? wrap(invoice.customer_address, 7.5, false, leftW - 2)
     : [];
   const customerContacts = [
     hasValue(invoice.customer_whatsapp) &&
@@ -385,88 +395,94 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
   ];
 
   const leftContentH =
-    10.5 +
-    nameLines.length * 4.2 +
+    9 +
+    nameLines.length * 4.4 +
     addrLines.length * 3.5 +
     customerContacts.length * 3.6 +
-    3;
-  const rightContentH = 11 + detailRows.length * 4.6 + 1.5;
+    2;
+  const rowGap = 5;
+  const rightContentH = 11 + detailRows.length * rowGap + 1;
   const panelH = Math.max(leftContentH, rightContentH, 22);
 
-  // Panel kiri
-  doc.setFillColor(...C.panel);
-  doc.roundedRect(margin, infoY, leftW, panelH, 2, 2, "F");
-  gradientRect(margin, infoY + 3, 1.2, panelH - 6);
-
+  // Kolom kiri: tanpa kotak, hanya garis aksen di atas label.
+  doc.setFillColor(...C.accent);
+  doc.rect(margin, infoY, 10, 0.9, "F");
   sectionLabel(
     isRefund ? "DIKEMBALIKAN KEPADA" : "TAGIHAN KEPADA",
-    margin + 6,
+    margin,
     infoY + 5.5,
   );
 
-  let leftY = infoY + 10.5;
+  let leftY = infoY + 11;
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(9.5);
+  doc.setFontSize(10);
   doc.setTextColor(...C.text);
-  doc.text(nameLines, margin + 6, leftY);
-  leftY += nameLines.length * 4.2;
+  doc.text(nameLines, margin, leftY);
+  leftY += nameLines.length * 4.4;
 
   if (addrLines.length > 0) {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7.5);
     doc.setTextColor(...C.muted);
-    doc.text(addrLines, margin + 6, leftY);
+    doc.text(addrLines, margin, leftY);
     leftY += addrLines.length * 3.5;
   }
 
   leftY += 0.5;
   customerContacts.forEach((line) => {
-    put(line, margin + 6, leftY, { size: 7.5, color: C.muted });
+    put(line, margin, leftY, { size: 7.5, color: C.muted });
     leftY += 3.6;
   });
 
-  // Panel kanan
-  doc.setDrawColor(...C.border);
-  doc.setLineWidth(0.2);
-  doc.roundedRect(rightColX, infoY, rightW, panelH, 2, 2, "S");
+  // Kolom kanan: kotak tint dengan bar merah tua di kiri.
+  doc.setFillColor(...C.tint);
+  doc.rect(rightColX, infoY, rightW, panelH, "F");
+  doc.setFillColor(...C.dark);
+  doc.rect(rightColX, infoY, 1.4, panelH, "F");
 
   sectionLabel("DETAIL INVOICE", rightColX + 6, infoY + 5.5);
 
   detailRows.forEach(([label, value], index) => {
-    const rowY = infoY + 11 + index * 4.6;
+    const rowY = infoY + 11 + index * rowGap;
     put(label, rightColX + 6, rowY, { size: 7.5, color: C.muted });
-    put(value, contentRight - 6, rowY, {
+    put(value, contentRight - 4, rowY, {
       size: 7.5,
       bold: true,
       align: "right",
       maxWidth: 46,
     });
+    if (index < detailRows.length - 1) {
+      hLine(rowY + 1.7, C.line, rightColX + 6, contentRight - 4);
+    }
   });
 
   /* ---------- Tabel item ---------- */
   const colPrice = 140;
   const colQty = 160;
   const colTotal = contentRight - 4;
-  const tableHeaderH = 7;
+  const tableHeaderH = 7.5;
 
   function drawTableHeader(yy) {
-    gradientRect(margin, yy, contentWidth, tableHeaderH);
+    doc.setFillColor(...C.dark);
+    doc.rect(margin, yy, contentWidth, tableHeaderH, "F");
+    doc.setFillColor(...C.accent);
+    doc.rect(margin, yy, 1.4, tableHeaderH, "F");
 
     const opt = { size: 7.5, bold: true, color: C.white };
-    put("ITEM", margin + 4, yy + 4.7, opt);
-    put("HARGA", colPrice, yy + 4.7, { ...opt, align: "right" });
-    put("QTY", colQty, yy + 4.7, { ...opt, align: "right" });
-    put("TOTAL", colTotal, yy + 4.7, { ...opt, align: "right" });
+    put("ITEM", margin + 5, yy + 5, opt);
+    put("HARGA", colPrice, yy + 5, { ...opt, align: "right" });
+    put("QTY", colQty, yy + 5, { ...opt, align: "right" });
+    put("TOTAL", colTotal, yy + 5, { ...opt, align: "right" });
   }
 
-  y = infoY + panelH + 4;
+  y = infoY + panelH + 6;
   ensure(tableHeaderH + 10);
   drawTableHeader(y);
   y += tableHeaderH;
 
   const items = invoice.items ?? [];
 
-  items.forEach((item) => {
+  items.forEach((item, index) => {
     const itemNameLines = wrap(displayValue(item.camera_name), 8.5, true, 84);
 
     const hasSku = hasValue(item.sku);
@@ -490,7 +506,7 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
         metaLines.length * 3 +
         (hasItemDiscount ? 3.2 : 0) +
         1.6,
-      hasItemDiscount ? 10 : 6.5,
+      hasItemDiscount ? 10 : 7,
     );
 
     if (y + rowH > bottomLimit) {
@@ -499,17 +515,23 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
       y += tableHeaderH;
     }
 
-    const baseY = y + 4.4;
+    // Baris selang-seling
+    if (index % 2 === 1) {
+      doc.setFillColor(...C.zebra);
+      doc.rect(margin, y, contentWidth, rowH, "F");
+    }
+
+    const baseY = y + 4.6;
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8.5);
     doc.setTextColor(...C.text);
-    doc.text(itemNameLines, margin + 4, baseY);
+    doc.text(itemNameLines, margin + 5, baseY);
 
     const afterName = baseY + (itemNameLines.length - 1) * 3.6;
 
     if (metaLines.length > 0) {
-      put(metaLine, margin + 4, afterName + 3.2, {
+      put(metaLine, margin + 5, afterName + 3.2, {
         size: 7,
         color: C.muted,
         maxWidth: 84,
@@ -542,12 +564,12 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
 
       put(
         `Diskon produk ${formatCurrency(perUnitDiscount)} / unit`,
-        margin + 4,
+        margin + 5,
         noteY,
         {
           size: 7,
           bold: true,
-          color: C.violet,
+          color: C.accent,
         },
       );
     }
@@ -562,6 +584,11 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
     y += rowH;
     hLine(y);
   });
+
+  // Garis penutup tabel
+  doc.setDrawColor(...C.dark);
+  doc.setLineWidth(0.5);
+  doc.line(margin, y, contentRight, y);
 
   /* ---------- Ringkasan pembayaran (kanan) ---------- */
   const refundDiscount = Math.max(
@@ -585,12 +612,12 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
         ["Diskon pelanggan", discountText(invoice.customer_discount)],
       ];
 
-  const rowStep = 5;
-  const totalBarH = 9;
+  const rowStep = 5.4;
+  const totalBarH = 10;
   // Tinggi kolom kanan: baris ringkasan + bar total + ucapan di bawahnya.
-  const summaryH = 3.5 + summaryRows.length * rowStep - 2 + totalBarH + 14;
+  const summaryH = 3.5 + summaryRows.length * rowStep - 1 + totalBarH + 15;
 
-  y += 4;
+  y += 5;
   ensure(summaryH);
 
   const summaryTop = y;
@@ -599,31 +626,36 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
 
   summaryRows.forEach(([label, value], index) => {
     const rowY = summaryTop + 3.5 + index * rowStep;
-    put(label, labelX, rowY, { size: 8, color: C.muted });
-    put(value, valueX, rowY, { size: 8, bold: true, align: "right" });
+    put(label, rightColX, rowY, { size: 8, color: C.muted });
+    put(value, contentRight, rowY, { size: 8, bold: true, align: "right" });
+    hLine(rowY + 1.9, C.line, rightColX, contentRight);
   });
 
-  const totalY = summaryTop + 3.5 + summaryRows.length * rowStep - 2;
-  gradientRect(rightColX, totalY, contentRight - rightColX, totalBarH);
-  put(isRefund ? "Total dikembalikan" : "Grand Total", labelX, totalY + 6, {
+  const totalY = summaryTop + 3.5 + summaryRows.length * rowStep - 1;
+  doc.setFillColor(...C.dark);
+  doc.rect(rightColX, totalY, contentRight - rightColX, totalBarH, "F");
+  doc.setFillColor(...C.accent);
+  doc.rect(rightColX, totalY, 3, totalBarH, "F");
+
+  put(isRefund ? "Total dikembalikan" : "Grand Total", labelX, totalY + 6.6, {
     size: 9,
     bold: true,
     color: C.white,
   });
-  put(formatCurrency(invoice.total_amount), valueX, totalY + 6, {
-    size: 10.5,
+  put(formatCurrency(invoice.total_amount), valueX, totalY + 6.8, {
+    size: 11,
     bold: true,
     color: C.white,
     align: "right",
   });
 
   /* ---------- Ucapan di bawah Grand Total ---------- */
-  const thanksY = totalY + totalBarH + 5.5;
+  const thanksY = totalY + totalBarH + 6;
 
   put("Thank you for shopping", contentRight, thanksY, {
     size: 11,
     bold: true,
-    color: C.gradDark,
+    color: C.accent,
     align: "right",
   });
 
@@ -653,9 +685,14 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
 
     termEnsure(18);
 
-    gradientRect(margin, y, 1.2, 4.5);
-    put("SYARAT & KETENTUAN", margin + 4, y + 3.5, { size: 8.5, bold: true });
-    y += 8;
+    doc.setFillColor(...C.accent);
+    doc.rect(margin, y, 10, 0.9, "F");
+    put("SYARAT & KETENTUAN", margin, y + 5.5, {
+      size: 8.5,
+      bold: true,
+      color: C.dark,
+    });
+    y += 11;
 
     const blocks = parseTerms(terms);
     const textX = margin + 6;
@@ -677,12 +714,12 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
       }
 
       if (block.number) {
-        doc.setFillColor(...C.panel);
+        doc.setFillColor(...C.dark);
         doc.circle(margin + 2.3, y - 1, 2.3, "F");
         put(block.number, margin + 2.3, y, {
           size: 6.5,
           bold: true,
-          color: C.muted,
+          color: C.white,
           align: "center",
         });
       }
@@ -707,7 +744,7 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
           termEnsure(3.3);
 
           if (line.bullet && partIndex === 0) {
-            put("-", textX, y, { size: 7, color: C.faint });
+            put("-", textX, y, { size: 7, color: C.accent });
           }
 
           put(part, textX + (line.bullet ? 3.5 : 0), y, {
@@ -744,6 +781,10 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
       color: C.faint,
       align: "right",
     });
+
+    // Strip bawah merah tua
+    doc.setFillColor(...C.dark);
+    doc.rect(0, pageHeight - 2.5, pageWidth, 2.5, "F");
   }
 
   const safeInvoiceNumber = String(invoice.no_invoice || invoice.id).replace(
