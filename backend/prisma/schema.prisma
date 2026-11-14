@@ -249,7 +249,7 @@ model User {
 }
 
 model Employee {
-  id                String       @id @default(uuid())
+  id                String             @id @default(uuid())
   display_id        String?
   name              String
   job_title         String?
@@ -257,22 +257,34 @@ model Employee {
   account_number    String?
   account_holder    String?
   pin_hash          String? // null sampai karyawan membuat PIN lewat link verifikasi
-  is_active         Boolean      @default(true)
-  user_id           String?      @unique
-  user              User?        @relation(fields: [user_id], references: [id], onDelete: SetNull)
-  created_at        DateTime     @default(now())
+  is_active         Boolean            @default(true)
+  user_id           String?            @unique
+  user              User?              @relation(fields: [user_id], references: [id], onDelete: SetNull)
+  created_at        DateTime           @default(now())
   attendances       Attendance[]
-  email             String       @unique
+  email             String             @unique
   email_verified_at DateTime?
   verify_token_hash String?
   verify_expires_at DateTime?
   verify_sent_at    DateTime?
-  verify_attempts   Int          @default(0)
-  pin_failed_count  Int          @default(0)
+  verify_attempts   Int                @default(0)
+  pin_failed_count  Int                @default(0)
   pin_locked_until  DateTime?
-  contract_start    DateTime?    @db.Date
-  contract_end      DateTime?    @db.Date
+  contracts         EmployeeContract[]
   payrolls          Payroll[]
+}
+
+model EmployeeContract {
+  id          String    @id @default(uuid())
+  employee_id String
+  employee    Employee  @relation(fields: [employee_id], references: [id], onDelete: Cascade)
+  start_date  DateTime  @db.Date
+  end_date    DateTime? @db.Date
+  note        String?
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+
+  @@index([employee_id, start_date])
 }
 
 model Attendance {

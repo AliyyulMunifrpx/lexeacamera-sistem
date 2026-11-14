@@ -55,6 +55,10 @@ export async function createEmployee({
  * PUT /owner/employees/:id
  * Minimal satu field. Mengganti email mereset verifikasi & PIN dan mengirim tautan baru (`email_sent`).
  * contract_start / contract_end: "YYYY-MM-DD" atau null (mengosongkan).
+ /**
+ * PUT /owner/employees/:id
+ * Minimal satu field. Mengganti email mereset verifikasi & PIN dan mengirim tautan baru (`email_sent`).
+ * Kontrak diatur lewat endpoint kontrak, bukan di sini.
  */
 export async function updateEmployee(
   id,
@@ -67,8 +71,6 @@ export async function updateEmployee(
     bank_name,
     account_holder,
     account_number,
-    contract_start,
-    contract_end,
   },
 ) {
   const body = {
@@ -80,12 +82,39 @@ export async function updateEmployee(
     ...(account_number !== undefined && { account_number }),
     ...(display_id !== undefined && { display_id }),
     ...(is_active !== undefined && { is_active }),
-    ...(contract_start !== undefined && { contract_start }),
-    ...(contract_end !== undefined && { contract_end }),
   };
 
   const response = await api.put(`/owner/employees/${id}`, body);
 
+  return response.data.data;
+}
+
+/** GET /owner/employees/:id/contracts */
+export async function getEmployeeContracts(id) {
+  const response = await api.get(`/owner/employees/${id}/contracts`);
+  return response.data.data;
+}
+
+/** POST /owner/employees/:id/contracts. data: { start_date, end_date?, note? } */
+export async function createEmployeeContract(id, data) {
+  const response = await api.post(`/owner/employees/${id}/contracts`, data);
+  return response.data.data;
+}
+
+/** PUT /owner/employees/:id/contracts/:contractId */
+export async function updateEmployeeContract(id, contractId, data) {
+  const response = await api.put(
+    `/owner/employees/${id}/contracts/${contractId}`,
+    data,
+  );
+  return response.data.data;
+}
+
+/** DELETE /owner/employees/:id/contracts/:contractId */
+export async function deleteEmployeeContract(id, contractId) {
+  const response = await api.delete(
+    `/owner/employees/${id}/contracts/${contractId}`,
+  );
   return response.data.data;
 }
 /** POST /owner/employees/:id/resend-verification (maks 1x per menit). */

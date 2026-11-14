@@ -1,6 +1,12 @@
 import { ResponseError } from "../../error/response-error.js";
 import { prisma } from "../../lib/database.js";
 import { getAllowedOrigins } from "../../utils/auth-cookies.js";
+import {
+  assertContractPeriod,
+  currentContract,
+  serializeContracts,
+  toDate,
+} from "../../utils/contract.js";
 import { sendMail } from "../../utils/mailer.js";
 import { generateToken, hashToken } from "../../utils/secret.js";
 import {
@@ -14,8 +20,6 @@ import { validate } from "../../validation/validation.js";
 const PER_PAGE = 20;
 const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 const RESEND_GAP_MS = 60 * 1000;
-const DAY_MS = 24 * 60 * 60 * 1000;
-const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
 
 const SELECT = {
   id: true,
@@ -29,59 +33,38 @@ const SELECT = {
   bank_name: true,
   account_number: true,
   account_holder: true,
-  contract_start: true,
-  contract_end: true,
   email_verified_at: true,
   verify_sent_at: true,
   created_at: true,
+  contracts: {
+    select: {
+      id: true,
+      employee_id: true,
+      start_date: true,
+      end_date: true,
+      note: true,
+      created_at: true,
+    },
+    orderBy: { start_date: "asc" },
+  },
 };
 
-const toDate = (value) => new Date(`${value}T00:00:00.000Z`);
-const dateOut = (date) => (date ? date.toISOString().slice(0, 10) : null);
-const todayWib = () =>
-  new Date(Date.now() + WIB_OFFSET_MS).toISOString().slice(0, 10);
-
-// Tanggal akhir kontrak ikut dihitung (hari terakhir = sisa 0 hari).
-const contractInfo = (start, end) => {
-  const today = todayWib();
-  const daysLeft = end
-    ? Math.round((toDate(end).getTime() - toDate(today).getTime()) / DAY_MS)
-    : null;
-
-  let status = "NONE";
-  if (start || end) {
-    if (start && start > today) status = "UPCOMING";
-    else if (end && end < today) status = "ENDED";
-    else status = "ACTIVE";
-  }
-
-  return { contract_status: status, contract_days_left: daysLeft };
-};
-
-const assertContractPeriod = (start, end) => {
-  if (start && end && end < start) {
-    throw new ResponseError(400, "INVALID_CONTRACT_PERIOD");
-  }
-};
-
-const serialize = ({
-  pin_hash,
-  user_id,
-  contract_start,
-  contract_end,
-  ...employee
-}) => {
+const serialize = ({ pin_hash, user_id, contracts, ...employee }) => {
   const pinSet = pin_hash !== null;
   const ready =
     pinSet && (employee.email_verified_at !== null || user_id !== null);
-  const start = dateOut(contract_start);
-  const end = dateOut(contract_end);
+
+  // Ringkasan kontrak diambil dari kontrak yang sedang relevan.
+  const list = serializeContracts(contracts ?? []);
+  const current = currentContract(list);
 
   return {
     ...employee,
-    contract_start: start,
-    contract_end: end,
-    ...contractInfo(start, end),
+    contract_count: list.length,
+    contract_start: current?.start_date ?? null,
+    contract_end: current?.end_date ?? null,
+    contract_status: current?.status ?? "NONE",
+    contract_days_left: current?.days_left ?? null,
     pin_set: pinSet,
     linked_to_user: user_id !== null,
     status: !employee.is_active ? "INACTIVE" : ready ? "READY" : "PENDING",
@@ -136,7 +119,12 @@ const deliverLink = async (employee, token) => {
 
 const createEmployee = async (request) => {
   const req = validate(createEmployeeValidation, request);
+
+  if (req.contract_end && !req.contract_start) {
+    throw new ResponseError(400, "CONTRACT_START_REQUIRED");
+  }
   assertContractPeriod(req.contract_start, req.contract_end);
+
   const { token, fields } = issueToken();
 
   let employee;
@@ -150,9 +138,16 @@ const createEmployee = async (request) => {
         account_number: req.account_number,
         account_holder: req.account_holder,
         display_id: req.display_id,
-        contract_start: req.contract_start ? toDate(req.contract_start) : null,
-        contract_end: req.contract_end ? toDate(req.contract_end) : null,
         ...fields,
+        // Kontrak 1 dibuat bersamaan kalau tanggal awal diisi.
+        ...(req.contract_start && {
+          contracts: {
+            create: {
+              start_date: toDate(req.contract_start),
+              end_date: req.contract_end ? toDate(req.contract_end) : null,
+            },
+          },
+        }),
       },
       select: SELECT,
     });
@@ -230,13 +225,7 @@ const updateEmployee = async (request) => {
 
   const current = await prisma.employee.findUnique({
     where: { id },
-    select: {
-      id: true,
-      email: true,
-      user_id: true,
-      contract_start: true,
-      contract_end: true,
-    },
+    select: { id: true, email: true, user_id: true },
   });
 
   if (!current) {
@@ -253,29 +242,6 @@ const updateEmployee = async (request) => {
   if (fields.account_holder !== undefined)
     data.account_holder = fields.account_holder;
   if (fields.is_active !== undefined) data.is_active = fields.is_active;
-
-  if (
-    fields.contract_start !== undefined ||
-    fields.contract_end !== undefined
-  ) {
-    const start =
-      fields.contract_start !== undefined
-        ? fields.contract_start
-        : dateOut(current.contract_start);
-    const end =
-      fields.contract_end !== undefined
-        ? fields.contract_end
-        : dateOut(current.contract_end);
-
-    assertContractPeriod(start, end);
-
-    if (fields.contract_start !== undefined) {
-      data.contract_start = start ? toDate(start) : null;
-    }
-    if (fields.contract_end !== undefined) {
-      data.contract_end = end ? toDate(end) : null;
-    }
-  }
 
   let token = null;
   if (fields.email !== undefined && fields.email !== current.email) {
@@ -387,6 +353,7 @@ const deleteEmployee = async (request) => {
     const { count } = await tx.attendance.deleteMany({
       where: { employee_id: req.id },
     });
+    // Kontrak ikut terhapus (onDelete: Cascade).
     await tx.employee.delete({ where: { id: req.id } });
 
     return { message: "EMPLOYEE_DELETED", deleted_attendances: count };

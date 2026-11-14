@@ -22,6 +22,7 @@ import adminController from "../controller/owner/admin-controller.js";
 import reportController from "../controller/owner/report-controller.js";
 import cameraImportController from "../controller/owner/camera-import-controller.js";
 import payrollController from "../controller/owner/payroll-controller.js";
+import contractController from "../controller/owner/contract-controller.js";
 
 const ownerRouter = express.Router();
 
@@ -136,5 +137,15 @@ ownerRouter.delete("/owner/payrolls/:id", payrollController.remove);
 ownerRouter.get(
   "/owner/employees/:id/payrolls",
   payrollController.getByEmployee,
+);
+ownerRouter.get("/owner/employees/:id/contracts", contractController.getAll);
+ownerRouter.post("/owner/employees/:id/contracts", contractController.create);
+ownerRouter.put(
+  "/owner/employees/:id/contracts/:contract_id",
+  contractController.update,
+);
+ownerRouter.delete(
+  "/owner/employees/:id/contracts/:contract_id",
+  contractController.remove,
 );
 export default ownerRouter;

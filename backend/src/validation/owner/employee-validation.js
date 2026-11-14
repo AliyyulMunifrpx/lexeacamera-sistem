@@ -8,7 +8,7 @@ const bank_name = Joi.string().trim().min(1).max(100);
 const account_number = Joi.string().trim().min(1).max(100);
 const account_holder = Joi.string().trim().min(1).max(100);
 
-const dateOnly = Joi.string()
+export const dateOnly = Joi.string()
   .pattern(/^\d{4}-\d{2}-\d{2}$/)
   .custom((value, helpers) => {
     const date = new Date(`${value}T00:00:00.000Z`);
@@ -44,6 +44,7 @@ export const createEmployeeValidation = Joi.object({
   bank_name: bank_name.required(),
   account_number: account_number.required(),
   account_holder: account_holder.required(),
+  // Opsional: kalau diisi, dibuat sebagai Kontrak 1.
   contract_start: dateOnly.allow(null),
   contract_end: dateOnly.allow(null),
 });
@@ -58,8 +59,6 @@ export const updateEmployeeValidation = Joi.object({
   account_number,
   account_holder,
   is_active: Joi.boolean().strict(),
-  contract_start: dateOnly.allow(null),
-  contract_end: dateOnly.allow(null),
 }).or(
   "name",
   "email",
@@ -69,6 +68,4 @@ export const updateEmployeeValidation = Joi.object({
   "bank_name",
   "account_number",
   "account_holder",
-  "contract_start",
-  "contract_end",
 );

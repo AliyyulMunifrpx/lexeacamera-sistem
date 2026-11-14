@@ -2,11 +2,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   createEmployee,
+  createEmployeeContract,
   deleteEmployee,
+  deleteEmployeeContract,
   getEmployee,
+  getEmployeeContracts,
   getEmployees,
   resendEmployeeVerification,
   updateEmployee,
+  updateEmployeeContract,
 } from "./api.js";
 
 export function useGetEmployees(filters) {
@@ -100,4 +104,42 @@ export function useDeleteEmployee() {
       queryClient.invalidateQueries({ queryKey: ["employees"] });
     },
   });
+}
+export function useGetEmployeeContracts(id) {
+  return useQuery({
+    queryKey: ["employee contracts", id],
+    queryFn: () => getEmployeeContracts(id),
+    enabled: Boolean(id),
+  });
+}
+
+function useContractMutation(mutationFn) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn,
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        predicate: (query) =>
+          String(query.queryKey[0]).toLowerCase().includes("employee"),
+      }),
+  });
+}
+
+export function useCreateEmployeeContract() {
+  return useContractMutation(({ id, data }) =>
+    createEmployeeContract(id, data),
+  );
+}
+
+export function useUpdateEmployeeContract() {
+  return useContractMutation(({ id, contractId, data }) =>
+    updateEmployeeContract(id, contractId, data),
+  );
+}
+
+export function useDeleteEmployeeContract() {
+  return useContractMutation(({ id, contractId }) =>
+    deleteEmployeeContract(id, contractId),
+  );
 }
