@@ -40,7 +40,7 @@ const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 // Admin hanya mengisi 4 karakter di belakang prefix. Dikirim ke backend sebagai "WAV-XXXX".
-const SKU_PREFIX = "WAV-";
+const SKU_PREFIX = "LX-";
 const SKU_LENGTH = 4;
 
 // Urutan field untuk fokus otomatis ke error pertama.

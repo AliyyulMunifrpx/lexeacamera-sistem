@@ -12,7 +12,7 @@ import {
 
 export { blankToNull };
 
-const INVOICE_PREFIX = "WAV";
+const INVOICE_PREFIX = "LX";
 const MAX_ATTEMPTS = 5;
 const MAX_INT = 2147483647;
 const NUMBER_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
