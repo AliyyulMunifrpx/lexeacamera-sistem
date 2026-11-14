@@ -2,17 +2,22 @@
  * Export lembar produk (detail kamera) ke PDF A4.
  * Dijalankan di browser. jsPDF di-import dinamis supaya tidak masuk bundle awal.
  *
- * Warna diambil dari CSS variable palet global (--color-second2/3/4) agar
- * selalu sama dengan UI. Fallback dipakai bila variable tidak ditemukan.
+ * Palet sama dengan PDF invoice dan slip gaji: merah tua #760a16 dan
+ * merah terang #d02f1c.
  */
 
 const PAGE = { w: 210, h: 297, margin: 16 };
 const CONTENT_W = PAGE.w - PAGE.margin * 2;
 
-const FALLBACK = {
-  second2: [220, 38, 38],
-  second3: [37, 99, 235],
-  second4: [124, 58, 237],
+const C = {
+  dark: [118, 10, 22], // #760a16
+  accent: [208, 47, 28], // #d02f1c
+  darkTint: [247, 232, 234],
+  accentTint: [253, 236, 233],
+  tint: [252, 241, 240],
+  onDark: [255, 226, 222],
+  white: [255, 255, 255],
+  green: [21, 128, 61],
 };
 
 const CONDITION_LABEL = { NEW: "Baru", SECOND: "Bekas" };
@@ -51,34 +56,6 @@ function formatDateTime(value) {
 }
 
 /* ------------------------------ Browser helpers --------------------------- */
-
-function readThemeColors() {
-  const colors = { ...FALLBACK };
-  if (typeof document === "undefined") return colors;
-
-  try {
-    const canvas = document.createElement("canvas");
-    canvas.width = canvas.height = 1;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    const style = getComputedStyle(document.documentElement);
-
-    for (const key of Object.keys(FALLBACK)) {
-      const raw = style.getPropertyValue(`--color-${key}`).trim();
-      if (!raw) continue;
-
-      ctx.clearRect(0, 0, 1, 1);
-      ctx.fillStyle = "#000";
-      ctx.fillStyle = raw;
-      ctx.fillRect(0, 0, 1, 1);
-      const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data;
-      if (a > 0) colors[key] = [r, g, b];
-    }
-  } catch {
-    /* pakai fallback */
-  }
-
-  return colors;
-}
 
 /** Muat gambar -> JPEG data URL (webp/avif ikut terkonversi). Gagal -> null. */
 async function loadImage(url) {
@@ -124,15 +101,16 @@ const INK = {
   soft: ink(0.04),
 };
 
-function createKit(doc, theme) {
+function createKit(doc) {
   const fill = (c) => doc.setFillColor(c[0], c[1], c[2]);
   const stroke = (c) => doc.setDrawColor(c[0], c[1], c[2]);
   const color = (c) => doc.setTextColor(c[0], c[1], c[2]);
 
+  /* Gradient horizontal: merah tua di kiri, merah terang di kanan. */
   function gradientBar(x, y, w, h) {
     const steps = 80;
-    const a = theme.second4;
-    const b = theme.second3;
+    const a = C.dark;
+    const b = C.accent;
 
     for (let i = 0; i < steps; i += 1) {
       const t = i / (steps - 1);
@@ -180,17 +158,14 @@ function createKit(doc, theme) {
     const w = doc.getTextWidth(label) + 8;
     const h = 6;
 
-    if (tone === "violet" || tone === "blue" || tone === "red") {
-      const base = {
-        violet: theme.second4,
-        blue: theme.second3,
-        red: theme.second2,
-      }[tone];
-      fill(base);
-      doc.setGState(new doc.GState({ opacity: 0.12 }));
+    if (tone === "dark") {
+      fill(C.darkTint);
       doc.roundedRect(x, y, w, h, 3, 3, "F");
-      doc.setGState(new doc.GState({ opacity: 1 }));
-      color(base);
+      color(C.dark);
+    } else if (tone === "accent") {
+      fill(C.accentTint);
+      doc.roundedRect(x, y, w, h, 3, 3, "F");
+      color(C.accent);
     } else {
       stroke(INK.line);
       doc.setLineWidth(0.3);
@@ -202,11 +177,14 @@ function createKit(doc, theme) {
     return w;
   }
 
+  /* Judul bagian: teks merah tua, garis tipis, dan aksen merah di awal garis. */
   function sectionTitle(label, x, y, width = CONTENT_W) {
-    text(label.toUpperCase(), x, y, { size: 8, style: "bold", c: INK.muted });
+    text(label.toUpperCase(), x, y, { size: 8, style: "bold", c: C.dark });
     stroke(INK.line);
     doc.setLineWidth(0.3);
     doc.line(x, y + 2, x + width, y + 2);
+    fill(C.accent);
+    doc.rect(x, y + 1.6, 12, 0.9, "F");
     return y + 8;
   }
 
@@ -272,9 +250,8 @@ function createKit(doc, theme) {
 export async function exportCameraPdf(camera, { includeFinance = false } = {}) {
   const { jsPDF } = await import("jspdf");
 
-  const theme = readThemeColors();
   const doc = new jsPDF({ unit: "mm", format: "a4", compress: true });
-  const k = createKit(doc, theme);
+  const k = createKit(doc);
 
   /* ----- Data turunan ----- */
   const price = toNumber(camera.price) ?? 0;
@@ -303,9 +280,9 @@ export async function exportCameraPdf(camera, { includeFinance = false } = {}) {
     images.slice(0, 5).map((img) => loadImage(img.image_url)),
   );
 
-  /* ----- Footer + header tiap halaman ----- */
+  /* ----- Dekorasi halaman lanjutan ----- */
   function decoratePage() {
-    k.gradientBar(0, 0, PAGE.w, 4);
+    k.gradientBar(0, 0, PAGE.w, 2.5);
   }
 
   function ensureSpace(y, needed) {
@@ -315,29 +292,35 @@ export async function exportCameraPdf(camera, { includeFinance = false } = {}) {
     return PAGE.margin + 4;
   }
 
-  decoratePage();
+  /* ----- Masthead: band merah tua ----- */
+  const bandH = 22;
+  doc.setFillColor(C.dark[0], C.dark[1], C.dark[2]);
+  doc.rect(0, 0, PAGE.w, bandH, "F");
+  k.gradientBar(0, bandH, PAGE.w, 1.6);
 
-  /* ----- Masthead ----- */
-  let y = 16;
-  k.text("LEMBAR PRODUK", PAGE.w - PAGE.margin, y, {
-    size: 8,
+  k.text("LEMBAR PRODUK", PAGE.margin, 14, {
+    size: 16,
     style: "bold",
-    c: INK.muted,
+    c: C.white,
+  });
+  k.text(formatDateTime(), PAGE.w - PAGE.margin, 14, {
+    size: 8,
+    c: C.onDark,
     align: "right",
   });
-  y += 8;
 
   /* ----- Judul ----- */
+  let y = bandH + 1.6 + 9;
   const tagY = y;
   let tx = PAGE.margin;
   if (camera.category?.name)
-    tx += k.pill(camera.category.name, tx, tagY, "violet") + 2;
+    tx += k.pill(camera.category.name, tx, tagY, "dark") + 2;
   tx +=
     k.pill(
       CONDITION_LABEL[camera.condition] ?? camera.condition ?? "-",
       tx,
       tagY,
-      camera.condition === "NEW" ? "blue" : "violet",
+      camera.condition === "NEW" ? "accent" : "dark",
     ) + 2;
   if (camera.promo) tx += k.pill("Promosi aktif", tx, tagY, "outline") + 2;
   if (camera.best_selling) k.pill("Best seller", tx, tagY, "outline");
@@ -370,7 +353,7 @@ export async function exportCameraPdf(camera, { includeFinance = false } = {}) {
     k.text(label, PAGE.margin + 4 + w / 2, topY + 8.1, {
       size: 8,
       style: "bold",
-      c: [255, 255, 255],
+      c: C.white,
       align: "center",
     });
   }
@@ -398,30 +381,44 @@ export async function exportCameraPdf(camera, { includeFinance = false } = {}) {
   });
   galleryBottom += 8;
 
-  // Kolom kanan: harga
-  let ry = topY + 4;
-  k.text("Harga jual", rightX, ry, { size: 8, c: INK.muted });
-  ry += 9;
-  k.text(formatRupiah(price), rightX, ry, { size: 20, style: "bold" });
-  ry += 6;
+  // Kolom kanan: kotak harga (tint + bar merah tua di kiri)
+  const priceBoxH = hasDiscount ? 29 : 21;
+  k.fill(C.tint);
+  doc.rect(rightX, topY, rightW, priceBoxH, "F");
+  k.fill(C.dark);
+  doc.rect(rightX, topY, 1.4, priceBoxH, "F");
+
+  k.text("HARGA JUAL", rightX + 6, topY + 6, {
+    size: 7,
+    style: "bold",
+    c: C.accent,
+  });
+  k.text(formatRupiah(price), rightX + 6, topY + 15, {
+    size: 20,
+    style: "bold",
+    c: C.dark,
+  });
 
   if (hasDiscount) {
+    const strikeY = topY + 23;
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
     const strikeLabel = formatRupiah(strike);
     k.color(INK.muted);
-    doc.text(strikeLabel, rightX, ry);
+    doc.text(strikeLabel, rightX + 6, strikeY);
     const sw = doc.getTextWidth(strikeLabel);
     k.stroke(INK.muted);
     doc.setLineWidth(0.3);
-    doc.line(rightX, ry - 1.2, rightX + sw, ry - 1.2);
-    k.text(`Potongan ${formatRupiah(strike - price)}`, rightX + sw + 4, ry, {
-      size: 8,
-      c: theme.second2,
-    });
-    ry += 6;
+    doc.line(rightX + 6, strikeY - 1.2, rightX + 6 + sw, strikeY - 1.2);
+    k.text(
+      `Potongan ${formatRupiah(strike - price)}`,
+      rightX + 6 + sw + 4,
+      strikeY,
+      { size: 8, style: "bold", c: C.accent },
+    );
   }
-  ry += 4;
+
+  let ry = topY + priceBoxH + 5;
 
   // Stok
   const outOfStock = stock <= 0;
@@ -436,14 +433,14 @@ export async function exportCameraPdf(camera, { includeFinance = false } = {}) {
     {
       size: 11,
       style: "bold",
-      c: outOfStock ? theme.second2 : INK.main,
+      c: outOfStock ? C.accent : INK.main,
     },
   );
   if (stockLow)
     k.text("Stok menipis", rightX + rightW - 4, ry + 11, {
       size: 8,
       style: "bold",
-      c: theme.second4,
+      c: C.accent,
       align: "right",
     });
   ry += 22;
@@ -521,7 +518,7 @@ export async function exportCameraPdf(camera, { includeFinance = false } = {}) {
       if (item.product_url) {
         doc.setFont("helvetica", "normal");
         doc.setFontSize(8);
-        k.color(theme.second3);
+        k.color(C.accent);
         const short = doc.splitTextToSize(item.product_url, CONTENT_W - 40)[0];
         doc.textWithLink(short, PAGE.margin + 36, y, { url: item.product_url });
       }
@@ -535,13 +532,15 @@ export async function exportCameraPdf(camera, { includeFinance = false } = {}) {
     y = ensureSpace(y, 64);
     y = k.sectionTitle("Informasi keuangan (internal)", PAGE.margin, y);
 
+    const profitColor = profit !== null && profit < 0 ? C.accent : C.green;
+
     const rows = [
       ["Modal per unit", formatRupiah(capital), null],
       ["Harga jual", formatRupiah(price), null],
       [
         "Profit per unit",
         profit !== null ? formatRupiah(profit) : "-",
-        profit !== null && profit < 0 ? theme.second2 : theme.second3,
+        profitColor,
       ],
       ["Margin", margin !== null ? formatPercent(margin) : "-", null],
       [
@@ -578,16 +577,18 @@ export async function exportCameraPdf(camera, { includeFinance = false } = {}) {
       [
         "Potensi profit",
         profit !== null ? formatRupiah(profit * stock) : "-",
-        profit !== null && profit < 0 ? theme.second2 : theme.second3,
+        profitColor,
       ],
     ];
     const bw = (CONTENT_W - 8) / 3;
     boxes.forEach(([label, value, c], i) => {
       const bx = PAGE.margin + i * (bw + 4);
-      k.fill(INK.soft);
-      doc.roundedRect(bx, y, bw, 16, 3, 3, "F");
-      k.text(label, bx + 4, y + 6, { size: 8, c: INK.muted });
-      k.text(value, bx + 4, y + 12, { size: 10, style: "bold", c });
+      k.fill(C.tint);
+      doc.rect(bx, y, bw, 16, "F");
+      k.fill(C.dark);
+      doc.rect(bx, y, 1.2, 16, "F");
+      k.text(label, bx + 5, y + 6, { size: 8, c: INK.muted });
+      k.text(value, bx + 5, y + 12, { size: 10, style: "bold", c });
     });
     y += 22;
   }
@@ -613,6 +614,10 @@ export async function exportCameraPdf(camera, { includeFinance = false } = {}) {
         align: "right",
       },
     );
+
+    // Strip bawah merah tua
+    k.fill(C.dark);
+    doc.rect(0, PAGE.h - 2.5, PAGE.w, 2.5, "F");
   }
 
   const safeName = String(camera.name ?? "produk")
