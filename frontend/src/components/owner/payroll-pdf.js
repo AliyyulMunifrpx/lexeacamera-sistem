@@ -6,21 +6,20 @@ import {
   formatDateTime,
 } from "./payroll-shared.jsx";
 
-/* Palet sama dengan PDF invoice (global.css). */
+/* Palet sama dengan PDF invoice: merah tua #760a16 dan merah terang #d02f1c. */
 const PDF_COLORS = {
-  gradDark: [123, 10, 103], // #7b0a67
-  gradLight: [222, 35, 232], // #de23e8
+  dark: [118, 10, 22], // #760a16
+  accent: [208, 47, 28], // #d02f1c
   text: [0, 0, 0],
   muted: [102, 102, 102],
   faint: [153, 153, 153],
-  line: [230, 230, 230],
+  line: [232, 226, 225],
   border: [217, 217, 217],
-  panel: [245, 245, 245],
+  tint: [252, 241, 240],
+  zebra: [251, 246, 245],
+  onDark: [255, 226, 222],
   white: [255, 255, 255],
-  blue: [37, 99, 235],
-  blueTint: [235, 240, 253],
-  violet: [124, 58, 237],
-  violetTint: [242, 238, 254],
+  green: [21, 128, 61],
 };
 
 const LOGO_MAX_SIDE = 400;
@@ -150,6 +149,7 @@ export function terbilangRupiah(value) {
   const words = `${amount < 0 ? "minus " : ""}${spellNumber(Math.abs(amount))} rupiah`;
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
+
 /* Ambil nilai pertama yang terisi dari beberapa kemungkinan nama field. */
 function pickStoreValue(store, keys) {
   for (const key of keys) {
@@ -158,9 +158,7 @@ function pickStoreValue(store, keys) {
   }
   return "";
 }
-/**
- * @param {{ slip: object, store?: object, ownerName?: string }} params
- */
+
 /* Terima "wav.camera", "@wav.camera", atau URL instagram.com/wav.camera -> "@wav.camera" */
 function formatInstagram(value) {
   const handle = String(value ?? "")
@@ -170,6 +168,10 @@ function formatInstagram(value) {
     .replace(/^@/, "");
   return handle ? `@${handle}` : "";
 }
+
+/**
+ * @param {{ slip: object, store?: object, ownerName?: string }} params
+ */
 export async function downloadPayrollPdf({ slip, store: rawStore, ownerName }) {
   const store = rawStore?.data ?? rawStore;
 
@@ -232,7 +234,7 @@ export async function downloadPayrollPdf({ slip, store: rawStore, ownerName }) {
     return doc.splitTextToSize(String(text), maxWidth);
   }
 
-  /* Gradient horizontal: gelap di kiri, terang di kanan (seperti bg-grad). */
+  /* Gradient horizontal: merah tua di kiri, merah terang di kanan. */
   function gradientRect(x, yy, w, h) {
     const steps = Math.max(2, Math.ceil(w / 0.8));
     const stepW = w / steps;
@@ -240,9 +242,9 @@ export async function downloadPayrollPdf({ slip, store: rawStore, ownerName }) {
     for (let i = 0; i < steps; i += 1) {
       const t = i / (steps - 1);
       doc.setFillColor(
-        Math.round(C.gradDark[0] + (C.gradLight[0] - C.gradDark[0]) * t),
-        Math.round(C.gradDark[1] + (C.gradLight[1] - C.gradDark[1]) * t),
-        Math.round(C.gradDark[2] + (C.gradLight[2] - C.gradDark[2]) * t),
+        Math.round(C.dark[0] + (C.accent[0] - C.dark[0]) * t),
+        Math.round(C.dark[1] + (C.accent[1] - C.dark[1]) * t),
+        Math.round(C.dark[2] + (C.accent[2] - C.dark[2]) * t),
       );
       doc.rect(x + i * stepW, yy, stepW + 0.25, h, "F");
     }
@@ -272,12 +274,12 @@ export async function downloadPayrollPdf({ slip, store: rawStore, ownerName }) {
   function pill(text, x, yy, { color, tint, align = "left" }) {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(7);
-    const w = doc.getTextWidth(text) + 7;
+    const w = doc.getTextWidth(text) + 8;
     const startX = align === "right" ? x - w : x;
 
     doc.setFillColor(...tint);
-    doc.roundedRect(startX, yy, w, 5.2, 2.6, 2.6, "F");
-    put(text, startX + w / 2, yy + 3.7, {
+    doc.roundedRect(startX, yy, w, 5.4, 2.7, 2.7, "F");
+    put(text, startX + w / 2, yy + 3.8, {
       size: 7,
       bold: true,
       color,
@@ -288,7 +290,7 @@ export async function downloadPayrollPdf({ slip, store: rawStore, ownerName }) {
   }
 
   function sectionLabel(text, x, yy) {
-    put(text, x, yy, { size: 7, bold: true, color: C.muted });
+    put(text, x, yy, { size: 7, bold: true, color: C.accent });
   }
 
   /* Kotak centang digambar manual (font bawaan PDF tidak punya simbol ✓). */
@@ -298,7 +300,7 @@ export async function downloadPayrollPdf({ slip, store: rawStore, ownerName }) {
     const top = cy - size / 2;
 
     if (checked) {
-      doc.setFillColor(...C.violet);
+      doc.setFillColor(...C.accent);
       doc.roundedRect(x, top, size, size, 0.7, 0.7, "F");
 
       doc.setDrawColor(...C.white);
@@ -327,40 +329,20 @@ export async function downloadPayrollPdf({ slip, store: rawStore, ownerName }) {
   const checkedCount = items.filter((item) => item.checked).length;
   const isPaid = slip.status === "PAID";
   const statusLabel = isPaid ? "SUDAH CAIR" : "BELUM CAIR";
-  const statusColor = isPaid ? C.blue : C.violet;
-  const statusTint = isPaid ? C.blueTint : C.violetTint;
+  const statusColor = isPaid ? C.green : C.accent;
 
-  /* ---------- Halaman 1: bar gradient + header ---------- */
-  gradientRect(0, 0, pageWidth, 2.5);
+  /* ---------- Halaman 1: header band merah tua ---------- */
+  const logoSize = 16;
+  const logoY = 9;
+  const storeX = margin + logoSize + 5;
 
-  const logoSize = 13;
-  const logoY = 8;
-
-  if (logo) {
-    doc.setDrawColor(...C.border);
-    doc.setLineWidth(0.2);
-    doc.roundedRect(margin, logoY, logoSize, logoSize, 2, 2, "S");
-    fitImage(logo, margin + 1, logoY + 1, logoSize - 2, logoSize - 2);
-  } else {
-    gradientRect(margin, logoY, logoSize, logoSize);
-    put(
-      String(store?.name || "S")
-        .charAt(0)
-        .toUpperCase(),
-      margin + logoSize / 2,
-      logoY + 9,
-      { size: 14, bold: true, color: C.white, align: "center" },
-    );
-  }
-
-  const storeX = margin + logoSize + 4;
-  const storeLines = put(
+  const storeNameLines = wrap(
     String(store?.name || "-").toUpperCase(),
-    storeX,
-    logoY + 8,
-    { size: 11.5, bold: true, maxWidth: 74 },
+    12,
+    true,
+    74,
   );
-  let storeBottom = logoY + 8 + (storeLines - 1) * 4.4;
+
   const storeAddress = pickStoreValue(store, [
     "address",
     "store_address",
@@ -394,49 +376,79 @@ export async function downloadPayrollPdf({ slip, store: rawStore, ownerName }) {
       .filter(Boolean)
       .join("   |   "),
   ].filter(Boolean);
-  storeInfo.forEach((text) => {
-    storeBottom += 3.8;
-    const lineCount = put(text, storeX, storeBottom, {
-      size: 7.5,
-      color: C.muted,
-      maxWidth: 74,
-    });
-    storeBottom += (lineCount - 1) * 3.1;
+
+  const nameBaseline = 15;
+  let storeBottom = nameBaseline + (storeNameLines.length - 1) * 5;
+  const infoBlocks = storeInfo.map((text) => {
+    const lines = wrap(text, 7, false, 74);
+    storeBottom += 4;
+    const block = { lines, baseline: storeBottom };
+    storeBottom += (lines.length - 1) * 3.2;
+    return block;
   });
 
-  put("SLIP GAJI", contentRight, 16, {
-    size: 22,
+  const bandH = Math.max(logoY + logoSize + 7, storeBottom + 6, 36);
+
+  doc.setFillColor(...C.dark);
+  doc.rect(0, 0, pageWidth, bandH, "F");
+  gradientRect(0, bandH, pageWidth, 1.6);
+
+  // Kotak logo putih
+  doc.setFillColor(...C.white);
+  doc.roundedRect(margin, logoY, logoSize, logoSize, 2.5, 2.5, "F");
+
+  if (logo) {
+    fitImage(logo, margin + 1.5, logoY + 1.5, logoSize - 3, logoSize - 3);
+  } else {
+    put(
+      String(store?.name || "S")
+        .charAt(0)
+        .toUpperCase(),
+      margin + logoSize / 2,
+      logoY + 11,
+      { size: 16, bold: true, color: C.dark, align: "center" },
+    );
+  }
+
+  put(storeNameLines.join("\n"), storeX, nameBaseline, {
+    size: 12,
     bold: true,
-    align: "right",
-  });
-  put(`Dibuat ${formatDate(slip.created_at)}`, contentRight, 21.5, {
-    size: 8,
-    color: C.muted,
-    align: "right",
-  });
-  pill(statusLabel, contentRight, 24, {
-    color: statusColor,
-    tint: statusTint,
-    align: "right",
+    color: C.white,
   });
 
-  const headerBottom = Math.max(logoY + logoSize, storeBottom, 30);
-  hLine(headerBottom + 2, C.border);
+  infoBlocks.forEach((block) => {
+    put(block.lines.join("\n"), storeX, block.baseline, {
+      size: 7,
+      color: C.onDark,
+    });
+  });
+
+  put("SLIP GAJI", contentRight, 19, {
+    size: 24,
+    bold: true,
+    color: C.white,
+    align: "right",
+  });
+  put(`Dibuat ${formatDate(slip.created_at)}`, contentRight, 25, {
+    size: 8,
+    color: C.onDark,
+    align: "right",
+  });
+  pill(statusLabel, contentRight, 28, {
+    color: statusColor,
+    tint: C.white,
+    align: "right",
+  });
 
   /* ---------- Karyawan + detail slip ---------- */
-  const infoY = headerBottom + 6;
-  const colGap = 6;
+  const infoY = bandH + 1.6 + 8;
+  const colGap = 8;
   const leftW = rightColX - margin - colGap;
   const rightW = contentRight - rightColX;
 
-  const nameLines = wrap(
-    displayValue(slip.employee_name),
-    9.5,
-    true,
-    leftW - 12,
-  );
+  const nameLines = wrap(displayValue(slip.employee_name), 10, true, leftW - 2);
   const jobLines = hasValue(slip.job_title)
-    ? wrap(slip.job_title, 7.5, false, leftW - 12)
+    ? wrap(slip.job_title, 7.5, false, leftW - 2)
     : [];
   const accountLines = [
     hasValue(slip.bank_name) && `Bank: ${slip.bank_name}`,
@@ -455,82 +467,88 @@ export async function downloadPayrollPdf({ slip, store: rawStore, ownerName }) {
   ];
 
   const leftContentH =
-    10.5 +
-    nameLines.length * 4.2 +
+    9 +
+    nameLines.length * 4.4 +
     jobLines.length * 3.5 +
     accountLines.length * 3.6 +
-    3;
-  const rightContentH = 11 + detailRows.length * 4.6 + 1.5;
+    2;
+  const rowGap = 5;
+  const rightContentH = 11 + detailRows.length * rowGap + 1;
   const panelH = Math.max(leftContentH, rightContentH, 22);
 
-  // Panel kiri
-  doc.setFillColor(...C.panel);
-  doc.roundedRect(margin, infoY, leftW, panelH, 2, 2, "F");
-  gradientRect(margin, infoY + 3, 1.2, panelH - 6);
+  // Kolom kiri: tanpa kotak, hanya garis aksen di atas label.
+  doc.setFillColor(...C.accent);
+  doc.rect(margin, infoY, 10, 0.9, "F");
+  sectionLabel("KARYAWAN", margin, infoY + 5.5);
 
-  sectionLabel("KARYAWAN", margin + 6, infoY + 5.5);
-
-  let leftY = infoY + 10.5;
+  let leftY = infoY + 11;
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(9.5);
+  doc.setFontSize(10);
   doc.setTextColor(...C.text);
-  doc.text(nameLines, margin + 6, leftY);
-  leftY += nameLines.length * 4.2;
+  doc.text(nameLines, margin, leftY);
+  leftY += nameLines.length * 4.4;
 
   if (jobLines.length > 0) {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7.5);
     doc.setTextColor(...C.muted);
-    doc.text(jobLines, margin + 6, leftY);
+    doc.text(jobLines, margin, leftY);
     leftY += jobLines.length * 3.5;
   }
 
   leftY += 0.5;
   accountLines.forEach((line) => {
-    put(line, margin + 6, leftY, {
+    put(line, margin, leftY, {
       size: 7.5,
       color: C.muted,
-      maxWidth: leftW - 12,
+      maxWidth: leftW - 2,
     });
     leftY += 3.6;
   });
 
-  // Panel kanan
-  doc.setDrawColor(...C.border);
-  doc.setLineWidth(0.2);
-  doc.roundedRect(rightColX, infoY, rightW, panelH, 2, 2, "S");
+  // Kolom kanan: kotak tint dengan bar merah tua di kiri.
+  doc.setFillColor(...C.tint);
+  doc.rect(rightColX, infoY, rightW, panelH, "F");
+  doc.setFillColor(...C.dark);
+  doc.rect(rightColX, infoY, 1.4, panelH, "F");
 
   sectionLabel("DETAIL SLIP", rightColX + 6, infoY + 5.5);
 
   detailRows.forEach(([label, value], index) => {
-    const rowY = infoY + 11 + index * 4.6;
+    const rowY = infoY + 11 + index * rowGap;
     put(label, rightColX + 6, rowY, { size: 7.5, color: C.muted });
-    put(value, contentRight - 6, rowY, {
+    put(value, contentRight - 4, rowY, {
       size: 7.5,
       bold: true,
       align: "right",
       maxWidth: 46,
     });
+    if (index < detailRows.length - 1) {
+      hLine(rowY + 1.7, C.line, rightColX + 6, contentRight - 4);
+    }
   });
 
   /* ---------- Tabel penerimaan ---------- */
-  const colName = margin + 12;
+  const colName = margin + 13;
   const colCheck = 148; // titik tengah kolom CEK
   const colTotal = contentRight - 4;
   const nameWidth = 108;
-  const tableHeaderH = 7;
+  const tableHeaderH = 7.5;
 
   function drawTableHeader(yy) {
-    gradientRect(margin, yy, contentWidth, tableHeaderH);
+    doc.setFillColor(...C.dark);
+    doc.rect(margin, yy, contentWidth, tableHeaderH, "F");
+    doc.setFillColor(...C.accent);
+    doc.rect(margin, yy, 1.4, tableHeaderH, "F");
 
     const opt = { size: 7.5, bold: true, color: C.white };
-    put("NO", margin + 4, yy + 4.7, opt);
-    put("PENERIMAAN", colName, yy + 4.7, opt);
-    put("CEK", colCheck, yy + 4.7, { ...opt, align: "center" });
-    put("JUMLAH", colTotal, yy + 4.7, { ...opt, align: "right" });
+    put("NO", margin + 5, yy + 5, opt);
+    put("PENERIMAAN", colName, yy + 5, opt);
+    put("CEK", colCheck, yy + 5, { ...opt, align: "center" });
+    put("JUMLAH", colTotal, yy + 5, { ...opt, align: "right" });
   }
 
-  y = infoY + panelH + 4;
+  y = infoY + panelH + 6;
   ensure(tableHeaderH + 10);
   drawTableHeader(y);
   y += tableHeaderH;
@@ -543,7 +561,7 @@ export async function downloadPayrollPdf({ slip, store: rawStore, ownerName }) {
 
     const rowH = Math.max(
       2.6 + itemNameLines.length * 3.6 + noteLines.length * 3 + 1.6,
-      6.5,
+      7,
     );
 
     if (y + rowH > bottomLimit) {
@@ -552,9 +570,15 @@ export async function downloadPayrollPdf({ slip, store: rawStore, ownerName }) {
       y += tableHeaderH;
     }
 
-    const baseY = y + 4.4;
+    // Baris selang-seling
+    if (index % 2 === 1) {
+      doc.setFillColor(...C.zebra);
+      doc.rect(margin, y, contentWidth, rowH, "F");
+    }
 
-    put(String(index + 1), margin + 4, baseY, { size: 8, color: C.muted });
+    const baseY = y + 4.6;
+
+    put(String(index + 1), margin + 5, baseY, { size: 8, color: C.muted });
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8.5);
@@ -581,29 +605,29 @@ export async function downloadPayrollPdf({ slip, store: rawStore, ownerName }) {
     hLine(y);
   });
 
+  // Garis penutup tabel
+  doc.setDrawColor(...C.dark);
+  doc.setLineWidth(0.5);
+  doc.line(margin, y, contentRight, y);
+
   /* ---------- Ringkasan (kanan) + penerbit (kiri) ---------- */
   const summaryRows = [
     ["Jumlah penerimaan", `${items.length} item`],
     ["Sudah dicek", `${checkedCount} dari ${items.length}`],
   ];
 
-  const rowStep = 5;
-  const totalBarH = 9;
+  const rowStep = 5.4;
+  const totalBarH = 10;
   const spelled = terbilangRupiah(slip.total_amount);
   const spelledLines = spelled
-    ? wrap(
-        `Terbilang: ${spelled}`,
-        7,
-        false,
-        contentWidth - (rightColX - margin) - 8,
-      )
+    ? wrap(`Terbilang: ${spelled}`, 7, false, contentRight - rightColX)
     : [];
-  const spelledH = spelledLines.length > 0 ? 2.5 + spelledLines.length * 3 : 0;
+  const spelledH = spelledLines.length > 0 ? 3 + spelledLines.length * 3 : 0;
   const summaryH =
-    3.5 + summaryRows.length * rowStep - 2 + totalBarH + spelledH + 4;
-  const issuerH = 32;
+    3.5 + summaryRows.length * rowStep - 1 + totalBarH + spelledH + 4;
+  const issuerH = 35;
 
-  y += 4;
+  y += 5;
   ensure(Math.max(summaryH, issuerH));
 
   const summaryTop = y;
@@ -612,19 +636,24 @@ export async function downloadPayrollPdf({ slip, store: rawStore, ownerName }) {
 
   summaryRows.forEach(([label, value], index) => {
     const rowY = summaryTop + 3.5 + index * rowStep;
-    put(label, labelX, rowY, { size: 8, color: C.muted });
-    put(value, valueX, rowY, { size: 8, bold: true, align: "right" });
+    put(label, rightColX, rowY, { size: 8, color: C.muted });
+    put(value, contentRight, rowY, { size: 8, bold: true, align: "right" });
+    hLine(rowY + 1.9, C.line, rightColX, contentRight);
   });
 
-  const totalY = summaryTop + 3.5 + summaryRows.length * rowStep - 2;
-  gradientRect(rightColX, totalY, contentRight - rightColX, totalBarH);
-  put("Total Gaji", labelX, totalY + 6, {
+  const totalY = summaryTop + 3.5 + summaryRows.length * rowStep - 1;
+  doc.setFillColor(...C.dark);
+  doc.rect(rightColX, totalY, contentRight - rightColX, totalBarH, "F");
+  doc.setFillColor(...C.accent);
+  doc.rect(rightColX, totalY, 3, totalBarH, "F");
+
+  put("Total Gaji", labelX, totalY + 6.6, {
     size: 9,
     bold: true,
     color: C.white,
   });
-  put(formatCurrency(slip.total_amount), valueX, totalY + 6, {
-    size: 10.5,
+  put(formatCurrency(slip.total_amount), valueX, totalY + 6.8, {
+    size: 11,
     bold: true,
     color: C.white,
     align: "right",
@@ -634,24 +663,26 @@ export async function downloadPayrollPdf({ slip, store: rawStore, ownerName }) {
     doc.setFont("helvetica", "italic");
     doc.setFontSize(7);
     doc.setTextColor(...C.muted);
-    doc.text(spelledLines, valueX, totalY + totalBarH + 3.5, {
+    doc.text(spelledLines, contentRight, totalY + totalBarH + 4, {
       align: "right",
     });
   }
 
   // Penerbit (tanpa gambar tanda tangan), sejajar ringkasan
-  gradientRect(margin, summaryTop, 1.2, 4.5);
-  put("DITERBITKAN OLEH", margin + 4, summaryTop + 3.5, {
+  doc.setFillColor(...C.accent);
+  doc.rect(margin, summaryTop, 10, 0.9, "F");
+  put("DITERBITKAN OLEH", margin, summaryTop + 5.5, {
     size: 8.5,
     bold: true,
+    color: C.dark,
   });
-  hLine(summaryTop + 22, C.text, margin + 6, margin + 62);
-  put(displayValue(ownerName || "Owner"), margin + 6, summaryTop + 26.5, {
+  hLine(summaryTop + 24, C.text, margin, margin + 56);
+  put(displayValue(ownerName || "Owner"), margin, summaryTop + 28.5, {
     size: 8.5,
     bold: true,
     maxWidth: 56,
   });
-  put("Owner", margin + 6, summaryTop + 30.5, { size: 7, color: C.muted });
+  put("Owner", margin, summaryTop + 32.5, { size: 7, color: C.muted });
 
   y = summaryTop + Math.max(summaryH, issuerH) + 6;
 
@@ -699,7 +730,7 @@ export async function downloadPayrollPdf({ slip, store: rawStore, ownerName }) {
     put(text, greetX, y + 4, {
       size: 8.5,
       bold,
-      color: bold ? C.text : C.muted,
+      color: bold ? C.accent : C.muted,
     });
     greetX += textWidth(text, 8.5, bold);
   });
@@ -740,6 +771,10 @@ export async function downloadPayrollPdf({ slip, store: rawStore, ownerName }) {
       color: C.faint,
       align: "right",
     });
+
+    // Strip bawah merah tua
+    doc.setFillColor(...C.dark);
+    doc.rect(0, pageHeight - 2.5, pageWidth, 2.5, "F");
   }
 
   doc.save(buildFileName(slip));
