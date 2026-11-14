@@ -270,6 +270,8 @@ model Employee {
   verify_attempts   Int          @default(0)
   pin_failed_count  Int          @default(0)
   pin_locked_until  DateTime?
+  contract_start    DateTime?    @db.Date
+  contract_end      DateTime?    @db.Date
   payrolls          Payroll[]
 }
 

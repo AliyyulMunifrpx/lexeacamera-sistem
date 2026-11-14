@@ -7,6 +7,7 @@ import {
   FiAlertCircle,
   FiAlertTriangle,
   FiArrowLeft,
+  FiCalendar,
   FiDollarSign,
   FiLoader,
   FiMail,
@@ -66,6 +67,13 @@ const STATUS = {
   INACTIVE: { label: "Nonaktif", tone: "muted" },
 };
 
+const CONTRACT_STATUS = {
+  NONE: { label: "Tanpa kontrak", tone: "muted" },
+  UPCOMING: { label: "Belum mulai", tone: "violet" },
+  ACTIVE: { label: "Berjalan", tone: "blue" },
+  ENDED: { label: "Berakhir", tone: "red" },
+};
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ID_PATTERN = /^[A-Za-z0-9]{1,10}$/;
 const ACCOUNT_PATTERN = /^[\d\s-]+$/;
@@ -111,6 +119,54 @@ function formatDateTime(value) {
     minute: "2-digit",
     timeZone: "Asia/Jakarta",
   })} WIB`;
+}
+
+/* Tanggal murni (YYYY-MM-DD) tanpa konversi zona waktu. */
+function formatDateOnly(value) {
+  if (!value) return "—";
+  const [year, month, day] = String(value).slice(0, 10).split("-").map(Number);
+  if (!year || !month || !day) return "—";
+  return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+function daysLeftLabel(days) {
+  if (days === null || days === undefined) return "";
+  if (days === 0) return "Hari terakhir";
+  if (days > 0) return `Sisa ${days} hari`;
+  return `Berakhir ${Math.abs(days)} hari lalu`;
+}
+
+function isValidDateOnly(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const year = Number(value.slice(0, 4));
+  if (year < 2000 || year > 2100) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return (
+    !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+  );
+}
+
+function validateContract(start, end) {
+  const errors = {};
+  if (start && !isValidDateOnly(start))
+    errors.contract_start = "Isi tanggal awal kontrak yang valid.";
+  if (end && !isValidDateOnly(end))
+    errors.contract_end = "Isi tanggal akhir kontrak yang valid.";
+  if (
+    !errors.contract_start &&
+    !errors.contract_end &&
+    start &&
+    end &&
+    end < start
+  )
+    errors.contract_end =
+      "Akhir kontrak tidak boleh lebih awal dari awal kontrak.";
+  return errors;
 }
 
 /* ------------------------------ Small pieces ------------------------------ */
@@ -223,11 +279,52 @@ function TextField({ id, label, error, ...inputProps }) {
   );
 }
 
+/* Field tanggal opsional (kontrak). */
+function DateField({ id, label, error, ...inputProps }) {
+  return (
+    <div className="min-w-0">
+      <label htmlFor={id} className={labelClass}>
+        {label}
+        <span className="ml-2 text-xs font-normal text-second/50">
+          Opsional
+        </span>
+      </label>
+      <input
+        id={id}
+        type="date"
+        min="2000-01-01"
+        max="2100-12-31"
+        aria-invalid={error ? "true" : undefined}
+        aria-describedby={error ? `${id}-error` : undefined}
+        className={`${inputClass(Boolean(error))} tabular-nums`}
+        {...inputProps}
+      />
+      {error && (
+        <p
+          id={`${id}-error`}
+          role="alert"
+          className="mt-2 flex items-start gap-2 text-sm text-second2"
+        >
+          <FiAlertCircle
+            size={16}
+            className="mt-0.5 shrink-0"
+            aria-hidden="true"
+          />
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /* ------------------------------- Form edit ------------------------------- */
 
 function EmployeeForm({ employee }) {
   const updateMutation = useUpdateEmployee();
   const busy = updateMutation.isPending;
+
+  const savedStart = employee.contract_start?.slice(0, 10) ?? "";
+  const savedEnd = employee.contract_end?.slice(0, 10) ?? "";
 
   const [name, setName] = useState(employee.name ?? "");
   const [email, setEmail] = useState(employee.email ?? "");
@@ -237,6 +334,8 @@ function EmployeeForm({ employee }) {
       BANK_FIELDS.map((field) => [field.name, employee[field.name] ?? ""]),
     ),
   );
+  const [contractStart, setContractStart] = useState(savedStart);
+  const [contractEnd, setContractEnd] = useState(savedEnd);
   const [isActive, setIsActive] = useState(Boolean(employee.is_active));
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState("");
@@ -257,8 +356,16 @@ function EmployeeForm({ employee }) {
     ]),
   );
   const anyBankChanged = Object.values(bankChanged).some(Boolean);
+  const contractStartChanged = contractStart !== savedStart;
+  const contractEndChanged = contractEnd !== savedEnd;
   const dirty =
-    nameChanged || idChanged || emailChanged || activeChanged || anyBankChanged;
+    nameChanged ||
+    idChanged ||
+    emailChanged ||
+    activeChanged ||
+    anyBankChanged ||
+    contractStartChanged ||
+    contractEndChanged;
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -300,6 +407,10 @@ function EmployeeForm({ employee }) {
         nextErrors.email = "Format email tidak valid.";
     }
 
+    if (contractStartChanged || contractEndChanged) {
+      Object.assign(nextErrors, validateContract(contractStart, contractEnd));
+    }
+
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0 || !dirty) return;
 
@@ -314,6 +425,8 @@ function EmployeeForm({ employee }) {
       ),
       ...(emailChanged && { email: trimmedEmail }),
       ...(activeChanged && { is_active: isActive }),
+      ...(contractStartChanged && { contract_start: contractStart || null }),
+      ...(contractEndChanged && { contract_end: contractEnd || null }),
     };
 
     try {
@@ -338,6 +451,13 @@ function EmployeeForm({ employee }) {
       }
       if (typeof code === "string" && code.includes("DISPLAY_ID")) {
         setErrors({ display_id: "ID ini sudah dipakai." });
+        return;
+      }
+      if (code === "INVALID_CONTRACT_PERIOD") {
+        setErrors({
+          contract_end:
+            "Akhir kontrak tidak boleh lebih awal dari awal kontrak.",
+        });
         return;
       }
       if (code === "EMPLOYEE_LINKED_TO_USER") {
@@ -546,6 +666,45 @@ function EmployeeForm({ employee }) {
           />
         ))}
 
+        <p className="pt-2 text-sm font-bold text-second">Kontrak</p>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <DateField
+            id="emp-contract-start"
+            name="contract_start"
+            label="Awal kontrak"
+            error={errors.contract_start}
+            value={contractStart}
+            disabled={busy}
+            onChange={(event) => {
+              setContractStart(event.target.value);
+              if (errors.contract_start || errors.contract_end)
+                setErrors((current) => ({
+                  ...current,
+                  contract_start: "",
+                  contract_end: "",
+                }));
+            }}
+          />
+          <DateField
+            id="emp-contract-end"
+            name="contract_end"
+            label="Akhir kontrak"
+            error={errors.contract_end}
+            value={contractEnd}
+            disabled={busy}
+            onChange={(event) => {
+              setContractEnd(event.target.value);
+              if (errors.contract_end)
+                setErrors((current) => ({ ...current, contract_end: "" }));
+            }}
+          />
+        </div>
+        <p className="-mt-2 text-xs leading-relaxed text-second/60">
+          Kosongkan untuk karyawan tetap. Hari akhir kontrak masih dihitung
+          berjalan. Status kontrak tidak mempengaruhi kemampuan absen.
+        </p>
+
         <div className="flex items-start justify-between gap-4 rounded-xl border border-second/30 p-4">
           <div className="min-w-0">
             <p
@@ -631,6 +790,42 @@ function EmployeeForm({ employee }) {
         </button>
       </div>
     </form>
+  );
+}
+
+/* ------------------------------ Panel kontrak ----------------------------- */
+
+function ContractPanel({ employee }) {
+  const info =
+    CONTRACT_STATUS[employee.contract_status] ?? CONTRACT_STATUS.NONE;
+  const hasEnd = Boolean(employee.contract_end);
+
+  return (
+    <section className="flex min-w-0 flex-col gap-4 rounded-2xl border border-second/30 bg-primary p-4 shadow-xl shadow-second/5 sm:p-8">
+      <div className="flex items-center gap-4">
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-grad text-primary shadow-lg shadow-second4/20">
+          <FiCalendar size={16} aria-hidden="true" />
+        </div>
+        <h2 className="text-lg font-bold text-second">Kontrak</h2>
+      </div>
+
+      <dl className="divide-y divide-second/10">
+        <InfoRow label="Status">
+          <Tag tone={info.tone}>{info.label}</Tag>
+        </InfoRow>
+        <InfoRow label="Awal kontrak">
+          {formatDateOnly(employee.contract_start)}
+        </InfoRow>
+        <InfoRow label="Akhir kontrak">
+          {formatDateOnly(employee.contract_end)}
+        </InfoRow>
+        {hasEnd && (
+          <InfoRow label="Sisa waktu">
+            {daysLeftLabel(employee.contract_days_left) || "—"}
+          </InfoRow>
+        )}
+      </dl>
+    </section>
   );
 }
 
@@ -1073,6 +1268,8 @@ export default function EmployeeDetailPage() {
     label: employee.status ?? "—",
     tone: "muted",
   };
+  const contract =
+    CONTRACT_STATUS[employee.contract_status] ?? CONTRACT_STATUS.NONE;
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-screen-xl flex-col gap-8 bg-primary pb-16">
@@ -1101,6 +1298,12 @@ export default function EmployeeDetailPage() {
                   <Tag tone="strong">ID {employee.display_id}</Tag>
                 )}
                 <Tag tone={status.tone}>{status.label}</Tag>
+                {employee.contract_status &&
+                  employee.contract_status !== "NONE" && (
+                    <Tag tone={contract.tone}>
+                      Kontrak {contract.label.toLowerCase()}
+                    </Tag>
+                  )}
                 {employee.linked_to_user && <Tag tone="muted">Akun admin</Tag>}
               </div>
             </div>
@@ -1136,6 +1339,8 @@ export default function EmployeeDetailPage() {
               </InfoRow>
             </dl>
           </section>
+
+          <ContractPanel employee={employee} />
 
           <ResendPanel employee={employee} />
 

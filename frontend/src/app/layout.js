@@ -16,7 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/+$/, "");
-const SITE_URL = process.env.NEXT_PUBLIC_FRONTEND_URL ?? "https://wavcamera.id";
+const SITE_URL =
+  process.env.NEXT_PUBLIC_FRONTEND_URL ?? "https://lexeacamera.com";
 const FALLBACK_NAME = "WAV Camera";
 
 // Data toko diambil dari endpoint publik dan di-cache lewat "use cache".
@@ -91,7 +92,6 @@ export default function RootLayout({ children }) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="relative isolate min-h-full flex flex-col bg-primary">
-        <BackgroundVideo />
         <Toaster></Toaster>
         <Providers>{children}</Providers>
       </body>

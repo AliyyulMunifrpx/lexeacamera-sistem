@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
 import { createOrder, getCamera, getCameras, getHome } from "./api.js";
 
 export function useGetHome() {
@@ -15,6 +15,21 @@ export function useGetCameras(filters = {}, options = {}) {
     ...options,
   });
 }
+
+/* Scroll tanpa batas: tiap halaman diambil berurutan dan digabung di halaman produk. */
+export function useGetInfiniteCameras(filters = {}) {
+  return useInfiniteQuery({
+    queryKey: ["public cameras infinite", filters],
+    queryFn: ({ pageParam }) => getCameras({ ...filters, page: pageParam }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => {
+      const paging = lastPage?.paging;
+      if (!paging) return undefined;
+      return paging.page < paging.total_pages ? paging.page + 1 : undefined;
+    },
+  });
+}
+
 export function useGetCamera(id) {
   return useQuery({
     queryKey: ["public cameras", id],

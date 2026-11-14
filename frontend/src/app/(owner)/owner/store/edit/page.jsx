@@ -8,22 +8,22 @@ import {
   FiAlertCircle,
   FiArrowLeft,
   FiCheck,
-  FiChevronDown,
   FiImage,
   FiLoader,
-  FiSearch,
   FiShoppingBag,
   FiUploadCloud,
 } from "react-icons/fi";
+import { IoSearchSharp } from "react-icons/io5";
 
 import {
   useGetStore,
   useUpdateStore,
 } from "../../../../features/store/hooks.js";
+import { useGetHome } from "../../../../features/public/hooks.js";
 
 import BannerCropModal from "../../../../../components/owner/banner-crop-modal.jsx";
+import BannerCarousel from "../../../../../components/public/home/banner-carousel.jsx";
 import CameraCard from "../../../../../components/public/home/camera-card.jsx";
-import { useGetInfiniteCameras } from "../../../../features/public/infinite-cameras.js";
 
 import { normalizeApiError } from "../../../../../lib/api/errors.js";
 import notify from "../../../../../lib/notify.js";
@@ -365,20 +365,7 @@ function ImageField({
 
 /* -------------------- Pratinjau tampilan publik -------------------------- */
 
-const PREVIEW_TABS = ["Toko", "Produk", "Kontak", "S&K"];
-const PREVIEW_ACTIVE_TAB = "Produk";
-const PREVIEW_PRODUCT_COUNT = 2;
-const PREVIEW_QUERY = {
-  search: "",
-  condition: "",
-  sort: "newest",
-  category_id: "",
-  min_price: "",
-  max_price: "",
-};
-
-const PREVIEW_SELECT_CLASS =
-  "relative w-full rounded-lg border border-second/30 bg-primary px-3 py-2 pr-8 text-sm text-second";
+const PREVIEW_PRODUCT_COUNT = 4;
 
 function PreviewSkeleton() {
   return (
@@ -390,19 +377,37 @@ function PreviewSkeleton() {
   );
 }
 
+/* Meniru beranda publik versi mobile: navbar, banner utama, carousel, produk. */
 function StorePreview({ name, logoSrc, bannerSrc }) {
   const screenRef = useRef(null);
   const displayName = name.trim() || "Nama toko";
 
-  const { data, isLoading } = useGetInfiniteCameras(PREVIEW_QUERY);
+  const { data: homeData, isLoading } = useGetHome();
 
-  const cameras = useMemo(() => {
-    const items = data?.pages?.[0]?.data ?? [];
-    return [
-      ...items.filter((item) => item.stock !== 0),
-      ...items.filter((item) => item.stock === 0),
-    ].slice(0, PREVIEW_PRODUCT_COUNT);
-  }, [data]);
+  const cameras = useMemo(
+    () => (homeData?.cameras ?? []).slice(0, PREVIEW_PRODUCT_COUNT),
+    [homeData],
+  );
+
+  // Aturan yang sama dengan halaman beranda.
+  const slides = useMemo(() => {
+    const promo = homeData?.promo_cameras ?? [];
+    const bestSelling = homeData?.best_selling_cameras ?? [];
+
+    return (homeData?.banners ?? []).flatMap((banner) => {
+      if (banner.is_promo) {
+        return promo.length > 0 ? [{ banner, products: promo }] : [];
+      }
+      if (banner.is_best_seller) {
+        return bestSelling.length > 0
+          ? [{ banner, products: bestSelling }]
+          : [];
+      }
+      return [{ banner, products: [] }];
+    });
+  }, [homeData]);
+
+  const slidesKey = slides.map((slide) => slide.banner.id).join("|");
 
   useEffect(() => {
     screenRef.current?.setAttribute("inert", "");
@@ -418,20 +423,50 @@ function StorePreview({ name, logoSrc, bannerSrc }) {
       </div>
 
       <p className="sr-only">
-        Pratinjau halaman produk toko seperti yang dilihat pengunjung. Hanya
-        tampilan, tidak bisa diklik.
+        Pratinjau beranda toko versi mobile seperti yang dilihat pengunjung.
+        Hanya tampilan, tidak bisa diklik.
       </p>
 
       {/* Bezel ponsel */}
-      <div className="rounded-4xl bg-second p-2 shadow-xl">
+      <div className="rounded-4xl bg-second/10  shadow-xl border-10 border-second">
         <div
           ref={screenRef}
           aria-hidden="true"
-          className="pointer-events-none cursor-default select-none overflow-hidden rounded-3xl bg-primary"
+          className="pointer-events-none max-h-[44rem] cursor-default select-none overflow-hidden rounded-3xl bg-second/10"
         >
-          {/* Banner + search bar */}
-          <div className="relative">
-            <div className="relative aspect-[3/1] w-full overflow-hidden bg-second/10">
+          {/* Navbar (versi statis dari navbar mobile) */}
+          <div className="flex h-16 items-center justify-between gap-2 bg-primary px-4">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="relative aspect-square h-8 shrink-0 overflow-hidden rounded-full bg-second/10">
+                {logoSrc && (
+                  <Image
+                    src={logoSrc}
+                    alt=""
+                    fill
+                    unoptimized
+                    className="h-full w-full rounded-full object-cover"
+                  />
+                )}
+              </div>
+              <h2 className="truncate text-3xl font-bold text-grad">
+                {displayName}
+              </h2>
+            </div>
+
+            <div className="flex shrink-0 items-center gap-2">
+              <IoSearchSharp className="h-8 w-8 text-second" />
+              <div className="flex size-8 flex-col items-center justify-center gap-1.5">
+                <span className="block h-0.5 w-6 rounded-full bg-second" />
+                <span className="block h-0.5 w-6 rounded-full bg-second" />
+                <span className="block h-0.5 w-6 rounded-full bg-second" />
+              </div>
+            </div>
+          </div>
+
+          {/* Isi beranda */}
+          <div className="flex flex-col gap-4 px-4 pb-4 pt-4">
+            {/* Banner utama */}
+            <div className="relative aspect-[3/1] w-full overflow-hidden rounded-xl bg-second/10">
               {bannerSrc ? (
                 <Image
                   src={bannerSrc}
@@ -439,7 +474,7 @@ function StorePreview({ name, logoSrc, bannerSrc }) {
                   fill
                   unoptimized
                   sizes="384px"
-                  className="object-cover"
+                  className="rounded-xl object-cover"
                 />
               ) : (
                 <div className="flex h-full items-center justify-center text-xs text-second/40">
@@ -448,87 +483,14 @@ function StorePreview({ name, logoSrc, bannerSrc }) {
               )}
             </div>
 
-            <div className="absolute left-1/2 top-2 flex w-[80%] -translate-x-1/2 items-center gap-2 rounded-lg bg-second/30 px-2 py-2 backdrop-blur-xs">
-              <FiSearch size={14} className="shrink-0 text-primary" />
-              <span className="truncate text-sm font-extralight text-primary/70">
-                Cari produk di toko ini
-              </span>
-            </div>
+            {/* Carousel banner */}
+            {slides.length > 0 && (
+              <BannerCarousel key={slidesKey} slides={slides} />
+            )}
 
-            {/* Logo + nama */}
-            <div className="flex items-center justify-center gap-2 px-4">
-              <div className="relative z-20 -mt-8 flex aspect-square w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border-4 border-primary bg-primary">
-                {logoSrc ? (
-                  <Image
-                    src={logoSrc}
-                    alt=""
-                    width={128}
-                    height={128}
-                    unoptimized
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <span className="text-[10px] text-second/50">Logo</span>
-                )}
-              </div>
-
-              <div className="z-20 -mt-8 flex h-8 min-w-0 items-center rounded-full bg-primary px-2 text-base font-semibold text-second">
-                <p className="truncate">{displayName}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Menu */}
-          <div className="mt-4 flex w-full justify-between border-b border-second/30 pt-4 text-sm text-second">
-            {PREVIEW_TABS.map((label) => {
-              const isActive = label === PREVIEW_ACTIVE_TAB;
-              return (
-                <div key={label} className="flex w-full flex-col gap-2 px-2">
-                  <span
-                    className={`w-full text-center ${
-                      isActive ? "font-semibold text-grad" : ""
-                    }`}
-                  >
-                    {label}
-                  </span>
-                  <div
-                    className={`h-[2px] w-full ${isActive ? "bg-grad" : ""}`}
-                  />
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Halaman produk */}
-          <div className="space-y-4 p-4">
-            <div className="grid grid-cols-2 gap-2">
-              <div className={PREVIEW_SELECT_CLASS}>
-                Semua kategori
-                <FiChevronDown
-                  size={14}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-second/60"
-                />
-              </div>
-              <div className={PREVIEW_SELECT_CLASS}>
-                Terbaru
-                <FiChevronDown
-                  size={14}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-second/60"
-                />
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              <span className="rounded-full border border-second bg-second px-4 py-1.5 text-xs font-semibold text-primary">
-                Semua
-              </span>
-              <span className="rounded-full border border-second/20 px-4 py-1.5 text-xs font-semibold text-second">
-                Baru
-              </span>
-              <span className="rounded-full border border-second/20 px-4 py-1.5 text-xs font-semibold text-second">
-                Bekas
-              </span>
-            </div>
+            <p className="py-4 text-xl text-second">
+              Rekomendasi <span className="font-bold text-grad">Untukmu</span>
+            </p>
 
             {isLoading ? (
               <div className="grid w-full grid-cols-2 gap-2">
@@ -547,15 +509,19 @@ function StorePreview({ name, logoSrc, bannerSrc }) {
                 ))}
               </div>
             )}
+
+            <div className="my-4 w-full rounded-full bg-grad py-2 text-center font-bold text-primary">
+              Lihat Produk Lengkap
+            </div>
           </div>
         </div>
       </div>
 
       <p className="mt-4 text-xs leading-relaxed text-second/50">
-        Pratinjau halaman produk dengan {PREVIEW_PRODUCT_COUNT} produk terbaru
-        toko Anda. Nama, logo, dan banner mengikuti formulir secara langsung
-        (termasuk gambar yang belum disimpan). Di halaman publik banner tampil
-        sekitar 3:1, jadi letakkan bagian penting di tengah.
+        Pratinjau beranda versi mobile. Nama, logo, dan banner utama mengikuti
+        formulir secara langsung (termasuk gambar yang belum disimpan). Carousel
+        dan produk memakai data toko saat ini, dan hanya sebagian beranda yang
+        ditampilkan.
       </p>
     </div>
   );
@@ -605,9 +571,6 @@ export default function EditStorePage() {
       Boolean(mainBanner) ||
       removeMainBanner
     : false;
-
-  const nameError = values.name.trim() ? "" : "";
-  const termsError = values.terms_and_condition.trim() ? "" : "";
 
   useEffect(() => {
     if (!store) return;

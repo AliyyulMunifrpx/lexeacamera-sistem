@@ -25,6 +25,7 @@ import MasonryGrid from "./../../../components/public/home/masonry-grid";
 import CameraCard from "../../../components/public/home/camera-card.jsx";
 
 const RELATED_LIMIT = 18;
+const CONTACT_PATH = "/contact";
 
 const priceFormatter = new Intl.NumberFormat("id-ID", {
   maximumFractionDigits: 0,
@@ -95,13 +96,13 @@ function ExpandableText({ text }) {
       >
         <p
           ref={textRef}
-          className="whitespace-pre-line break-words text-sm text-primary/70"
+          className="whitespace-pre-line break-words text-sm text-second/70"
         >
           {text}
         </p>
 
         {isClamped && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-second4 to-transparent" />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-primary to-transparent" />
         )}
       </div>
 
@@ -110,7 +111,7 @@ function ExpandableText({ text }) {
           type="button"
           onClick={() => setExpanded((previous) => !previous)}
           aria-expanded={expanded}
-          className="mt-2 text-sm font-light text-center w-full text-primary/50 "
+          className="mt-2 w-full text-center text-sm font-light text-second/50 transition-colors hover:text-second"
         >
           {expanded ? "Lebih sedikit ^" : "Selengkapnya ˅"}
         </button>
@@ -131,11 +132,11 @@ function BuyButtons({
   const isDock = variant === "dock";
   const hasMultipleMarketplaces = marketplaces.length > 1;
 
-  const secondaryClass = `flex min-h-12 items-center justify-center gap-2  text-sm font-semibold text-primary transition-colors hover:bg-second/5 disabled:cursor-not-allowed disabled:opacity-50 ${
+  const secondaryClass = `flex min-h-12 items-center justify-center gap-2 rounded-md border border-second/30 bg-primary px-4 text-sm font-semibold text-second transition-colors hover:bg-second/5 disabled:cursor-not-allowed disabled:opacity-50 ${
     isDock ? "" : "w-full"
   }`;
 
-  const primaryClass = `flex min-h-12 items-center justify-center gap-2 bg-primary px-4 py-2 text-sm font-semibold text-second transition-colors hover:bg-second/80 ${
+  const primaryClass = `flex min-h-12 items-center justify-center gap-2 rounded-md bg-second px-4 py-2 text-sm font-semibold text-primary transition-colors hover:bg-second/80 ${
     isDock ? "flex-1" : "w-full"
   }`;
 
@@ -145,9 +146,7 @@ function BuyButtons({
         href={marketplace.product_url}
         target="_blank"
         rel="noopener noreferrer"
-        className={`${secondaryClass} rounded-md ${
-          isDock ? "min-w-0 flex-1" : ""
-        }`}
+        className={`${secondaryClass} ${isDock ? "min-w-0 flex-1" : ""}`}
       >
         {marketplace.logo_url ? (
           <Image
@@ -171,7 +170,7 @@ function BuyButtons({
     <div
       className={
         isDock
-          ? "flex flex-wrap items-center gap-2 bg-second/40 backdrop-blur-md"
+          ? "flex flex-wrap items-center gap-2 bg-primary/90 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-md"
           : "flex flex-col gap-2"
       }
     >
@@ -233,7 +232,10 @@ function BuyButtons({
           Stok habis
         </button>
       ) : (
-        <Link href={`/pesan?camera_id=${cameraId}`} className={primaryClass}>
+        <Link
+          href={`${CONTACT_PATH}?camera_id=${encodeURIComponent(cameraId)}`}
+          className={primaryClass}
+        >
           <FiShoppingCart size={22} />
           Order
         </Link>
@@ -244,7 +246,7 @@ function BuyButtons({
 
 function CameraDetailFallback() {
   return (
-    <div className="flex h-[100dvh] items-center justify-center gap-2 text-sm text-primary/60">
+    <div className="flex h-[100dvh] items-center justify-center gap-2 text-sm text-second/60">
       <FiLoader className="animate-spin" size={22} />
       Memuat detail kamera...
     </div>
@@ -267,7 +269,7 @@ function CameraDetailContent() {
   // Response API: { data: {...} }. Dua bentuk ditangani, tergantung hook mengembalikan apa.
   const camera = cameraQuery.data?.data ?? cameraQuery.data;
   const store = homeQuery.data?.store;
-  console.log(camera);
+
   // Rekomendasi: kamera lain di kategori yang sama. Baru jalan setelah kategori diketahui.
   const categoryId = camera?.category?.id ?? "";
   const relatedQuery = useGetCameras(
@@ -288,6 +290,7 @@ function CameraDetailContent() {
     0,
     RELATED_LIMIT,
   );
+
   useEffect(() => {
     if (!cameraQuery.isError || !cameraQuery.error) return;
 
@@ -357,15 +360,15 @@ function CameraDetailContent() {
   if (cameraQuery.isError || !camera) {
     return (
       <div className="mx-auto flex min-h-[100dvh] w-full max-w-md flex-col items-center justify-center gap-4 p-4 text-center">
-        <h1 className="font-semibold text-primary">Kamera tidak ditemukan</h1>
-        <p className="text-sm text-primary/60">
+        <h1 className="font-semibold text-second">Kamera tidak ditemukan</h1>
+        <p className="text-sm text-second/60">
           Produk ini mungkin sudah dihapus atau terjadi gangguan koneksi.
         </p>
 
         <div className="flex gap-2">
           <Link
             href="/"
-            className="flex h-8 items-center rounded-full border border-second/30 px-4 text-sm font-semibold text-primary"
+            className="flex h-8 items-center rounded-full border border-second/30 px-4 text-sm font-semibold text-second"
           >
             Ke beranda
           </Link>
@@ -424,11 +427,11 @@ function CameraDetailContent() {
       {/* Konten halaman. space-y hanya berlaku di sini. */}
       <div className="mx-auto w-full space-y-4 p-4 pb-[calc(5rem+max(0.5rem,env(safe-area-inset-bottom)))] md:pb-8">
         {/* Tombol kembali: menempel di atas layar saat discroll */}
-        <div className="sticky top-0 z-30 -mx-4 -mt-4 bg-second/40 backdrop-blur-md px-4 py-4">
+        <div className="sticky top-0 z-30 -mx-4 -mt-4 bg-primary/80 px-4 py-4 backdrop-blur-md">
           <button
             type="button"
             onClick={goBack}
-            className="inline-flex items-center gap-2 text-sm text-primary transition-colors hover:text-primary"
+            className="inline-flex items-center gap-2 text-sm text-second transition-colors hover:text-second4"
           >
             <FiArrowLeft size={18} />
             Kembali
@@ -462,14 +465,14 @@ function CameraDetailContent() {
                   ))}
                 </div>
               ) : (
-                <div className="flex h-full items-center justify-center text-sm text-primary/40">
+                <div className="flex h-full items-center justify-center text-sm text-second/40">
                   No image
                 </div>
               )}
 
               {isOutOfStock && (
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/50">
-                  <span className="flex h-8 items-center rounded-full px-4 text-sm font-semibold text-primary">
+                  <span className="flex h-8 items-center rounded-full px-4 text-sm font-semibold text-white">
                     Stok habis
                   </span>
                 </div>
@@ -517,28 +520,28 @@ function CameraDetailContent() {
           {/* Info */}
           <div className="space-y-4">
             <div className="space-y-2">
-              <h1 className="break-words text-base font-bold tracking-tight text-primary">
-                <span className="bg-second2 text-primary px-2 py-1">
+              <h1 className="break-words text-base font-bold tracking-tight text-second">
+                <span className="bg-second2 px-2 py-1 text-primary">
                   {camera.condition}
                 </span>{" "}
                 {camera.name}
               </h1>
               {camera.strikethrough_price && (
-                <p className="text-xs text-primary/50 line-through">
+                <p className="text-xs text-second/50 line-through">
                   <span>Rp</span>
                   {formatPrice(camera.strikethrough_price)}
                 </p>
-              )}{" "}
-              <p className="font-semibold text-primary text-3xl">
+              )}
+              <p className="text-3xl font-semibold text-second">
                 <span className="text-base">Rp</span>
                 {formatPrice(camera.price)}
               </p>
-              <p className="text-sm text-primary/60">
+              <p className="text-sm text-second/60">
                 {isOutOfStock ? "Stok habis" : `Stok tersedia: ${camera.stock}`}
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 rounded-md ">
+            <div className="grid grid-cols-2 gap-3 rounded-md">
               {[
                 { label: "SKU", value: camera.sku },
                 { label: "Serial Number", value: camera.serial_number },
@@ -561,8 +564,8 @@ function CameraDetailContent() {
                 )
                 .map((item) => (
                   <div key={item.label} className="min-w-0">
-                    <p className="text-xs text-primary/50">{item.label}</p>
-                    <p className="mt-1 break-words text-sm font-medium text-primary">
+                    <p className="text-xs text-second/50">{item.label}</p>
+                    <p className="mt-1 break-words text-sm font-medium text-second">
                       {item.value}
                     </p>
                   </div>
@@ -583,7 +586,7 @@ function CameraDetailContent() {
             <div className="grid grid-cols-1 gap-4 md:col-span-2 md:grid-cols-2 xl:col-span-1 xl:grid-cols-1 xl:self-start">
               {camera.description && (
                 <section className="space-y-2">
-                  <h2 className="font-semibold text-primary text-base">
+                  <h2 className="text-base font-semibold text-second">
                     Deskripsi
                   </h2>
                   <ExpandableText key={camera.id} text={camera.description} />
@@ -592,7 +595,7 @@ function CameraDetailContent() {
 
               {camera.inclusions && (
                 <section className="space-y-2">
-                  <h2 className="font-semibold text-base text-primary">
+                  <h2 className="text-base font-semibold text-second">
                     Kelengkapan
                   </h2>
                   <ExpandableText key={camera.id} text={camera.inclusions} />
@@ -605,10 +608,10 @@ function CameraDetailContent() {
         {/* Kamu mungkin juga suka: kamera lain di kategori yang sama */}
         {relatedCameras.length > 0 && (
           <section className="space-y-4 pt-4">
-            <h2 className="font-semibold text-sm text-center w-full text-primary">
+            <h2 className="w-full text-center text-sm font-semibold text-second">
               ------- Kamu mungkin juga suka ------
             </h2>
-            <div className="w-full grid gap-2 grid-cols-2 md:grid-cols-4 lg:grid-cols-6">
+            <div className="grid w-full grid-cols-2 gap-2 md:grid-cols-4 lg:grid-cols-6">
               {relatedCameras.map((item) => (
                 <CameraCard key={item.id} data={item} />
               ))}
@@ -625,7 +628,7 @@ function CameraDetailContent() {
       {/* Modal kecil marketplace: melayang di atas dock */}
       {showMarketplaces && marketplaces.length > 1 && (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center md:items-center backdrop-blur-md"
+          className="fixed inset-0 z-50 flex items-end justify-center backdrop-blur-md md:items-center"
           role="dialog"
           aria-modal="true"
           aria-label="Pilih marketplace"
@@ -638,17 +641,15 @@ function CameraDetailContent() {
           />
 
           {/* Di HP: margin bawah = tinggi dock (8 + 48 + 8px / safe area) + jarak 8px. */}
-          <div className="relative mx-2 mb-[calc(4rem+max(0.5rem,env(safe-area-inset-bottom)))] w-[calc(100%-1rem)] max-w-md space-y-4 rounded-md p-4 md:mx-0 md:mb-0 md:w-full">
+          <div className="relative mx-2 mb-[calc(4rem+max(0.5rem,env(safe-area-inset-bottom)))] w-[calc(100%-1rem)] max-w-md space-y-4 rounded-md border border-second/30 bg-primary p-4 shadow-xl md:mx-0 md:mb-0 md:w-full">
             <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-primary">
-                Beli di marketplace
-              </h2>
+              <h2 className="font-semibold text-second">Beli di marketplace</h2>
 
               <button
                 type="button"
                 onClick={() => setShowMarketplaces(false)}
                 aria-label="Tutup"
-                className="flex size-8 items-center justify-center rounded-md text-primary/50 transition-colors hover:bg-second/5 hover:text-primary"
+                className="flex size-8 items-center justify-center rounded-md text-second/50 transition-colors hover:bg-second/5 hover:text-second"
               >
                 <FiX size={18} />
               </button>
@@ -663,7 +664,7 @@ function CameraDetailContent() {
                   rel="noopener noreferrer"
                   className="group flex items-center gap-4 rounded-md transition-colors hover:bg-second/5"
                 >
-                  <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white">
+                  <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-second/10 bg-primary">
                     {marketplace.logo_url ? (
                       <Image
                         src={marketplace.logo_url}
@@ -674,17 +675,17 @@ function CameraDetailContent() {
                         className="h-full w-full object-contain"
                       />
                     ) : (
-                      <FiShoppingBag size={18} className="text-primary/40" />
+                      <FiShoppingBag size={18} className="text-second/40" />
                     )}
                   </div>
 
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-primary">
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-second">
                     {marketplace.name}
                   </span>
 
                   <FiExternalLink
                     size={16}
-                    className="shrink-0 text-primary/30 transition-colors group-hover:text-primary"
+                    className="shrink-0 text-second/30 transition-colors group-hover:text-second"
                   />
                 </a>
               ))}

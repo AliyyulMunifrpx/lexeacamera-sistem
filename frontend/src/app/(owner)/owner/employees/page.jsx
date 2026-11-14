@@ -58,6 +58,13 @@ const STATUS = {
   INACTIVE: { label: "Nonaktif", tone: "muted" },
 };
 
+const CONTRACT_STATUS = {
+  NONE: { label: "Tanpa kontrak", tone: "muted" },
+  UPCOMING: { label: "Belum mulai", tone: "violet" },
+  ACTIVE: { label: "Berjalan", tone: "blue" },
+  ENDED: { label: "Berakhir", tone: "red" },
+};
+
 const STATUS_FILTERS = [
   { value: "ALL", label: "Semua" },
   { value: "ACTIVE", label: "Aktif" },
@@ -101,6 +108,41 @@ function formatNumber(number = 0) {
   return new Intl.NumberFormat("id-ID").format(number);
 }
 
+function daysLeftLabel(days) {
+  if (days === null || days === undefined) return "";
+  if (days === 0) return "Hari terakhir";
+  if (days > 0) return `Sisa ${days} hari`;
+  return `Berakhir ${Math.abs(days)} hari lalu`;
+}
+
+function isValidDateOnly(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const year = Number(value.slice(0, 4));
+  if (year < 2000 || year > 2100) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return (
+    !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+  );
+}
+
+function validateContract(start, end) {
+  const errors = {};
+  if (start && !isValidDateOnly(start))
+    errors.contract_start = "Isi tanggal awal kontrak yang valid.";
+  if (end && !isValidDateOnly(end))
+    errors.contract_end = "Isi tanggal akhir kontrak yang valid.";
+  if (
+    !errors.contract_start &&
+    !errors.contract_end &&
+    start &&
+    end &&
+    end < start
+  )
+    errors.contract_end =
+      "Akhir kontrak tidak boleh lebih awal dari awal kontrak.";
+  return errors;
+}
+
 /* ------------------------------ Small pieces ------------------------------ */
 
 function Tag({ children, tone = "outline" }) {
@@ -130,6 +172,24 @@ function Tag({ children, tone = "outline" }) {
 function StatusTag({ status }) {
   const config = STATUS[status] ?? { label: status ?? "—", tone: "muted" };
   return <Tag tone={config.tone}>{config.label}</Tag>;
+}
+
+/* Status kontrak + sisa hari (kalau ada tanggal akhir). */
+function ContractCell({ employee }) {
+  const info =
+    CONTRACT_STATUS[employee.contract_status] ?? CONTRACT_STATUS.NONE;
+  const hint = employee.contract_end
+    ? daysLeftLabel(employee.contract_days_left)
+    : "";
+
+  return (
+    <div className="flex flex-col items-start gap-2">
+      <Tag tone={info.tone}>{info.label}</Tag>
+      {hint && (
+        <span className="text-xs tabular-nums text-second/60">{hint}</span>
+      )}
+    </div>
+  );
 }
 
 function StatCard({ icon: Icon, label, value, hint, featured = false }) {
@@ -236,6 +296,44 @@ function TextField({ id, label, error, ...inputProps }) {
   );
 }
 
+/* Field tanggal opsional (kontrak). */
+function DateField({ id, label, error, ...inputProps }) {
+  return (
+    <div className="min-w-0">
+      <label htmlFor={id} className={labelClass}>
+        {label}
+        <span className="ml-2 text-xs font-normal text-second/50">
+          Opsional
+        </span>
+      </label>
+      <input
+        id={id}
+        type="date"
+        min="2000-01-01"
+        max="2100-12-31"
+        aria-invalid={error ? "true" : undefined}
+        aria-describedby={error ? `${id}-error` : undefined}
+        className={`${inputClass(Boolean(error))} tabular-nums`}
+        {...inputProps}
+      />
+      {error && (
+        <p
+          id={`${id}-error`}
+          role="alert"
+          className="mt-2 flex items-start gap-2 text-sm text-second2"
+        >
+          <FiAlertCircle
+            size={16}
+            className="mt-0.5 shrink-0"
+            aria-hidden="true"
+          />
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /* ------------------------- Add Employee Dialog ---------------------------- */
 
 function AddEmployeeDialog({ onClose }) {
@@ -255,6 +353,8 @@ function AddEmployeeDialog({ onClose }) {
     account_number: "",
     account_holder: "",
   });
+  const [contractStart, setContractStart] = useState("");
+  const [contractEnd, setContractEnd] = useState("");
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState("");
 
@@ -320,6 +420,8 @@ function AddEmployeeDialog({ onClose }) {
       }
     }
 
+    Object.assign(nextErrors, validateContract(contractStart, contractEnd));
+
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) {
       requestAnimationFrame(() => {
@@ -336,6 +438,8 @@ function AddEmployeeDialog({ onClose }) {
         email: trimmedEmail,
         display_id: trimmedId,
         ...trimmedBank,
+        ...(contractStart && { contract_start: contractStart }),
+        ...(contractEnd && { contract_end: contractEnd }),
       });
 
       if (result?.email_sent === false) {
@@ -359,6 +463,14 @@ function AddEmployeeDialog({ onClose }) {
 
       if (typeof code === "string" && code.includes("DISPLAY_ID")) {
         setErrors({ display_id: "ID ini sudah dipakai." });
+        return;
+      }
+
+      if (code === "INVALID_CONTRACT_PERIOD") {
+        setErrors({
+          contract_end:
+            "Akhir kontrak tidak boleh lebih awal dari awal kontrak.",
+        });
         return;
       }
 
@@ -564,6 +676,45 @@ function AddEmployeeDialog({ onClose }) {
               }}
             />
           ))}
+
+          <p className="pt-2 text-sm font-bold text-second">Kontrak</p>
+
+          <DateField
+            id="employee-contract-start"
+            name="contract_start"
+            label="Awal kontrak"
+            error={errors.contract_start}
+            value={contractStart}
+            disabled={busy}
+            onChange={(event) => {
+              setContractStart(event.target.value);
+              if (errors.contract_start || errors.contract_end)
+                setErrors((current) => ({
+                  ...current,
+                  contract_start: "",
+                  contract_end: "",
+                }));
+            }}
+          />
+
+          <DateField
+            id="employee-contract-end"
+            name="contract_end"
+            label="Akhir kontrak"
+            error={errors.contract_end}
+            value={contractEnd}
+            disabled={busy}
+            onChange={(event) => {
+              setContractEnd(event.target.value);
+              if (errors.contract_end)
+                setErrors((current) => ({ ...current, contract_end: "" }));
+            }}
+          />
+
+          <p className="-mt-2 text-xs leading-relaxed text-second/60">
+            Kosongkan untuk karyawan tetap. Hari akhir kontrak masih dihitung
+            berjalan.
+          </p>
         </div>
 
         {formError && (
@@ -954,6 +1105,9 @@ export default function EmployeesPage() {
                     <th scope="col" className="px-4 py-3 font-semibold">
                       Status
                     </th>
+                    <th scope="col" className="px-4 py-3 font-semibold">
+                      Kontrak
+                    </th>
                     <th
                       scope="col"
                       className="px-4 py-3 text-right font-semibold"
@@ -986,6 +1140,9 @@ export default function EmployeesPage() {
                           )}
                         </div>
                       </td>
+                      <td className="px-4 py-4">
+                        <ContractCell employee={employee} />
+                      </td>
 
                       <td className="px-4 py-4 text-right">
                         <PrimaryButton href={EMPLOYEE_PATH(employee.id)}>
@@ -1001,40 +1158,56 @@ export default function EmployeesPage() {
 
             {/* Card mobile */}
             <ul className="flex flex-col gap-4 md:hidden">
-              {employees.map((employee) => (
-                <li key={employee.id}>
-                  <Link
-                    href={EMPLOYEE_PATH(employee.id)}
-                    className={`group block min-w-0 rounded-2xl border border-second/30 bg-primary p-4 shadow-xl shadow-second/5 transition-colors hover:border-second4 hover:bg-second4/5 ${FOCUS_RING}`}
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0">
-                        <p className="break-words text-sm font-semibold text-second group-hover:text-second4">
-                          {employee.name}
-                        </p>
-                        <p className="mt-2 break-all text-xs text-second/60">
-                          {employee.email}
-                        </p>
-                      </div>
-                      <FiChevronRight
-                        size={18}
-                        className="mt-0.5 shrink-0 text-second/40"
-                        aria-hidden="true"
-                      />
-                    </div>
+              {employees.map((employee) => {
+                const contract =
+                  CONTRACT_STATUS[employee.contract_status] ??
+                  CONTRACT_STATUS.NONE;
+                const contractHint = employee.contract_end
+                  ? daysLeftLabel(employee.contract_days_left)
+                  : "";
 
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {employee.display_id && (
-                        <Tag tone="outline">ID {employee.display_id}</Tag>
-                      )}
-                      <StatusTag status={employee.status} />
-                      {employee.linked_to_user && (
-                        <Tag tone="muted">Akun admin</Tag>
-                      )}
-                    </div>
-                  </Link>
-                </li>
-              ))}
+                return (
+                  <li key={employee.id}>
+                    <Link
+                      href={EMPLOYEE_PATH(employee.id)}
+                      className={`group block min-w-0 rounded-2xl border border-second/30 bg-primary p-4 shadow-xl shadow-second/5 transition-colors hover:border-second4 hover:bg-second4/5 ${FOCUS_RING}`}
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <p className="break-words text-sm font-semibold text-second group-hover:text-second4">
+                            {employee.name}
+                          </p>
+                          <p className="mt-2 break-all text-xs text-second/60">
+                            {employee.email}
+                          </p>
+                        </div>
+                        <FiChevronRight
+                          size={18}
+                          className="mt-0.5 shrink-0 text-second/40"
+                          aria-hidden="true"
+                        />
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {employee.display_id && (
+                          <Tag tone="outline">ID {employee.display_id}</Tag>
+                        )}
+                        <StatusTag status={employee.status} />
+                        {employee.linked_to_user && (
+                          <Tag tone="muted">Akun admin</Tag>
+                        )}
+                        {employee.contract_status &&
+                          employee.contract_status !== "NONE" && (
+                            <Tag tone={contract.tone}>
+                              Kontrak {contract.label.toLowerCase()}
+                              {contractHint ? ` · ${contractHint}` : ""}
+                            </Tag>
+                          )}
+                      </div>
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         ) : (

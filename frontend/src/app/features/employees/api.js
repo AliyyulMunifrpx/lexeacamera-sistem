@@ -33,6 +33,8 @@ export async function createEmployee({
   bank_name,
   account_number,
   account_holder,
+  contract_start,
+  contract_end,
 }) {
   const response = await api.post("/owner/employees", {
     name,
@@ -42,14 +44,17 @@ export async function createEmployee({
     bank_name,
     account_number,
     account_holder,
+    ...(contract_start !== undefined && { contract_start }),
+    ...(contract_end !== undefined && { contract_end }),
   });
 
   return response.data.data;
 }
+
 /**
  * PUT /owner/employees/:id
- * Minimal satu dari: name, email, is_active.
- * Mengganti email mereset verifikasi & PIN dan mengirim tautan baru (`email_sent`).
+ * Minimal satu field. Mengganti email mereset verifikasi & PIN dan mengirim tautan baru (`email_sent`).
+ * contract_start / contract_end: "YYYY-MM-DD" atau null (mengosongkan).
  */
 export async function updateEmployee(
   id,
@@ -62,6 +67,8 @@ export async function updateEmployee(
     bank_name,
     account_holder,
     account_number,
+    contract_start,
+    contract_end,
   },
 ) {
   const body = {
@@ -73,13 +80,14 @@ export async function updateEmployee(
     ...(account_number !== undefined && { account_number }),
     ...(display_id !== undefined && { display_id }),
     ...(is_active !== undefined && { is_active }),
+    ...(contract_start !== undefined && { contract_start }),
+    ...(contract_end !== undefined && { contract_end }),
   };
 
   const response = await api.put(`/owner/employees/${id}`, body);
 
   return response.data.data;
 }
-
 /** POST /owner/employees/:id/resend-verification (maks 1x per menit). */
 export async function resendEmployeeVerification(id) {
   const response = await api.post(`/owner/employees/${id}/resend-verification`);
