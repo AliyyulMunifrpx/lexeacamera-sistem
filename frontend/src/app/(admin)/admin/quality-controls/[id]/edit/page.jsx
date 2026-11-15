@@ -103,13 +103,12 @@ export default function EditQcPage() {
         </div>
       ) : (
         <QcForm
-          key={qcQuery.data.updated_at}
-          mode="edit"
-          qc={qcQuery.data}
+          mode="create"
           items={itemsQuery.data ?? []}
-          submitting={updateMutation.isPending}
-          submitLabel="Simpan perubahan"
-          cancelHref={`${QC_PATH}/${id}`}
+          submitting={createMutation.isPending}
+          submitLabel="Simpan QC"
+          cancelHref={QC_PATH}
+          isAdmin={isAdmin}
           onSubmit={handleSubmit}
         />
       )}

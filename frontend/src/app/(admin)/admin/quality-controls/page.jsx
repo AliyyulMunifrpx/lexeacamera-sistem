@@ -21,7 +21,7 @@ import {
   BTN_PRIMARY,
   ErrorText,
   FOCUS_RING,
-  STATUS_LABEL,
+  STATUS_LABEL_ADMIN,
   Tag,
   TYPE_LABEL,
   formatDate,
@@ -357,8 +357,8 @@ export default function QualityControlsPage() {
                       <Tag tone="strong">{TYPE_LABEL[item.type]}</Tag>
                     </td>
                     <td className="px-4 py-4">
-                      <Tag tone={STATUS_LABEL[item.status]?.tone}>
-                        {STATUS_LABEL[item.status]?.label ?? item.status}
+                      <Tag tone={STATUS_LABEL_ADMIN[item.status]?.tone}>
+                        {STATUS_LABEL_ADMIN[item.status]?.label ?? item.status}
                       </Tag>
                     </td>
                     <td className="whitespace-nowrap px-4 py-4 text-sm font-semibold tabular-nums text-second">
@@ -414,8 +414,8 @@ export default function QualityControlsPage() {
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2">
                     <Tag tone="strong">{TYPE_LABEL[item.type]}</Tag>
-                    <Tag tone={STATUS_LABEL[item.status]?.tone}>
-                      {STATUS_LABEL[item.status]?.label ?? item.status}
+                    <Tag tone={STATUS_LABEL_ADMIN[item.status]?.tone}>
+                      {STATUS_LABEL_ADMIN[item.status]?.label ?? item.status}
                     </Tag>
                     <Tag>{item.defect_count} rusak</Tag>
                     <Tag>{item.minor_count} minor</Tag>

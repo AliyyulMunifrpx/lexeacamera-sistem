@@ -94,6 +94,7 @@ export default function CreateQcPage() {
           submitting={createMutation.isPending}
           submitLabel="Simpan QC"
           cancelHref={QC_PATH}
+          isAdmin={isAdmin}
           onSubmit={handleSubmit}
         />
       )}

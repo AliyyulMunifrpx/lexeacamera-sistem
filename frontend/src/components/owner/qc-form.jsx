@@ -545,6 +545,7 @@ function ProductCombobox({ id, value, onChange, onPick, disabled, invalid }) {
  * mode: "create" | "edit"
  * qc: detail QC (edit) atau null
  * items: item master aktif
+ * isAdmin: true -> status CANCEL tampil sebagai "Belum deal"
  * onSubmit(payload)
  */
 export default function QcForm({
@@ -554,9 +555,14 @@ export default function QcForm({
   submitting,
   submitLabel,
   cancelHref,
+  isAdmin = false,
   onSubmit,
 }) {
   const isEdit = mode === "edit";
+
+  /* Status CANCEL tampil sebagai "Belum deal" khusus admin. */
+  const getStatusLabel = (value, info) =>
+    isAdmin && value === "CANCEL" ? "Belum deal" : info.label;
 
   const [form, setForm] = useState({
     type: qc?.type ?? "BUY",
@@ -783,7 +789,7 @@ export default function QcForm({
                     disabled={submitting}
                     onClick={() => setField("status", value)}
                   >
-                    {info.label}
+                    {getStatusLabel(value, info)}
                   </Pill>
                 ))}
               </div>
@@ -1063,7 +1069,9 @@ export default function QcForm({
             <div className="mt-2 flex flex-wrap gap-2">
               <Tag tone="strong">{TYPE_LABEL[form.type]}</Tag>
               {!isEdit && statusInfo && (
-                <Tag tone={statusInfo.tone}>{statusInfo.label}</Tag>
+                <Tag tone={statusInfo.tone}>
+                  {getStatusLabel(form.status, statusInfo)}
+                </Tag>
               )}
             </div>
           </div>

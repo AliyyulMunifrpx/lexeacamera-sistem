@@ -31,7 +31,7 @@ import {
   FOCUS_RING,
   ORIGIN_LABEL,
   SECTIONS,
-  STATUS_LABEL,
+  STATUS_LABEL_ADMIN,
   Tag,
   TYPE_LABEL,
   describeQcError,
@@ -274,7 +274,7 @@ export default function QcDetailPage() {
   }
 
   const isDeal = qc.status === "DEAL";
-  const statusInfo = STATUS_LABEL[qc.status] ?? STATUS_LABEL.CANCEL;
+  const statusInfo = STATUS_LABEL_ADMIN[qc.status] ?? STATUS_LABEL_ADMIN.CANCEL;
 
   async function toggleStatus() {
     // QC yang sudah deal tidak bisa dibatalkan lagi.

@@ -59,7 +59,10 @@ export const STATUS_LABEL = {
   DEAL: { label: "Deal", tone: "blue" },
   CANCEL: { label: "Batal", tone: "red" },
 };
-
+export const STATUS_LABEL_ADMIN = {
+  DEAL: { label: "Deal", tone: "blue" },
+  CANCEL: { label: "Belum Deal", tone: "red" },
+};
 export const CLASS_LABEL = {
   NORMAL: { label: "Normal", tone: "muted" },
   MINOR: { label: "Minor", tone: "red" },
