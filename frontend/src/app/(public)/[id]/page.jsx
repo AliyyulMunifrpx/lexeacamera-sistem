@@ -216,6 +216,7 @@ function BuyButtons({
             alt=""
             width={24}
             height={24}
+            unoptimized
             className="size-6 shrink-0"
           />
           <span>Chat di WhatsApp</span>
@@ -459,6 +460,7 @@ function CameraDetailContent() {
                         fill
                         priority={index === 0}
                         sizes="(min-width: 768px) 50vw, 100vw"
+                        unoptimized
                         className="object-cover"
                       />
                     </div>
@@ -509,6 +511,7 @@ function CameraDetailContent() {
                       alt={`${camera.name} ${index + 1}`}
                       fill
                       sizes="80px"
+                      unoptimized
                       className="object-cover"
                     />
                   </button>
