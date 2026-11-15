@@ -29,8 +29,8 @@ export default function BackgroundVideo() {
           poster="/background-poster.webp"
           className="h-full w-full object-cover"
         >
-          <source src="/background.webm" type="video/webm" />
-          <source src="/background.mp4" type="video/mp4" />
+          <source src="/bg.webm" type="video/webm" />
+          <source src="/bg.mp4" type="video/mp4" />
         </video>
       )}
     </div>
