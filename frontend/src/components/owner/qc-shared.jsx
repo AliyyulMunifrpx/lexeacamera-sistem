@@ -138,6 +138,14 @@ export function describeQcError(err) {
   const name = body?.name;
 
   switch (body?.errors) {
+    case "PRICE_OWNER_ONLY":
+      return "Harga QC yang sudah deal hanya bisa diisi atau diubah oleh owner.";
+    case "STATUS_OWNER_ONLY":
+      return "QC yang sudah deal hanya bisa dikembalikan ke cancel oleh owner.";
+    case "QC_UPLOAD_URL_FAILED":
+      return "Gagal menyiapkan unggahan file. Coba lagi.";
+    case "QC_UPLOAD_CHECK_FAILED":
+      return "Gagal memeriksa file yang terunggah. Coba lagi.";
     case "QC_NOT_FOUND":
       return "QC tidak ditemukan. Mungkin sudah dihapus.";
     case "QC_ITEM_NOT_FOUND":
