@@ -6,19 +6,19 @@ import {
   formatDate,
 } from "./invoice-formatters.js";
 
-/* Palet: merah tua #760a16 dan merah terang #d02f1c.
+/* Palet: merah marun tua #3a0718 dan marun #6c1b30.
    Abu-abu adalah hitam dengan opasitas, sama seperti text-second/60 di web. */
 const PDF_COLORS = {
-  dark: [118, 10, 22], // #760a16
-  accent: [208, 47, 28], // #d02f1c
+  dark: [58, 7, 24], // #3a0718
+  accent: [108, 27, 48], // #6c1b30
   text: [0, 0, 0],
   muted: [102, 102, 102],
   faint: [153, 153, 153],
-  line: [232, 226, 225],
+  line: [232, 225, 228],
   border: [217, 217, 217],
-  tint: [252, 241, 240], // latar panel (merah sangat muda)
-  zebra: [251, 246, 245], // baris selang-seling tabel
-  onDark: [255, 226, 222], // teks sekunder di atas latar merah tua
+  tint: [250, 241, 244], // latar panel (marun sangat muda)
+  zebra: [250, 245, 247], // baris selang-seling tabel
+  onDark: [240, 218, 225], // teks sekunder di atas latar marun tua
   white: [255, 255, 255],
   green: [21, 128, 61],
 };
@@ -177,7 +177,7 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
     return doc.splitTextToSize(String(text), maxWidth);
   }
 
-  /* Gradient horizontal: merah tua di kiri, merah terang di kanan. */
+  /* Gradient horizontal: marun tua di kiri, marun lebih terang di kanan. */
   function gradientRect(x, yy, w, h) {
     const steps = Math.max(2, Math.ceil(w / 0.8));
     const stepW = w / steps;
