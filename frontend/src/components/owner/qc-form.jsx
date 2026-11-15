@@ -40,6 +40,10 @@ const ADD_PLACEHOLDER = {
   COMPLETENESS: "Kelengkapan lain khusus unit ini, contoh: Kartu garansi",
 };
 
+/* Status CANCEL selalu tampil sebagai "Belum deal" (nilai datanya tetap CANCEL). */
+const getStatusLabel = (value, info) =>
+  value === "CANCEL" ? "Belum deal" : info.label;
+
 let keyCounter = 0;
 const nextKey = (prefix) => {
   keyCounter += 1;
@@ -545,8 +549,10 @@ function ProductCombobox({ id, value, onChange, onPick, disabled, invalid }) {
  * mode: "create" | "edit"
  * qc: detail QC (edit) atau null
  * items: item master aktif
- * isAdmin: true -> status CANCEL tampil sebagai "Belum deal"
  * onSubmit(payload)
+ *
+ * Catatan: status CANCEL selalu tampil sebagai "Belum deal" untuk semua role.
+ * Prop isAdmin tidak lagi dipakai (boleh tetap dikirim dari pemanggil).
  */
 export default function QcForm({
   mode,
@@ -555,14 +561,9 @@ export default function QcForm({
   submitting,
   submitLabel,
   cancelHref,
-  isAdmin = false,
   onSubmit,
 }) {
   const isEdit = mode === "edit";
-
-  /* Status CANCEL tampil sebagai "Belum deal" khusus admin. */
-  const getStatusLabel = (value, info) =>
-    isAdmin && value === "CANCEL" ? "Belum deal" : info.label;
 
   const [form, setForm] = useState({
     type: qc?.type ?? "BUY",
