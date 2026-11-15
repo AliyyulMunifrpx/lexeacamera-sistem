@@ -59,6 +59,38 @@ enum OrderType {
   REFUND
 }
 
+enum QcSection {
+  PHYSICAL
+  FUNCTION
+  ACCESSORY
+  COMPLETENESS
+}
+
+enum QcClass {
+  NORMAL
+  MINOR
+}
+
+enum QcOrigin {
+  ORIGINAL
+  OEM
+}
+
+enum QcType {
+  BUY
+  SELL
+}
+
+enum QcStatus {
+  DEAL
+  CANCEL
+}
+
+enum QcMediaKind {
+  PHOTO
+  VIDEO
+}
+
 model Camera {
   id                  String                  @id @default(uuid())
   name                String
@@ -355,4 +387,80 @@ model PayrollItem {
   sort_order Int
 
   @@index([payroll_id])
+}
+
+model QcItem {
+  id         String                @id @default(uuid())
+  section    QcSection
+  name       String
+  is_active  Boolean               @default(true)
+  sort_order Int                   @default(0)
+  created_at DateTime              @default(now())
+  updated_at DateTime              @updatedAt
+  entries    QualityControlEntry[]
+
+  @@unique([section, name])
+  @@index([section, sort_order])
+}
+
+model QualityControl {
+  id              String                @id @default(uuid())
+  date            DateTime              @db.Date
+  type            QcType
+  status          QcStatus
+  product_name    String
+  serial_number   String?
+  sender_name     String?
+  tracking_number String?
+  pic             String?
+  price           Int?
+  created_at      DateTime              @default(now())
+  updated_at      DateTime              @updatedAt
+  entries         QualityControlEntry[]
+  extras          QualityControlExtra[]
+  media           QualityControlMedia[]
+
+  @@index([date])
+  @@index([status])
+}
+
+model QualityControlEntry {
+  id             String         @id @default(uuid())
+  qc_id          String
+  qc             QualityControl @relation(fields: [qc_id], references: [id], onDelete: Cascade)
+  item_id        String?
+  item           QcItem?        @relation(fields: [item_id], references: [id], onDelete: SetNull)
+  section        QcSection
+  name           String
+  checked        Boolean?
+  classification QcClass?
+  origin         QcOrigin?
+  note           String?
+  sort_order     Int            @default(0)
+
+  @@index([qc_id, sort_order])
+  @@index([item_id])
+}
+
+model QualityControlExtra {
+  id         String         @id @default(uuid())
+  qc_id      String
+  qc         QualityControl @relation(fields: [qc_id], references: [id], onDelete: Cascade)
+  name       String
+  sort_order Int            @default(0)
+
+  @@index([qc_id, sort_order])
+}
+
+model QualityControlMedia {
+  id           String         @id @default(uuid())
+  qc_id        String
+  qc           QualityControl @relation(fields: [qc_id], references: [id], onDelete: Cascade)
+  kind         QcMediaKind
+  path         String         @unique
+  content_type String
+  size         Int
+  created_at   DateTime       @default(now())
+
+  @@index([qc_id])
 }
