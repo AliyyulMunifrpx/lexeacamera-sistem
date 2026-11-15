@@ -9,6 +9,7 @@ import {
   FiCheckCircle,
   FiEdit2,
   FiLoader,
+  FiLock,
   FiRefreshCw,
   FiTrash2,
   FiXCircle,
@@ -276,18 +277,24 @@ export default function QcDetailPage() {
   const statusInfo = STATUS_LABEL[qc.status] ?? STATUS_LABEL.CANCEL;
 
   async function toggleStatus() {
+    // QC yang sudah deal tidak bisa dibatalkan lagi.
+    if (isDeal) return;
+
     try {
       await statusMutation.mutateAsync({
         id,
-        status: isDeal ? "CANCEL" : "DEAL",
+        status: "DEAL",
       });
-      notify.success(isDeal ? "Status: batal." : "Status: deal.");
+      notify.success("Status: deal.");
     } catch (err) {
       notify.error(describeQcError(err));
     }
   }
 
   async function handleDelete() {
+    // QC yang sudah deal tidak bisa dihapus.
+    if (isDeal) return;
+
     try {
       await deleteMutation.mutateAsync(id);
       notify.success("QC dihapus.");
@@ -350,10 +357,14 @@ export default function QcDetailPage() {
               <FiDownload size={16} aria-hidden="true" />
               {exporting ? "Membuat PDF…" : "Export PDF"}
             </button>
+
             <button
               type="button"
               onClick={toggleStatus}
-              disabled={statusMutation.isPending}
+              disabled={isDeal || statusMutation.isPending}
+              title={
+                isDeal ? "QC yang sudah deal tidak bisa dibatalkan." : undefined
+              }
               className={isDeal ? BTN_OUTLINE : BTN_PRIMARY}
             >
               {isDeal ? (
@@ -368,16 +379,38 @@ export default function QcDetailPage() {
                 </>
               )}
             </button>
-            <Link href={`${QC_PATH}/${id}/edit`} className={BTN_OUTLINE}>
-              <FiEdit2 size={16} aria-hidden="true" />
-              Ubah
-            </Link>
+
+            {isDeal ? (
+              <button
+                type="button"
+                disabled
+                title="QC yang sudah deal tidak bisa diubah."
+                className={BTN_OUTLINE}
+              >
+                <FiLock size={16} aria-hidden="true" />
+                Ubah
+              </button>
+            ) : (
+              <Link href={`${QC_PATH}/${id}/edit`} className={BTN_OUTLINE}>
+                <FiEdit2 size={16} aria-hidden="true" />
+                Ubah
+              </Link>
+            )}
+
             <button
               type="button"
               onClick={() => setConfirmDelete(true)}
+              disabled={isDeal}
+              title={
+                isDeal ? "QC yang sudah deal tidak bisa dihapus." : undefined
+              }
               className={BTN_DANGER}
             >
-              <FiTrash2 size={16} aria-hidden="true" />
+              {isDeal ? (
+                <FiLock size={16} aria-hidden="true" />
+              ) : (
+                <FiTrash2 size={16} aria-hidden="true" />
+              )}
               Hapus
             </button>
           </div>
