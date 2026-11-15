@@ -415,6 +415,9 @@ const getQc = async (request, role) => {
 
 const createQc = async (request, role) => {
   const req = validate(createQcValidation, request);
+  if (!isOwner(role) && req.status === "DEAL" && req.price != null) {
+    throw new ResponseError(403, "PRICE_OWNER_ONLY");
+  }
   const entries = await resolveEntries(req.entries);
 
   const id = await prisma.$transaction(async (tx) => {
@@ -461,7 +464,14 @@ const updateQc = async (request, role) => {
   if (req.price !== undefined) data.price = req.price;
 
   await prisma.$transaction(async (tx) => {
-    await lockQc(tx, req.id);
+    const current = await lockQc(tx, req.id);
+    if (
+      req.price !== undefined &&
+      !isOwner(role) &&
+      current.status === "DEAL"
+    ) {
+      throw new ResponseError(403, "PRICE_OWNER_ONLY");
+    }
     await tx.qualityControl.update({ where: { id: req.id }, data });
     await writeChildren(tx, req.id, entries, req.extras);
   });
