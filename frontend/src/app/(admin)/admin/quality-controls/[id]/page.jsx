@@ -106,7 +106,7 @@ function rowClass(index) {
 function EntryValue({ section, entry }) {
   if (section === "PHYSICAL") {
     return entry.checked ? (
-      <Tag tone="red">Ada kerusakan</Tag>
+      <Tag tone="red">Minor</Tag>
     ) : (
       <Tag tone="muted">Tidak ada</Tag>
     );

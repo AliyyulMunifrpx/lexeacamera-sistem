@@ -235,7 +235,7 @@ function EntryRow({ row, onChange, onRemove, disabled }) {
             className={`size-4 shrink-0 cursor-pointer accent-second4 ${FOCUS_RING}`}
           />
           <span className="text-sm text-second">
-            {row.section === "PHYSICAL" ? "Ada kerusakan" : "Ada"}
+            {row.section === "PHYSICAL" ? "Minor" : "Ada"}
           </span>
         </label>
       )}
@@ -841,7 +841,7 @@ export default function QcForm({
           <dl className="divide-y divide-second/10 border-y border-second/30">
             {[
               ["Kerusakan fisik", defectCount],
-              ["Fungsi/aksesori minor", minorCount],
+              ["Fungsi/Aksesories minor", minorCount],
               ["Barang tambahan", extras.length],
               [
                 "Harga",

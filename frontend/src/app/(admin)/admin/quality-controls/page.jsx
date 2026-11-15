@@ -115,10 +115,7 @@ export default function QualityControlsPage() {
             onClick={() => refetch()}
             isFetching={isFetching}
           ></RefreshButton>
-          <Link href={`${QC_PATH}/items`} className={BTN_OUTLINE}>
-            <FiList size={16} aria-hidden="true" />
-            Item checklist
-          </Link>
+
           <Link href={`${QC_PATH}/create`} className={BTN_PRIMARY}>
             <FiPlus size={16} aria-hidden="true" />
             Buat QC
