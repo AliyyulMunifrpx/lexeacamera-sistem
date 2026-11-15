@@ -409,6 +409,7 @@ model QualityControl {
   type            QcType
   status          QcStatus
   product_name    String
+  sku             String?
   serial_number   String?
   sender_name     String?
   tracking_number String?

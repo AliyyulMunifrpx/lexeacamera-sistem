@@ -561,6 +561,7 @@ export default function QcForm({
   const [form, setForm] = useState({
     type: qc?.type ?? "BUY",
     product_name: qc?.product_name ?? "",
+    sku: qc?.sku ?? "",
     serial_number: qc?.serial_number ?? "",
     sender_name: qc?.sender_name ?? "",
     tracking_number: qc?.tracking_number ?? "",
@@ -600,8 +601,10 @@ export default function QcForm({
   function pickCamera(camera) {
     setField("product_name", String(camera.name ?? "").slice(0, 150));
 
-    // Serial number hanya diisi otomatis kalau kolomnya masih kosong.
-    if (camera.serial_number && !form.serial_number.trim()) {
+    // SKU dan serial number ikut terisi dari kamera yang dipilih.
+    // Kalau kamera tidak punya datanya, isian manual sebelumnya dibiarkan.
+    if (camera.sku) setField("sku", String(camera.sku).slice(0, 100));
+    if (camera.serial_number) {
       setField("serial_number", String(camera.serial_number).slice(0, 100));
     }
   }
@@ -663,6 +666,8 @@ export default function QcForm({
 
     if (form.pic.trim().length > 100) fields.pic = "PIC maksimal 100 karakter.";
 
+    if (form.sku.trim().length > 100) fields.sku = "SKU maksimal 100 karakter.";
+
     if (form.price !== "" && Number(form.price) > MAX_PRICE)
       fields.price = "Harga terlalu besar.";
 
@@ -710,6 +715,7 @@ export default function QcForm({
       product_name: form.product_name.trim(),
       date: form.date,
       ...(!isEdit && { status: form.status }),
+      sku: optional(form.sku),
       serial_number: optional(form.serial_number),
       sender_name: optional(form.sender_name),
       tracking_number: optional(form.tracking_number),
@@ -805,6 +811,25 @@ export default function QcForm({
           </Field>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field
+              id="qc-sku"
+              label="SKU"
+              error={errors.fields.sku}
+              hint="Terisi otomatis saat memilih produk dari daftar kamera, atau isi manual."
+            >
+              <input
+                id="qc-sku"
+                type="text"
+                maxLength={100}
+                autoComplete="off"
+                value={form.sku}
+                disabled={submitting}
+                onChange={(event) => setField("sku", event.target.value)}
+                aria-invalid={errors.fields.sku ? "true" : undefined}
+                className={inputClass(Boolean(errors.fields.sku))}
+              />
+            </Field>
+
             <Field id="qc-serial" label="Serial number">
               <input
                 id="qc-serial"
@@ -819,7 +844,9 @@ export default function QcForm({
                 className={inputClass(false)}
               />
             </Field>
+          </div>
 
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field
               id="qc-date"
               label="Tanggal"
@@ -866,22 +893,21 @@ export default function QcForm({
                 className={inputClass(false)}
               />
             </Field>
+            <Field id="qc-pic" label="PIC" error={errors.fields.pic}>
+              <input
+                id="qc-pic"
+                type="text"
+                maxLength={100}
+                autoComplete="off"
+                value={form.pic}
+                disabled={submitting}
+                onChange={(event) => setField("pic", event.target.value)}
+                placeholder="Yang melakukan QC"
+                aria-invalid={errors.fields.pic ? "true" : undefined}
+                className={inputClass(Boolean(errors.fields.pic))}
+              />
+            </Field>
           </div>
-
-          <Field id="qc-pic" label="PIC" error={errors.fields.pic}>
-            <input
-              id="qc-pic"
-              type="text"
-              maxLength={100}
-              autoComplete="off"
-              value={form.pic}
-              disabled={submitting}
-              onChange={(event) => setField("pic", event.target.value)}
-              placeholder="Yang melakukan QC"
-              aria-invalid={errors.fields.pic ? "true" : undefined}
-              className={inputClass(Boolean(errors.fields.pic))}
-            />
-          </Field>
 
           <Field
             id="qc-price"

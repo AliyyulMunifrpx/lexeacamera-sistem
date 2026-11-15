@@ -74,6 +74,7 @@ const LIST_SELECT = {
   status: true,
   product_name: true,
   serial_number: true,
+  sku: true,
   sender_name: true,
   tracking_number: true,
   pic: true,
@@ -90,6 +91,7 @@ const DETAIL_SELECT = {
   status: true,
   product_name: true,
   serial_number: true,
+  sku: true,
   sender_name: true,
   tracking_number: true,
   pic: true,
@@ -172,25 +174,21 @@ const signPaths = async (paths) => {
   return urls;
 };
 
-const isRestricted = (role) => role !== "OWNER";
-const hidden = (status, role) => isRestricted(role) && status !== "CANCEL";
+const isOwner = (role) => role === "OWNER";
 
-const lockQc = async (tx, id, role) => {
-  const rows =
-    await tx.$queryRaw`SELECT id, status FROM "QualityControl" WHERE id = ${id} FOR UPDATE`;
-  if (!rows.length || hidden(rows[0].status, role)) {
-    throw new ResponseError(404, "QC_NOT_FOUND");
+const assertPriceAllowed = (req, role) => {
+  if (req.price !== undefined && !isOwner(role)) {
+    throw new ResponseError(403, "PRICE_OWNER_ONLY");
   }
 };
 
-const assertAccess = async (id, role) => {
-  const qc = await prisma.qualityControl.findUnique({
-    where: { id },
-    select: { status: true },
-  });
-  if (!qc || hidden(qc.status, role)) {
-    throw new ResponseError(404, "QC_NOT_FOUND");
-  }
+const canSeePrice = (qc, role) => isOwner(role) || qc.status !== "DEAL";
+
+const lockQc = async (tx, id) => {
+  const rows =
+    await tx.$queryRaw`SELECT id, status FROM "QualityControl" WHERE id = ${id} FOR UPDATE`;
+  if (!rows.length) throw new ResponseError(404, "QC_NOT_FOUND");
+  return rows[0];
 };
 
 const fetchDetail = async (id) => {
@@ -226,20 +224,21 @@ const countEntries = (entries) => ({
   minor_count: entries.filter((e) => e.classification === "MINOR").length,
 });
 
-const header = (qc) => ({
+const header = (qc, role) => ({
   id: qc.id,
   date: dateOut(qc.date),
   type: qc.type,
   status: qc.status,
   product_name: qc.product_name,
   serial_number: qc.serial_number,
+  sku: qc.sku,
   sender_name: qc.sender_name,
   tracking_number: qc.tracking_number,
   pic: qc.pic,
-  price: qc.price,
+  ...(canSeePrice(qc, role) ? { price: qc.price } : {}),
 });
 
-const serializeDetail = async (qc) => {
+const serializeDetail = async (qc, role) => {
   const urls = await signPaths(qc.media.map((m) => m.path));
   const groups = {
     physical: [],
@@ -253,7 +252,7 @@ const serializeDetail = async (qc) => {
   }
 
   return {
-    ...header(qc),
+    ...header(qc, role),
     ...countEntries(qc.entries),
     ...groups,
     extras: qc.extras,
@@ -274,6 +273,7 @@ const buildSearch = (search) =>
   [
     "product_name",
     "serial_number",
+    "sku",
     "pic",
     "sender_name",
     "tracking_number",
@@ -375,19 +375,10 @@ const getAllQc = async (request, role) => {
     throw new ResponseError(400, "INVALID_DATE_RANGE");
   }
 
-  const restricted = isRestricted(role);
-  if (restricted && req.status === "DEAL") {
-    return {
-      data: [],
-      paging: { page: req.page, per_page: PER_PAGE, total: 0, total_pages: 0 },
-    };
-  }
-
   const where = {};
   if (req.search) where.OR = buildSearch(req.search);
   if (req.type) where.type = req.type;
-  if (restricted) where.status = "CANCEL";
-  else if (req.status) where.status = req.status;
+  if (req.status) where.status = req.status;
   if (req.date_from || req.date_to) {
     where.date = {};
     if (req.date_from) where.date.gte = toDate(req.date_from);
@@ -407,7 +398,7 @@ const getAllQc = async (request, role) => {
 
   return {
     data: rows.map((qc) => ({
-      ...header(qc),
+      ...header(qc, role),
       ...countEntries(qc.entries),
       photo_count: qc.media.filter((m) => m.kind === "PHOTO").length,
       video_count: qc.media.filter((m) => m.kind === "VIDEO").length,
@@ -425,14 +416,12 @@ const getAllQc = async (request, role) => {
 const getQc = async (request, role) => {
   const req = validate(qcIdValidation, request);
 
-  const qc = await fetchDetail(req.id);
-  if (hidden(qc.status, role)) throw new ResponseError(404, "QC_NOT_FOUND");
-
-  return serializeDetail(qc);
+  return serializeDetail(await fetchDetail(req.id), role);
 };
 
-const createQc = async (request) => {
+const createQc = async (request, role) => {
   const req = validate(createQcValidation, request);
+  assertPriceAllowed(req, role);
   const entries = await resolveEntries(req.entries);
 
   const id = await prisma.$transaction(async (tx) => {
@@ -443,6 +432,7 @@ const createQc = async (request) => {
         status: req.status,
         product_name: req.product_name,
         serial_number: blankToNull(req.serial_number) ?? null,
+        sku: blankToNull(req.sku) ?? null,
         sender_name: blankToNull(req.sender_name) ?? null,
         tracking_number: blankToNull(req.tracking_number) ?? null,
         pic: blankToNull(req.pic) ?? null,
@@ -455,11 +445,12 @@ const createQc = async (request) => {
     return qc.id;
   });
 
-  return serializeDetail(await fetchDetail(id));
+  return serializeDetail(await fetchDetail(id), role);
 };
 
 const updateQc = async (request, role) => {
   const req = validate(updateQcValidation, request);
+  assertPriceAllowed(req, role);
   const entries = req.entries ? await resolveEntries(req.entries) : undefined;
 
   const data = { updated_at: new Date() };
@@ -468,6 +459,7 @@ const updateQc = async (request, role) => {
   if (req.product_name !== undefined) data.product_name = req.product_name;
   for (const field of [
     "serial_number",
+    "sku",
     "sender_name",
     "tracking_number",
     "pic",
@@ -477,19 +469,23 @@ const updateQc = async (request, role) => {
   if (req.price !== undefined) data.price = req.price;
 
   await prisma.$transaction(async (tx) => {
-    await lockQc(tx, req.id, role);
+    await lockQc(tx, req.id);
     await tx.qualityControl.update({ where: { id: req.id }, data });
     await writeChildren(tx, req.id, entries, req.extras);
   });
 
-  return serializeDetail(await fetchDetail(req.id));
+  return serializeDetail(await fetchDetail(req.id), role);
 };
 
 const setStatus = async (request, role) => {
   const req = validate(setQcStatusValidation, request);
 
   return prisma.$transaction(async (tx) => {
-    await lockQc(tx, req.id, role);
+    const current = await lockQc(tx, req.id);
+    if (!isOwner(role) && current.status === "DEAL" && req.status !== "DEAL") {
+      throw new ResponseError(403, "STATUS_OWNER_ONLY");
+    }
+
     return tx.qualityControl.update({
       where: { id: req.id },
       data: { status: req.status },
@@ -498,7 +494,7 @@ const setStatus = async (request, role) => {
   });
 };
 
-const deleteQc = async (request, role) => {
+const deleteQc = async (request) => {
   const req = validate(qcIdValidation, request);
 
   const media = await prisma.qualityControlMedia.findMany({
@@ -507,7 +503,7 @@ const deleteQc = async (request, role) => {
   });
 
   const { count } = await prisma.qualityControl.deleteMany({
-    where: { id: req.id, ...(isRestricted(role) ? { status: "CANCEL" } : {}) },
+    where: { id: req.id },
   });
   if (!count) throw new ResponseError(404, "QC_NOT_FOUND");
 
@@ -515,7 +511,7 @@ const deleteQc = async (request, role) => {
   return { message: "QC_DELETED" };
 };
 
-const createUploadUrl = async (request, role) => {
+const createUploadUrl = async (request) => {
   const req = validate(qcUploadUrlValidation, request);
   assertBucket();
 
@@ -527,7 +523,11 @@ const createUploadUrl = async (request, role) => {
     });
   }
 
-  await assertAccess(req.id, role);
+  const exists = await prisma.qualityControl.findUnique({
+    where: { id: req.id },
+    select: { id: true },
+  });
+  if (!exists) throw new ResponseError(404, "QC_NOT_FOUND");
 
   const used = await prisma.qualityControlMedia.count({
     where: { qc_id: req.id, kind: req.kind },
@@ -572,10 +572,9 @@ const findUploaded = async (id, path) => {
   return (data ?? []).find((file) => file.name === name) ?? null;
 };
 
-const addMedia = async (request, role) => {
+const addMedia = async (request) => {
   const req = validate(qcAddMediaValidation, request);
   assertBucket();
-  await assertAccess(req.id, role);
 
   const match = new RegExp(
     `^qc/${req.id}/[0-9a-f-]{36}\\.(jpg|png|webp|heic|mp4|mov|webm)$`,
@@ -613,7 +612,7 @@ const addMedia = async (request, role) => {
   let created;
   try {
     created = await prisma.$transaction(async (tx) => {
-      await lockQc(tx, req.id, role);
+      await lockQc(tx, req.id);
 
       const used = await tx.qualityControlMedia.count({
         where: { qc_id: req.id, kind: req.kind },
@@ -670,9 +669,8 @@ const addMedia = async (request, role) => {
   };
 };
 
-const deleteMedia = async (request, role) => {
+const deleteMedia = async (request) => {
   const req = validate(qcMediaIdValidation, request);
-  await assertAccess(req.id, role);
 
   const media = await prisma.qualityControlMedia.findFirst({
     where: { id: req.media_id, qc_id: req.id },
