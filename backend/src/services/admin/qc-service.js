@@ -176,12 +176,6 @@ const signPaths = async (paths) => {
 
 const isOwner = (role) => role === "OWNER";
 
-const assertPriceAllowed = (req, role) => {
-  if (req.price !== undefined && !isOwner(role)) {
-    throw new ResponseError(403, "PRICE_OWNER_ONLY");
-  }
-};
-
 const canSeePrice = (qc, role) => isOwner(role) || qc.status !== "DEAL";
 
 const lockQc = async (tx, id) => {
@@ -421,7 +415,6 @@ const getQc = async (request, role) => {
 
 const createQc = async (request, role) => {
   const req = validate(createQcValidation, request);
-  assertPriceAllowed(req, role);
   const entries = await resolveEntries(req.entries);
 
   const id = await prisma.$transaction(async (tx) => {
@@ -450,7 +443,6 @@ const createQc = async (request, role) => {
 
 const updateQc = async (request, role) => {
   const req = validate(updateQcValidation, request);
-  assertPriceAllowed(req, role);
   const entries = req.entries ? await resolveEntries(req.entries) : undefined;
 
   const data = { updated_at: new Date() };
