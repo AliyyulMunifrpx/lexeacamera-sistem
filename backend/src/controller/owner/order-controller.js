@@ -42,4 +42,13 @@ const update = async (req, res, next) => {
   }
 };
 
-export default { getAll, get, updatePaymentStatus, update };
+const remove = async (req, res, next) => {
+  try {
+    const result = await orderService.deleteOrder({ id: req.params.id });
+    res.status(200).json({ data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export default { getAll, get, updatePaymentStatus, update, remove };

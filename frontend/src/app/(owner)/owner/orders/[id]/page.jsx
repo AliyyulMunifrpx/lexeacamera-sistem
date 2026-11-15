@@ -21,12 +21,14 @@ import {
   FiPackage,
   FiRotateCcw,
   FiShoppingBag,
+  FiTrash2,
   FiTrendingUp,
   FiUser,
   FiX,
 } from "react-icons/fi";
 
 import {
+  useDeleteOwnerOrder,
   useGetOwnerOrder,
   useUpdateOrderPaymentStatus,
 } from "../../../../features/orders/hooks.js";
@@ -630,6 +632,146 @@ function PaymentDialog({ order, mode, isSaving, apiError, onClose, onSubmit }) {
   );
 }
 
+/* ----------------------------- Dialog hapus order ----------------------------- */
+
+function DeleteDialog({ order, isDeleting, error, onClose, onConfirm }) {
+  const cancelRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  const deletingRef = useRef(isDeleting);
+  const [understood, setUnderstood] = useState(false);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+    deletingRef.current = isDeleting;
+  });
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    cancelRef.current?.focus();
+
+    function handleKeyDown(event) {
+      if (event.key === "Escape" && !deletingRef.current) onCloseRef.current();
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+      onClick={isDeleting ? undefined : onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="delete-order-title"
+        aria-describedby="delete-order-desc"
+        onClick={(event) => event.stopPropagation()}
+        className="max-h-[90dvh] w-full max-w-md overflow-y-auto overscroll-contain rounded-2xl border border-second/30 bg-primary p-4 shadow-2xl sm:p-8"
+      >
+        <div className="flex items-center gap-4">
+          <div
+            aria-hidden="true"
+            className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-second2/10 text-second2"
+          >
+            <FiTrash2 size={16} />
+          </div>
+          <h2 id="delete-order-title" className="text-lg font-bold text-second">
+            Hapus order?
+          </h2>
+        </div>
+
+        <p className="mt-2 break-all font-mono text-xs text-second/60">
+          {order.invoice?.no_invoice ?? order.id}
+        </p>
+
+        <div
+          id="delete-order-desc"
+          className="mt-4 flex flex-col gap-2 text-sm leading-relaxed text-second/60"
+        >
+          <p>
+            Order ini dihapus <span className="font-semibold">permanen</span>{" "}
+            beserta item dan invoice-nya. Tindakan ini tidak bisa dibatalkan.
+          </p>
+          <p>
+            Stok kamera tidak berubah, karena order belum lunas dan stok belum
+            dipotong.
+          </p>
+        </div>
+
+        <label className="mt-4 flex cursor-pointer items-center gap-4 rounded-xl border border-second2/30 bg-second2/5 p-4">
+          <input
+            type="checkbox"
+            checked={understood}
+            disabled={isDeleting}
+            onChange={(event) => setUnderstood(event.target.checked)}
+            className={`size-4 shrink-0 cursor-pointer accent-second2 ${FOCUS_RING}`}
+          />
+          <span className="text-sm font-semibold text-second">
+            Saya mengerti order dan invoice ikut terhapus permanen
+          </span>
+        </label>
+
+        {error && (
+          <p
+            role="alert"
+            className="mt-4 flex items-start gap-2 rounded-xl border border-second2/30 bg-second2/5 px-4 py-2 text-sm font-medium text-second2"
+          >
+            <FiAlertCircle
+              size={16}
+              className="mt-0.5 shrink-0"
+              aria-hidden="true"
+            />
+            {error}
+          </p>
+        )}
+
+        <div className="mt-8 flex flex-col-reverse gap-2 border-t border-second/30 pt-4 sm:flex-row sm:justify-end">
+          <button
+            ref={cancelRef}
+            type="button"
+            onClick={onClose}
+            disabled={isDeleting}
+            className={`${BTN_BASE} w-full border border-second/30 text-second hover:border-second4 hover:text-second4 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto ${FOCUS_RING}`}
+          >
+            Batal
+          </button>
+
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isDeleting || !understood}
+            aria-busy={isDeleting}
+            className={`${BTN_BASE} w-full bg-second2 text-primary hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto ${FOCUS_RING}`}
+          >
+            {isDeleting ? (
+              <>
+                <FiLoader
+                  className="animate-spin motion-reduce:animate-none"
+                  size={16}
+                  aria-hidden="true"
+                />
+                Menghapus…
+              </>
+            ) : (
+              <>
+                <FiTrash2 size={16} aria-hidden="true" />
+                Hapus permanen
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------------------------------- Page ---------------------------------- */
 
 export default function OwnerOrderDetailPage() {
@@ -646,15 +788,21 @@ export default function OwnerOrderDetailPage() {
     refetch,
   } = useGetOwnerOrder(id);
   const paymentMutation = useUpdateOrderPaymentStatus();
+  const deleteMutation = useDeleteOwnerOrder();
 
   const [dialogMode, setDialogMode] = useState(null);
   const [dialogError, setDialogError] = useState(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
+  // Penanda order sudah dihapus, supaya tidak muncul pesan "tidak ditemukan".
+  const deletedRef = useRef(false);
 
   const isNotFound =
     isError && error?.response?.data?.errors === "ORDER_NOT_FOUND";
 
   useEffect(() => {
-    if (isNotFound) {
+    if (isNotFound && !deletedRef.current) {
       notify.error("Order tidak ditemukan.");
       router.replace(ORDERS_PATH);
     }
@@ -676,6 +824,17 @@ export default function OwnerOrderDetailPage() {
     if (paymentMutation.isPending) return;
     setDialogMode(null);
     setDialogError(null);
+  }
+
+  function openDelete() {
+    setDeleteError("");
+    setDeleteOpen(true);
+  }
+
+  function closeDelete() {
+    if (deleteMutation.isPending) return;
+    setDeleteOpen(false);
+    setDeleteError("");
   }
 
   async function handleSubmitPayment(data) {
@@ -721,6 +880,47 @@ export default function OwnerOrderDetailPage() {
         return;
       }
       setDialogError({ message: normalizeApiError(err).message });
+    }
+  }
+
+  async function handleDelete() {
+    setDeleteError("");
+
+    try {
+      await deleteMutation.mutateAsync(id);
+      deletedRef.current = true;
+      notify.success("Order dihapus.");
+      router.replace(ORDERS_PATH);
+    } catch (err) {
+      const code = err?.response?.data?.errors;
+
+      if (code === "ORDER_NOT_FOUND") {
+        deletedRef.current = true;
+        notify.error("Order tidak ditemukan atau sudah dihapus.");
+        router.replace(ORDERS_PATH);
+        return;
+      }
+      if (code === "ORDER_ALREADY_PAID") {
+        setDeleteError(
+          "Order ini sudah lunas. Tandai belum lunas dulu sebelum menghapus.",
+        );
+        refetch();
+        return;
+      }
+      if (code === "ORDER_IS_REFUND") {
+        setDeleteError(
+          "Order refund tidak bisa dihapus dari sini. Batalkan lewat menu refund.",
+        );
+        return;
+      }
+      if (code === "ORDER_HAS_REFUNDS") {
+        setDeleteError(
+          "Order ini sudah punya refund, jadi tidak bisa dihapus.",
+        );
+        refetch();
+        return;
+      }
+      setDeleteError(normalizeApiError(err).message);
     }
   }
 
@@ -783,6 +983,14 @@ export default function OwnerOrderDetailPage() {
   const isRefund = order.type === "REFUND";
   const hasRefunds = refunds.length > 0;
   const showCapital = !isRefund;
+
+  // Aturan hapus: hanya order SALE, belum lunas, dan belum punya refund.
+  const canDelete = !isRefund && !isPaid && !hasRefunds;
+  const deleteBlockedReason = isPaid
+    ? "Order sudah lunas. Tandai belum lunas dulu untuk menghapus."
+    : hasRefunds
+      ? "Order yang sudah punya refund tidak bisa dihapus."
+      : undefined;
 
   const totalQuantity = items.reduce(
     (sum, item) => sum + (Number(item.quantity) || 0),
@@ -976,6 +1184,19 @@ export default function OwnerOrderDetailPage() {
                     <FiFileText size={16} aria-hidden="true" />
                     Lihat invoice
                   </Link>
+                )}
+
+                {!isRefund && (
+                  <button
+                    type="button"
+                    onClick={openDelete}
+                    disabled={!canDelete}
+                    title={deleteBlockedReason}
+                    className={`${BTN_BASE} justify-center border border-second2/30 text-second2 hover:border-second2 hover:bg-second2/5 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-second2/30 disabled:hover:bg-transparent ${FOCUS_RING}`}
+                  >
+                    <FiTrash2 size={16} aria-hidden="true" />
+                    Hapus order
+                  </button>
                 )}
               </div>
             </details>
@@ -1458,8 +1679,17 @@ export default function OwnerOrderDetailPage() {
           isSaving={paymentMutation.isPending}
           apiError={dialogError}
           onClose={closeDialog}
-          onCancel={closeDialog}
           onSubmit={handleSubmitPayment}
+        />
+      )}
+
+      {deleteOpen && (
+        <DeleteDialog
+          order={order}
+          isDeleting={deleteMutation.isPending}
+          error={deleteError}
+          onClose={closeDelete}
+          onConfirm={handleDelete}
         />
       )}
     </div>

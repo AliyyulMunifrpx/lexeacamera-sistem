@@ -74,3 +74,8 @@ export async function updateOrderItems(id, { items }) {
 
   return response.data.data;
 }
+/** DELETE /owner/orders/:id (hanya order SALE yang belum lunas dan tanpa refund) */
+export async function deleteOwnerOrder(id) {
+  const response = await api.delete(`/owner/orders/${id}`);
+  return response.data.data;
+}

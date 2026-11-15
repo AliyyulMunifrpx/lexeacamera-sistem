@@ -403,4 +403,47 @@ const updateOrderItems = async (request) => {
   return getOrder({ id: req.id });
 };
 
-export default { getAllOrder, getOrder, updatePaymentStatus, updateOrderItems };
+// menghapus order belum lunas tidak mengubah stok. Invoice dan item ikut terhapus.
+const deleteOrder = async (request) => {
+  const req = validate(orderIdValidation, request);
+
+  await prisma.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw`
+      SELECT id FROM "Order" WHERE id = ${req.id} FOR UPDATE
+    `;
+    if (!rows.length) {
+      throw new ResponseError(404, "ORDER_NOT_FOUND");
+    }
+
+    const order = await tx.order.findUnique({
+      where: { id: req.id },
+      select: { type: true, payment_status: true },
+    });
+    if (!order) {
+      throw new ResponseError(404, "ORDER_NOT_FOUND");
+    }
+    if (order.type !== "SALE") {
+      throw new ResponseError(409, "ORDER_IS_REFUND");
+    }
+    if (order.payment_status === "PAID") {
+      throw new ResponseError(409, "ORDER_ALREADY_PAID");
+    }
+
+    const refunds = await tx.order.count({ where: { refund_of_id: req.id } });
+    if (refunds > 0) {
+      throw new ResponseError(409, "ORDER_HAS_REFUNDS");
+    }
+
+    await tx.order.delete({ where: { id: req.id }, select: { id: true } });
+  });
+
+  return { message: "ORDER_DELETED" };
+};
+
+export default {
+  getAllOrder,
+  getOrder,
+  updatePaymentStatus,
+  updateOrderItems,
+  deleteOrder,
+};

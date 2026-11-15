@@ -1,5 +1,6 @@
 import Footer from "../../components/footer.jsx";
 import Navbar from "../../components/navbar.jsx";
+import BackgroundVideo from "../../components/public/home/background-video.jsx";
 const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/+$/, "");
 async function getStore() {
   try {
@@ -22,11 +23,12 @@ export default async function RootLayout({ children }) {
   return (
     <div>
       <div className="relative isolate min-h-full flex flex-col bg-primary">
+        <BackgroundVideo></BackgroundVideo>
         <Navbar
           logo={store?.logo_url}
           name={store?.name || "lexea camera"}
           whatsapp={store?.whatsapp}
-          shopee={store.facebook}
+          shopee={store?.facebook}
           instagram={store?.instagram}
         />{" "}
         <div className="z-20"> {children}</div>
@@ -34,7 +36,7 @@ export default async function RootLayout({ children }) {
           logo={store?.logo_url}
           name={store?.name || "lexea camera"}
           whatsapp={store?.whatsapp}
-          shopee={store.facebook}
+          shopee={store?.facebook}
           instagram={store?.instagram}
           address={store?.address}
           mapUrl={store?.map_url}

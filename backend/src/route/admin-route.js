@@ -13,6 +13,8 @@ import termsController from "../controller/owner/terms-controller.js";
 import salesController from "../controller/admin/sales-controller.js";
 import attendanceController from "../controller/owner/attendance-controller.js";
 import orderPaymentController from "../controller/admin/order-payment-controller.js";
+import qcItemController from "../controller/admin/qc-item-controller.js";
+import qcController from "../controller/admin/qc-controller.js";
 const adminRouter = express.Router();
 adminRouter.put("/users/pin", userController.setPin);
 adminRouter.get("/users/current", userController.get);
@@ -59,4 +61,24 @@ adminRouter.patch(
   orderPaymentController.updatePaymentStatus,
 );
 adminRouter.patch("/admin/cameras/:id", adminCameraController.updateDetails);
+adminRouter.get("/admin/qc-items", qcItemController.getAll);
+adminRouter.post("/admin/qc-items", qcItemController.create);
+adminRouter.patch("/admin/qc-items/:id", qcItemController.update);
+adminRouter.delete("/admin/qc-items/:id", qcItemController.remove);
+
+adminRouter.get("/admin/quality-controls", qcController.getAll);
+adminRouter.post("/admin/quality-controls", qcController.create);
+adminRouter.get("/admin/quality-controls/:id", qcController.get);
+adminRouter.patch("/admin/quality-controls/:id", qcController.update);
+adminRouter.patch("/admin/quality-controls/:id/status", qcController.setStatus);
+adminRouter.delete("/admin/quality-controls/:id", qcController.remove);
+adminRouter.post(
+  "/admin/quality-controls/:id/media/upload-url",
+  qcController.createUploadUrl,
+);
+adminRouter.post("/admin/quality-controls/:id/media", qcController.addMedia);
+adminRouter.delete(
+  "/admin/quality-controls/:id/media/:media_id",
+  qcController.removeMedia,
+);
 export default adminRouter;

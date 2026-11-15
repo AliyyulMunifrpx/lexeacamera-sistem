@@ -148,4 +148,5 @@ ownerRouter.delete(
   "/owner/employees/:id/contracts/:contract_id",
   contractController.remove,
 );
+ownerRouter.delete("/owner/orders/:id", orderController.remove);
 export default ownerRouter;

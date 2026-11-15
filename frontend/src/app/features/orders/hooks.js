@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
+  deleteOwnerOrder,
   getOwnerOrder,
   getOwnerOrders,
   updateOrderItems,
@@ -60,5 +61,22 @@ export function useUpdateOrderItems() {
         queryClient.invalidateQueries({ queryKey: ["invoice"] }),
       ]);
     },
+  });
+}
+export function useDeleteOwnerOrder() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id) => deleteOwnerOrder(id),
+    onSuccess: (_result, id) =>
+      queryClient.invalidateQueries({
+        predicate: (query) => {
+          const key = query.queryKey.map((part) => String(part).toLowerCase());
+          const related =
+            key[0]?.includes("order") || key[0]?.includes("invoice");
+          // Jangan refetch detail order yang baru dihapus.
+          return related && !query.queryKey.includes(id);
+        },
+      }),
   });
 }

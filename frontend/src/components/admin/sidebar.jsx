@@ -28,6 +28,7 @@ import { normalizeApiError } from "../../lib/api/errors.js";
 import notify from "../../lib/notify.js";
 import { TbFileReport, TbReportSearch } from "react-icons/tb";
 import { LuUserRoundCheck } from "react-icons/lu";
+import { MdOutlineFactCheck } from "react-icons/md";
 
 /*
   Hanya 4 menu, jadi tidak perlu dikelompokkan. Urutan mengikuti frekuensi
@@ -40,6 +41,11 @@ const navigation = [
   { label: "Pelanggan", href: "/admin/customers", icon: FiUsers },
   { label: "Report", href: "/admin/reports", icon: TbReportSearch },
   { label: "Produk", href: "/admin/cameras", icon: FiBox },
+  {
+    label: "Quality Control",
+    href: "/admin/quality-controls",
+    icon: MdOutlineFactCheck,
+  },
   { label: "Absensi", href: "/admin/attendances", icon: LuUserRoundCheck },
 ];
 
@@ -47,6 +53,8 @@ const pageTitles = {
   "/admin": "Dashboard",
   "/admin/invoices": "Invoice",
   "/admin/customers": "Pelanggan",
+  "/admin/quality-controls": "Quality Control",
+
   "/admin/reports": "Reports",
   "/admin/cameras": "Produk",
   "/admin/attendances": "Absensi",

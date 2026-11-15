@@ -18,6 +18,8 @@ import {
   FiUsers,
 } from "react-icons/fi";
 import {
+  MdHighQuality,
+  MdOutlineFactCheck,
   MdOutlineShoppingCart,
   MdOutlineStore,
   MdQrCode2,
@@ -78,6 +80,12 @@ const navigation = [
     label: "Kategori",
     href: "/owner/categories",
     icon: FiTag,
+    group: "Katalog",
+  },
+  {
+    label: "Quality Control",
+    href: "/owner/quality-controls",
+    icon: MdOutlineFactCheck,
     group: "Katalog",
   },
 
@@ -157,6 +165,7 @@ const pageTitles = {
   "/owner": "Dashboard",
   "/owner/cameras": "Produk",
   "/owner/categories": "Kategori",
+  "/owner/quality-controls": "Quality Control",
   "/owner/invoices": "Invoice",
   "/owner/customers": "Pelanggan",
   "/owner/orders": "Pesanan",
