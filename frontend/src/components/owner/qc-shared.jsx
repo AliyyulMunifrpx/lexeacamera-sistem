@@ -43,8 +43,8 @@ export const SECTIONS = [
   },
   {
     value: "ACCESSORY",
-    label: "Aksesori",
-    description: "Kondisi komponen aksesori unit.",
+    label: "Aksesories",
+    description: "Kondisi komponen aksesories unit.",
   },
   {
     value: "COMPLETENESS",
