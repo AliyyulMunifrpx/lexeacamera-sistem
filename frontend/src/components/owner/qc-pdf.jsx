@@ -426,7 +426,6 @@ export async function downloadQcPdf({ qc, store: rawStore }) {
   const leftBottom = tilesY + tileH;
 
   const detailRows = [
-    ["Harga", qc.price == null ? "-" : formatRupiah(qc.price)],
     ["SKU", displayValue(qc.sku)],
     ["Serial number", displayValue(qc.serial_number)],
     ["Pengirim", displayValue(qc.sender_name)],
