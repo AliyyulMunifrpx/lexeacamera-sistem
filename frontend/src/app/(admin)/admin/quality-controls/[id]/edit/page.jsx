@@ -105,10 +105,10 @@ export default function EditQcPage() {
         <QcForm
           mode="create"
           items={itemsQuery.data ?? []}
-          submitting={createMutation.isPending}
+          submitting={updateMutation.isPending}
           submitLabel="Simpan QC"
           cancelHref={QC_PATH}
-          isAdmin={isAdmin}
+          isAdmin
           onSubmit={handleSubmit}
         />
       )}
