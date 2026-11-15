@@ -91,7 +91,7 @@ function Shell({ children }) {
     <main className="flex min-h-dvh items-center justify-center bg-primary px-4 py-10 text-second">
       <div className="w-full max-w-md">
         <p className="mb-6 text-center text-sm font-bold uppercase tracking-[0.2em] text-second/60">
-          wav camera
+          lexea camera
         </p>
         <div className="rounded-2xl border border-second/30 bg-primary p-4 shadow-xl shadow-second/5 sm:p-8">
           {children}
