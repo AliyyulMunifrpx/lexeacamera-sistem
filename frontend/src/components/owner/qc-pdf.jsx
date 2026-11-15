@@ -10,10 +10,10 @@ import {
   formatRupiah,
 } from "./qc-shared.jsx";
 
-/* Gaya sama dengan PDF invoice dan slip gaji, satu warna: #6c1b30. */
+/* Gaya sama dengan PDF invoice dan slip gaji, satu warna: #8b2640. */
 const PDF_COLORS = {
-  dark: [108, 27, 48], // #6c1b30
-  accent: [108, 27, 48], // #6c1b30
+  dark: [139, 38, 64], // #8b2640
+  accent: [139, 38, 64], // #8b2640
   text: [0, 0, 0],
   muted: [102, 102, 102],
   faint: [153, 153, 153],
@@ -208,7 +208,7 @@ export async function downloadQcPdf({ qc, store: rawStore }) {
     return `${value.trimEnd()}…`;
   }
 
-  /* Gradient dark -> accent. Keduanya #6c1b30, jadi hasilnya satu warna solid. */
+  /* Gradient dark -> accent. Keduanya #8b2640, jadi hasilnya satu warna solid. */
   function gradientRect(x, yy, w, h) {
     const steps = Math.max(2, Math.ceil(w / 0.8));
     const stepW = w / steps;
