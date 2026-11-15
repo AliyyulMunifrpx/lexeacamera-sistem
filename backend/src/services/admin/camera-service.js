@@ -33,6 +33,7 @@ const LIST_SELECT = {
   name: true,
   sku: true,
   price: true,
+  serial_number: true,
   strikethrough_price: true,
   stock: true,
   condition: true,
@@ -72,6 +73,7 @@ const getAllCamera = async (request) => {
     where.OR = [
       { name: { contains: req.search, mode: "insensitive" } },
       { sku: { contains: req.search, mode: "insensitive" } },
+      { serial_number: { contains: req.search, mode: "insensitive" } },
     ];
   }
   if (req.category_id) where.category_id = req.category_id;

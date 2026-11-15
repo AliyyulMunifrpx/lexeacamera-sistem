@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link.js";
 import { FiLoader, FiPlus, FiSave, FiTrash2 } from "react-icons/fi";
 
@@ -19,6 +19,7 @@ import {
   labelClass,
   todayWib,
 } from "./qc-shared.jsx";
+import { useGetAdminCameras } from "../../app/features/admin-cameras/hooks.js";
 
 const MAX_ENTRIES = 150;
 const MAX_EXTRAS = 30;
@@ -341,6 +342,203 @@ function AddCustom({ onAdd, disabled, placeholder, label }) {
   );
 }
 
+/* -------------------------- Cari produk (kamera) -------------------------- */
+
+function useDebouncedValue(value, delay = 300) {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+
+  return debounced;
+}
+
+/* Hook pencarian hanya jalan saat komponen ini tampil (panel terbuka). */
+function CameraResults({ search, listId, activeIndex, onItems, onPick }) {
+  const query = useGetAdminCameras({ search, page: 1 });
+
+  const items = useMemo(() => {
+    const raw = Array.isArray(query.data)
+      ? query.data
+      : (query.data?.data ?? []);
+    return raw.slice(0, 8);
+  }, [query.data]);
+
+  useEffect(() => {
+    onItems(items);
+  }, [items, onItems]);
+
+  if (query.isPending) {
+    return (
+      <p role="status" className="px-4 py-3 text-sm text-second/60">
+        Mencari produk…
+      </p>
+    );
+  }
+
+  if (query.isError) {
+    return (
+      <p role="alert" className="px-4 py-3 text-sm text-second2">
+        Gagal memuat daftar produk. Isi nama secara manual saja.
+      </p>
+    );
+  }
+
+  if (items.length === 0) {
+    return (
+      <p className="px-4 py-3 text-sm text-second/60">
+        Tidak ada produk yang cocok. Nama yang diketik akan dipakai apa adanya.
+      </p>
+    );
+  }
+
+  return (
+    <ul id={listId} role="listbox" className="max-h-72 overflow-y-auto py-2">
+      {items.map((camera, index) => {
+        const active = index === activeIndex;
+        const meta = [
+          camera.sku && `SKU ${camera.sku}`,
+          camera.serial_number && `SN ${camera.serial_number}`,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+
+        return (
+          <li
+            key={camera.id}
+            id={`${listId}-${index}`}
+            role="option"
+            aria-selected={active}
+            // mouseDown + preventDefault supaya input tidak kehilangan fokus sebelum klik terbaca
+            onMouseDown={(event) => {
+              event.preventDefault();
+              onPick(camera);
+            }}
+            className={`flex cursor-pointer items-start justify-between gap-4 px-4 py-2 text-sm transition-colors ${
+              active ? "bg-second4/10" : "hover:bg-second/5"
+            }`}
+          >
+            <span className="min-w-0">
+              <span className="block break-words font-semibold text-second">
+                {camera.name}
+              </span>
+              {meta && (
+                <span className="mt-1 block break-all text-xs text-second/60">
+                  {meta}
+                </span>
+              )}
+            </span>
+            {camera.price != null && (
+              <span className="shrink-0 text-xs font-semibold tabular-nums text-second">
+                {formatRupiah(camera.price)}
+              </span>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function ProductCombobox({ id, value, onChange, onPick, disabled, invalid }) {
+  const [open, setOpen] = useState(false);
+  const [items, setItems] = useState([]);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const wrapperRef = useRef(null);
+
+  const listId = `${id}-list`;
+  const search = useDebouncedValue(value.trim());
+  const showPanel = open && !disabled && search.length >= 2;
+
+  useEffect(() => {
+    function handleMouseDown(event) {
+      if (!wrapperRef.current?.contains(event.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleMouseDown);
+    return () => document.removeEventListener("mousedown", handleMouseDown);
+  }, []);
+
+  function close() {
+    setOpen(false);
+    setItems([]);
+    setActiveIndex(0);
+  }
+
+  function pick(camera) {
+    close();
+    onPick(camera);
+  }
+
+  function handleKeyDown(event) {
+    if (event.key === "Escape") {
+      close();
+      return;
+    }
+
+    if (!showPanel) {
+      if (event.key === "ArrowDown") setOpen(true);
+      return;
+    }
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActiveIndex((index) => Math.min(index + 1, items.length - 1));
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActiveIndex((index) => Math.max(index - 1, 0));
+    } else if (event.key === "Enter" && items[activeIndex]) {
+      event.preventDefault(); // jangan submit form saat memilih produk
+      pick(items[activeIndex]);
+    }
+  }
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <input
+        id={id}
+        type="text"
+        role="combobox"
+        aria-expanded={showPanel}
+        aria-controls={listId}
+        aria-autocomplete="list"
+        aria-activedescendant={
+          showPanel && items.length > 0 ? `${listId}-${activeIndex}` : undefined
+        }
+        aria-invalid={invalid ? "true" : undefined}
+        maxLength={150}
+        autoComplete="off"
+        value={value}
+        disabled={disabled}
+        onChange={(event) => {
+          onChange(event.target.value);
+          setActiveIndex(0);
+          setOpen(true);
+        }}
+        onFocus={() => {
+          if (value.trim().length >= 2) setOpen(true);
+        }}
+        onKeyDown={handleKeyDown}
+        placeholder="Cari nama, SKU, atau serial number"
+        className={inputClass(invalid)}
+      />
+
+      {showPanel && (
+        <div className="absolute inset-x-0 top-full z-20 mt-2 overflow-hidden rounded-xl border border-second/30 bg-primary shadow-xl shadow-second/10">
+          <CameraResults
+            search={search}
+            listId={listId}
+            activeIndex={activeIndex}
+            onItems={setItems}
+            onPick={pick}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ---------------------------------- Form ---------------------------------- */
 
 /**
@@ -397,6 +595,15 @@ export default function QcForm({
         ? { ...current, fields: { ...current.fields, [name]: "" } }
         : current,
     );
+  }
+
+  function pickCamera(camera) {
+    setField("product_name", String(camera.name ?? "").slice(0, 150));
+
+    // Serial number hanya diisi otomatis kalau kolomnya masih kosong.
+    if (camera.serial_number && !form.serial_number.trim()) {
+      setField("serial_number", String(camera.serial_number).slice(0, 100));
+    }
   }
 
   function updateRow(key, patch) {
@@ -585,18 +792,15 @@ export default function QcForm({
             label="Nama produk"
             required
             error={errors.fields.product_name}
+            hint="Ketik untuk mencari dari daftar kamera (nama, SKU, atau serial number), atau isi manual."
           >
-            <input
+            <ProductCombobox
               id="qc-product"
-              type="text"
-              maxLength={150}
-              autoComplete="off"
               value={form.product_name}
               disabled={submitting}
-              onChange={(event) => setField("product_name", event.target.value)}
-              placeholder="Contoh: Sony A7 III"
-              aria-invalid={errors.fields.product_name ? "true" : undefined}
-              className={inputClass(Boolean(errors.fields.product_name))}
+              invalid={Boolean(errors.fields.product_name)}
+              onChange={(value) => setField("product_name", value)}
+              onPick={pickCamera}
             />
           </Field>
 
