@@ -17,7 +17,11 @@ const MAX_INT = 2147483647;
 const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
 
 const ITEM_ORDER = [{ sort_order: "asc" }, { id: "asc" }];
-const DETAIL_INCLUDE = { items: { orderBy: ITEM_ORDER } };
+// employee diambil hanya untuk display_id (null kalau karyawan sudah dihapus)
+const DETAIL_INCLUDE = {
+  items: { orderBy: ITEM_ORDER },
+  employee: { select: { display_id: true } },
+};
 
 const toDate = (value) => new Date(`${value}T00:00:00.000Z`);
 const dateOut = (date) => date.toISOString().slice(0, 10);
@@ -46,8 +50,9 @@ const toItemRows = (payrollId, items) =>
     sort_order: index,
   }));
 
-const serialize = ({ disbursement_date, items, ...payroll }) => ({
+const serialize = ({ disbursement_date, items, employee, ...payroll }) => ({
   ...payroll,
+  employee_display_id: employee?.display_id ?? null,
   disbursement_date: dateOut(disbursement_date),
   items: items.map(
     ({ payroll_id: _payroll, sort_order: _order, ...item }) => item,
