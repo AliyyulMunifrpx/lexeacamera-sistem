@@ -460,7 +460,7 @@ export async function downloadPayrollPdf({ slip, store: rawStore, ownerName }) {
     hasValue(slip.account_number) && `No. rekening: ${slip.account_number}`,
     hasValue(slip.account_holder) && `Atas nama: ${slip.account_holder}`,
   ].filter(Boolean);
-  a;
+
   const detailRows = [
     ["Tanggal dibuat", formatDate(slip.created_at)],
     [
