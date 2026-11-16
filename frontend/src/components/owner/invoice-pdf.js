@@ -659,7 +659,7 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
     align: "right",
   });
 
-  put("Selamat & sukses untuk karyamu", contentRight, thanksY + 4.8, {
+  put("Have fun every day", contentRight, thanksY + 4.8, {
     size: 8.5,
     color: C.muted,
     align: "right",
