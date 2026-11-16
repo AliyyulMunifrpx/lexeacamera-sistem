@@ -330,7 +330,11 @@ export async function downloadPayrollPdf({ slip, store: rawStore, ownerName }) {
   const isPaid = slip.status === "PAID";
   const statusLabel = isPaid ? "SUDAH CAIR" : "BELUM CAIR";
   const statusColor = isPaid ? C.green : C.accent;
-
+  const employeeId = [
+    slip.employee_display_id,
+    slip.employee?.display_id,
+    slip.display_id,
+  ].find(hasValue);
   /* ---------- Halaman 1: header band merah tua ---------- */
   const logoSize = 16;
   const logoY = 9;
@@ -451,11 +455,12 @@ export async function downloadPayrollPdf({ slip, store: rawStore, ownerName }) {
     ? wrap(slip.job_title, 7.5, false, leftW - 2)
     : [];
   const accountLines = [
+    hasValue(employeeId) && `ID Karyawan: ${employeeId}`,
     hasValue(slip.bank_name) && `Bank: ${slip.bank_name}`,
     hasValue(slip.account_number) && `No. rekening: ${slip.account_number}`,
     hasValue(slip.account_holder) && `Atas nama: ${slip.account_holder}`,
   ].filter(Boolean);
-
+  a;
   const detailRows = [
     ["Tanggal dibuat", formatDate(slip.created_at)],
     [
