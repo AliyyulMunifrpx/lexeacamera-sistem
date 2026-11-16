@@ -21,6 +21,7 @@ import {
   describeQcError,
 } from "../../../../../../components/owner/qc-shared.jsx";
 import notify from "../../../../../../lib/notify.js";
+
 const QC_PATH = "/admin/quality-controls";
 
 export default function EditQcPage() {
@@ -103,11 +104,13 @@ export default function EditQcPage() {
         </div>
       ) : (
         <QcForm
-          mode="create"
+          key={qcQuery.data.updated_at}
+          mode="edit"
+          qc={qcQuery.data}
           items={itemsQuery.data ?? []}
           submitting={updateMutation.isPending}
-          submitLabel="Simpan QC"
-          cancelHref={QC_PATH}
+          submitLabel="Simpan perubahan"
+          cancelHref={`${QC_PATH}/${id}`}
           isAdmin
           onSubmit={handleSubmit}
         />
