@@ -28,6 +28,9 @@ import CancelButton from "../../../../../components/cancel-button.jsx";
 /*            second2 (merah) = gagal / error / rugi                          */
 /*            second3 (biru)  = berhasil                                      */
 /*            second4 (ungu)  = fokus / aksen, bg-grad = aksen utama          */
+/*                                                                            */
+/*  Galeri: satu array `images`. Item pertama = gambar utama. Urutan array    */
+/*  = urutan tampil = urutan upload. Drag-and-drop memindahkan posisi item.   */
 /* -------------------------------------------------------------------------- */
 
 const MAX_IMAGES = 12;
@@ -102,6 +105,11 @@ function formatMoney(value) {
   const sign = number < 0 ? "-" : "";
 
   return `${sign}Rp ${formatThousands(Math.abs(Math.round(number)))}`;
+}
+
+/* True kalau yang diseret adalah file dari komputer (bukan tile galeri). */
+function isFileDrag(event) {
+  return Array.from(event.dataTransfer?.types ?? []).includes("Files");
 }
 
 /* ------------------------------ Small pieces ------------------------------ */
@@ -267,19 +275,46 @@ function ImagePreview({ file, alt }) {
 
   if (!src) return null;
 
-  return <img src={src} alt={alt} className="h-full w-full object-cover" />;
+  return (
+    <img
+      src={src}
+      alt={alt}
+      draggable={false}
+      className="h-full w-full object-cover"
+    />
+  );
 }
 
 /* --------------------------------- Gallery -------------------------------- */
 
-function GalleryTile({ file, isPrimary, disabled, onPrimary, onRemove }) {
+function GalleryTile({
+  file,
+  isPrimary,
+  disabled,
+  isDragging,
+  isOver,
+  onPrimary,
+  onRemove,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
+}) {
   return (
     <div
-      className={`relative aspect-square overflow-hidden rounded-xl border bg-second/5 ${
+      draggable={!disabled}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+      className={`relative aspect-square select-none overflow-hidden rounded-xl border bg-second/5 ${
+        disabled ? "" : "cursor-grab active:cursor-grabbing"
+      } ${
         isPrimary ? "col-span-2 row-span-2 border-second4" : "border-second/30"
-      }`}
+      } ${isDragging ? "opacity-50" : ""} ${isOver ? "ring-2 ring-second4" : ""}`}
     >
-      <div className="absolute inset-0">
+      {/* pointer-events-none: supaya yang terseret adalah tile, bukan <img> */}
+      <div className="pointer-events-none absolute inset-0">
         <ImagePreview file={file} alt={file.name} />
       </div>
 
@@ -330,7 +365,7 @@ function AddImageTile({ empty, disabled, dragging, hasError, onChange }) {
           empty ? "size-8 bg-grad text-primary" : "text-second4"
         }`}
       >
-        <FiUploadCloud size={empty ? 16 : 16} />
+        <FiUploadCloud size={16} />
       </span>
 
       {empty ? (
@@ -479,24 +514,16 @@ export default function CreateCameraPage() {
 
   const [form, setForm] = useState(initialForm);
   const [errors, setErrors] = useState({});
+  // [{ key, file }] — item pertama = gambar utama, urutan array = urutan tampil.
   const [images, setImages] = useState([]);
-  const [primaryKey, setPrimaryKey] = useState(null);
   const [marketplaceUrls, setMarketplaceUrls] = useState({});
-  const [dragging, setDragging] = useState(false);
+  const [dragging, setDragging] = useState(false); // drop file dari komputer
+  const [dragKey, setDragKey] = useState(null); // tile yang sedang digeser
+  const [overKey, setOverKey] = useState(null); // tile tujuan
 
   const isSubmitting = createCamera.isPending;
 
-  // Jika gambar utama belum dipilih / sudah dihapus, gambar pertama otomatis jadi utama.
-  const effectivePrimaryKey = images.some((image) => image.key === primaryKey)
-    ? primaryKey
-    : (images[0]?.key ?? null);
-
-  const orderedImages = [
-    ...images.filter((image) => image.key === effectivePrimaryKey),
-    ...images.filter((image) => image.key !== effectivePrimaryKey),
-  ];
-
-  const primaryFile = orderedImages[0]?.file ?? null;
+  const primaryFile = images[0]?.file ?? null;
 
   const priceNumber = Number(form.price) || 0;
   const strikeNumber = Number(form.strikethrough_price) || 0;
@@ -531,8 +558,9 @@ export default function CreateCameraPage() {
     setForm(initialForm);
     setErrors({});
     setImages([]);
-    setPrimaryKey(null);
     setMarketplaceUrls({});
+    setDragKey(null);
+    setOverKey(null);
   }
 
   function updateField(event) {
@@ -590,6 +618,7 @@ export default function CreateCameraPage() {
       return;
     }
 
+    // Gambar baru masuk di akhir, sesuai urutan dipilih.
     const additions = selectedFiles.map((file) => ({
       key: crypto.randomUUID(),
       file,
@@ -609,6 +638,9 @@ export default function CreateCameraPage() {
   }
 
   function handleDrop(event) {
+    // Abaikan drag internal (geser urutan), hanya proses drop file.
+    if (!isFileDrag(event)) return;
+
     event.preventDefault();
     setDragging(false);
 
@@ -619,6 +651,44 @@ export default function CreateCameraPage() {
 
   function removeImage(key) {
     setImages((previous) => previous.filter((image) => image.key !== key));
+  }
+
+  // Pindahkan item `fromKey` ke posisi item `toKey`.
+  function moveImage(fromKey, toKey) {
+    if (!fromKey || !toKey || fromKey === toKey) return;
+
+    setImages((previous) => {
+      const from = previous.findIndex((item) => item.key === fromKey);
+      const to = previous.findIndex((item) => item.key === toKey);
+
+      if (from < 0 || to < 0) return previous;
+
+      const next = [...previous];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+
+      return next;
+    });
+  }
+  // Tukar posisi dua item (dipakai drag-and-drop).
+  function swapImages(aKey, bKey) {
+    if (!aKey || !bKey || aKey === bKey) return;
+
+    setImages((previous) => {
+      const a = previous.findIndex((item) => item.key === aKey);
+      const b = previous.findIndex((item) => item.key === bKey);
+
+      if (a < 0 || b < 0) return previous;
+
+      const next = [...previous];
+      [next[a], next[b]] = [next[b], next[a]];
+
+      return next;
+    });
+  }
+  function endDrag() {
+    setDragKey(null);
+    setOverKey(null);
   }
 
   function updateMarketplaceUrl(marketplaceId, value) {
@@ -657,10 +727,6 @@ export default function CreateCameraPage() {
     if (!form.shutter_count.trim()) {
       found.shutter_count =
         "Shutter count wajib diisi. Isi 0 jika produk baru.";
-    }
-
-    if (images.length === 0) {
-      found.images = "Tambahkan minimal satu gambar produk.";
     }
 
     return found;
@@ -731,9 +797,8 @@ export default function CreateCameraPage() {
       formData.append("strikethrough_price", String(strikeNumber));
     }
 
-    // Gambar pertama yang dikirim menjadi gambar utama,
-    // jadi gambar yang dipilih sebagai utama dipindah ke urutan pertama.
-    orderedImages.forEach(({ file }) => {
+    // Urutan upload = urutan galeri. File pertama menjadi gambar utama.
+    images.forEach(({ file }) => {
       formData.append("images", file);
     });
 
@@ -1146,7 +1211,7 @@ export default function CreateCameraPage() {
           <FormSection
             sectionRef={galleryRef}
             title="Galeri gambar"
-            description="Gambar pertama menjadi gambar utama di katalog. Anda bisa menggantinya kapan saja."
+            description="Seret gambar untuk menukar posisinya. Gambar paling kiri atas adalah gambar utama dan tampil pertama di katalog."
             aside={
               <Tag tone="soft">
                 {images.length}/{MAX_IMAGES} gambar
@@ -1155,6 +1220,7 @@ export default function CreateCameraPage() {
           >
             <div
               onDragOver={(event) => {
+                if (!isFileDrag(event)) return;
                 event.preventDefault();
                 setDragging(true);
               }}
@@ -1171,14 +1237,34 @@ export default function CreateCameraPage() {
                 />
               ) : (
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                  {orderedImages.map(({ key, file }) => (
+                  {images.map(({ key, file }, index) => (
                     <GalleryTile
                       key={key}
                       file={file}
-                      isPrimary={effectivePrimaryKey === key}
+                      isPrimary={index === 0}
                       disabled={isSubmitting}
-                      onPrimary={() => setPrimaryKey(key)}
+                      isDragging={dragKey === key}
+                      isOver={overKey === key && dragKey !== key}
+                      onPrimary={() => moveImage(key, images[0].key)}
                       onRemove={() => removeImage(key)}
+                      onDragStart={(event) => {
+                        event.dataTransfer.effectAllowed = "move";
+                        event.dataTransfer.setData("text/plain", key); // wajib untuk Firefox
+                        setDragKey(key);
+                      }}
+                      onDragOver={(event) => {
+                        if (!dragKey) return;
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = "move";
+                        setOverKey(key);
+                      }}
+                      onDrop={(event) => {
+                        if (!dragKey) return;
+                        event.preventDefault();
+                        swapImages(dragKey, key);
+                        endDrag();
+                      }}
+                      onDragEnd={endDrag}
                     />
                   ))}
 

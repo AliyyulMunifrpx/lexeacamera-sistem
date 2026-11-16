@@ -33,6 +33,9 @@ import { useGetAdminMarketplaces } from "../../../../../features/admin-marketpla
 /*  Color   : primary + second (+ second2 error, second3 sukses, second4 fokus) */
 /*  Admin hanya boleh mengubah deskripsi, kelengkapan, galeri gambar, dan     */
 /*  link marketplace.                                                         */
+/*                                                                            */
+/*  Galeri: satu array `gallery`. Item pertama = gambar utama. Urutan array   */
+/*  = urutan tampil. Drag-and-drop memindahkan posisi item di array.          */
 /* -------------------------------------------------------------------------- */
 
 const MAX_IMAGES = 12;
@@ -79,6 +82,11 @@ function isHttpUrl(value) {
   } catch {
     return false;
   }
+}
+
+/* True kalau yang diseret adalah file dari komputer (bukan tile galeri). */
+function isFileDrag(event) {
+  return Array.from(event.dataTransfer?.types ?? []).includes("Files");
 }
 
 /* Pesan error backend (err.response.data.errors) -> bahasa Indonesia */
@@ -221,7 +229,14 @@ function ImagePreview({ file, alt }) {
 
   if (!src) return null;
 
-  return <img src={src} alt={alt} className="h-full w-full object-cover" />;
+  return (
+    <img
+      src={src}
+      alt={alt}
+      draggable={false}
+      className="h-full w-full object-cover"
+    />
+  );
 }
 
 /* --------------------------------- Gallery -------------------------------- */
@@ -231,16 +246,30 @@ function GalleryTile({
   label,
   isPrimary,
   disabled,
+  isDragging,
+  isOver,
   onPrimary,
   onRemove,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
 }) {
   return (
     <div
-      className={`relative aspect-square overflow-hidden rounded-xl border bg-second/5 ${
+      draggable={!disabled}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+      className={`relative aspect-square select-none overflow-hidden rounded-xl border bg-second/5 ${
+        disabled ? "" : "cursor-grab active:cursor-grabbing"
+      } ${
         isPrimary ? "col-span-2 row-span-2 border-second4" : "border-second/30"
-      }`}
+      } ${isDragging ? "opacity-50" : ""} ${isOver ? "ring-2 ring-second4" : ""}`}
     >
-      <div className="absolute inset-0">{preview}</div>
+      {/* pointer-events-none: supaya yang terseret adalah tile, bukan <img> */}
+      <div className="pointer-events-none absolute inset-0">{preview}</div>
 
       {isPrimary ? (
         <span className="absolute left-2 top-2">
@@ -403,12 +432,13 @@ export default function AdminEditCameraPage() {
 
   const [description, setDescription] = useState("");
   const [inclusions, setInclusions] = useState("");
-  const [keptImages, setKeptImages] = useState([]);
-  const [newImages, setNewImages] = useState([]);
-  const [primarySelection, setPrimarySelection] = useState(null);
+  // [{ key, kind: "existing" | "new", image?, file? }] — item pertama = utama.
+  const [gallery, setGallery] = useState([]);
   const [galleryDirty, setGalleryDirty] = useState(false);
   const [marketplaceUrls, setMarketplaceUrls] = useState({});
-  const [dragging, setDragging] = useState(false);
+  const [dragging, setDragging] = useState(false); // drop file dari komputer
+  const [dragKey, setDragKey] = useState(null); // tile yang sedang digeser
+  const [overKey, setOverKey] = useState(null); // tile tujuan
 
   const isSaving =
     updateDetails.isPending ||
@@ -420,21 +450,23 @@ export default function AdminEditCameraPage() {
 
     initializedId.current = camera.id;
 
-    const images = camera.images ?? [];
+    // Gambar utama dipindah ke depan, sisanya tetap urutan dari server.
+    const images = [...(camera.images ?? [])].sort(
+      (a, b) => Number(Boolean(b.is_primary)) - Number(Boolean(a.is_primary)),
+    );
 
     setDescription(camera.description ?? "");
     setInclusions(camera.inclusions ?? "");
-    setKeptImages(images);
-    setNewImages([]);
+    setGallery(
+      images.map((image) => ({
+        key: `existing-${image.id}`,
+        kind: "existing",
+        image,
+      })),
+    );
     setGalleryDirty(false);
     setErrors({});
     setUrlErrors({});
-
-    const primaryImage = images.find((image) => image.is_primary) ?? images[0];
-
-    setPrimarySelection(
-      primaryImage ? { type: "existing", id: primaryImage.id } : null,
-    );
 
     setMarketplaceUrls(
       Object.fromEntries(
@@ -470,10 +502,7 @@ export default function AdminEditCameraPage() {
   function addFiles(selectedFiles) {
     if (selectedFiles.length === 0) return;
 
-    if (
-      keptImages.length + newImages.length + selectedFiles.length >
-      MAX_IMAGES
-    ) {
+    if (gallery.length + selectedFiles.length > MAX_IMAGES) {
       notify.error(`Maksimal ${MAX_IMAGES} gambar secara keseluruhan.`);
       return;
     }
@@ -488,21 +517,14 @@ export default function AdminEditCameraPage() {
       return;
     }
 
+    // Gambar baru masuk di akhir, sesuai urutan dipilih.
     const additions = selectedFiles.map((file) => ({
-      key: crypto.randomUUID(),
+      key: `new-${crypto.randomUUID()}`,
+      kind: "new",
       file,
     }));
 
-    setNewImages((previous) => [...previous, ...additions]);
-
-    if (
-      !primarySelection &&
-      keptImages.length === 0 &&
-      newImages.length === 0
-    ) {
-      setPrimarySelection({ type: "new", key: additions[0].key });
-    }
-
+    setGallery((previous) => [...previous, ...additions]);
     setGalleryDirty(true);
     setErrors((previous) => ({ ...previous, images: undefined }));
   }
@@ -517,59 +539,45 @@ export default function AdminEditCameraPage() {
   }
 
   function handleDrop(event) {
+    // Abaikan drag internal (geser urutan), hanya proses drop file.
+    if (!isFileDrag(event)) return;
+
     event.preventDefault();
     setDragging(false);
 
-    if (isSaving || keptImages.length + newImages.length >= MAX_IMAGES) return;
+    if (isSaving || gallery.length >= MAX_IMAGES) return;
 
     addFiles(Array.from(event.dataTransfer.files ?? []));
   }
 
-  function removeExistingImage(imageId) {
-    const remaining = keptImages.filter((image) => image.id !== imageId);
-
-    setKeptImages(remaining);
-    setGalleryDirty(true);
-
-    if (
-      primarySelection?.type === "existing" &&
-      primarySelection.id === imageId
-    ) {
-      if (remaining.length > 0) {
-        setPrimarySelection({ type: "existing", id: remaining[0].id });
-      } else if (newImages.length > 0) {
-        setPrimarySelection({ type: "new", key: newImages[0].key });
-      } else {
-        setPrimarySelection(null);
-      }
-    }
-  }
-
-  function removeNewImage(key) {
-    const remaining = newImages.filter((image) => image.key !== key);
-
-    setNewImages(remaining);
-    setGalleryDirty(true);
-
-    if (primarySelection?.type === "new" && primarySelection.key === key) {
-      if (keptImages.length > 0) {
-        setPrimarySelection({ type: "existing", id: keptImages[0].id });
-      } else if (remaining.length > 0) {
-        setPrimarySelection({ type: "new", key: remaining[0].key });
-      } else {
-        setPrimarySelection(null);
-      }
-    }
-  }
-
-  function setExistingPrimary(imageId) {
-    setPrimarySelection({ type: "existing", id: imageId });
+  function removeImage(key) {
+    setGallery((previous) => previous.filter((item) => item.key !== key));
     setGalleryDirty(true);
   }
 
-  function setNewPrimary(key) {
-    setPrimarySelection({ type: "new", key });
+  // Pindahkan item `fromKey` ke posisi item `toKey`.
+  function moveImage(fromKey, toKey) {
+    if (!fromKey || !toKey || fromKey === toKey) return;
+
+    setGallery((previous) => {
+      const from = previous.findIndex((item) => item.key === fromKey);
+      const to = previous.findIndex((item) => item.key === toKey);
+
+      if (from < 0 || to < 0) return previous;
+
+      const next = [...previous];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+
+      return next;
+    });
+
     setGalleryDirty(true);
+  }
+
+  function endDrag() {
+    setDragKey(null);
+    setOverKey(null);
   }
 
   function updateMarketplaceUrl(marketplaceId, value) {
@@ -584,7 +592,24 @@ export default function AdminEditCameraPage() {
         : previous,
     );
   }
+  // Tukar posisi dua item.
+  function swapImages(aKey, bKey) {
+    if (!aKey || !bKey || aKey === bKey) return;
 
+    setGallery((previous) => {
+      const a = previous.findIndex((item) => item.key === aKey);
+      const b = previous.findIndex((item) => item.key === bKey);
+
+      if (a < 0 || b < 0) return previous;
+
+      const next = [...previous];
+      [next[a], next[b]] = [next[b], next[a]];
+
+      return next;
+    });
+
+    setGalleryDirty(true);
+  }
   function normalizeLinks(items = []) {
     return items
       .filter((item) => item.marketplace_id && item.product_url?.trim())
@@ -620,7 +645,7 @@ export default function AdminEditCameraPage() {
       found.inclusions = `Kelengkapan maksimal ${MAX_TEXT_LENGTH} karakter.`;
     }
 
-    if (galleryDirty && keptImages.length + newImages.length === 0) {
+    if (galleryDirty && gallery.length === 0) {
       found.images = "Produk harus memiliki minimal satu gambar.";
     }
 
@@ -710,24 +735,25 @@ export default function AdminEditCameraPage() {
       if (galleryDirty) {
         currentPart = "galeri";
 
+        const keptItems = gallery.filter((item) => item.kind === "existing");
+        const newItems = gallery.filter((item) => item.kind === "new");
+
+        // Existing -> id gambar, baru -> "new:<index di daftar file yang diupload>"
+        const tokenOf = (item) =>
+          item.kind === "existing"
+            ? item.image.id
+            : `new:${newItems.indexOf(item)}`;
+
         const formData = new FormData();
 
         formData.append(
           "keep_image_ids",
-          JSON.stringify(keptImages.map((image) => image.id)),
+          JSON.stringify(keptItems.map((item) => item.image.id)),
         );
+        formData.append("primary", tokenOf(gallery[0])); // item pertama = utama
+        formData.append("image_order", JSON.stringify(gallery.map(tokenOf)));
 
-        if (primarySelection?.type === "existing") {
-          formData.append("primary", primarySelection.id);
-        } else if (primarySelection?.type === "new") {
-          const newIndex = newImages.findIndex(
-            (image) => image.key === primarySelection.key,
-          );
-
-          if (newIndex >= 0) formData.append("primary", `new:${newIndex}`);
-        }
-
-        newImages.forEach(({ file }) => {
+        newItems.forEach(({ file }) => {
           formData.append("images", file);
         });
 
@@ -819,29 +845,10 @@ export default function AdminEditCameraPage() {
 
   /* ------------------------------ Derived UI ------------------------------ */
 
-  const totalImages = keptImages.length + newImages.length;
+  const totalImages = gallery.length;
 
-  // Gambar utama selalu tampil pertama di galeri.
-  const galleryItems = [
-    ...keptImages.map((image) => ({
-      key: `existing-${image.id}`,
-      kind: "existing",
-      image,
-      isPrimary:
-        primarySelection?.type === "existing" &&
-        primarySelection.id === image.id,
-    })),
-    ...newImages.map(({ key, file }) => ({
-      key: `new-${key}`,
-      kind: "new",
-      imageKey: key,
-      file,
-      isPrimary:
-        primarySelection?.type === "new" && primarySelection.key === key,
-    })),
-  ].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
-
-  const primaryItem = galleryItems.find((item) => item.isPrimary);
+  // Item pertama = gambar utama. Urutan array = urutan tampil.
+  const primaryItem = gallery[0];
 
   const summaryPreview = primaryItem ? (
     primaryItem.kind === "existing" ? (
@@ -849,6 +856,7 @@ export default function AdminEditCameraPage() {
         <img
           src={primaryItem.image.image_url}
           alt="Gambar utama produk"
+          draggable={false}
           className="h-full w-full object-cover"
         />
       ) : null
@@ -926,7 +934,7 @@ export default function AdminEditCameraPage() {
           <FormSection
             sectionRef={galleryRef}
             title="Galeri gambar"
-            description="Gambar utama tampil pertama di katalog. Pilih gambar utama, hapus gambar lama, atau tambahkan gambar baru."
+            description="Seret gambar untuk mengatur urutan. Gambar paling kiri atas adalah gambar utama dan tampil pertama di katalog."
             aside={
               <Tag tone="soft">
                 {totalImages}/{MAX_IMAGES} gambar
@@ -935,6 +943,7 @@ export default function AdminEditCameraPage() {
           >
             <div
               onDragOver={(event) => {
+                if (!isFileDrag(event)) return;
                 event.preventDefault();
                 setDragging(true);
               }}
@@ -951,39 +960,54 @@ export default function AdminEditCameraPage() {
                 />
               ) : (
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                  {galleryItems.map((item) =>
-                    item.kind === "existing" ? (
-                      <GalleryTile
-                        key={item.key}
-                        label="gambar produk"
-                        isPrimary={item.isPrimary}
-                        disabled={isSaving}
-                        onPrimary={() => setExistingPrimary(item.image.id)}
-                        onRemove={() => removeExistingImage(item.image.id)}
-                        preview={
+                  {gallery.map((item, index) => (
+                    <GalleryTile
+                      key={item.key}
+                      label={
+                        item.kind === "existing"
+                          ? "gambar produk"
+                          : item.file.name
+                      }
+                      isPrimary={index === 0}
+                      disabled={isSaving}
+                      isDragging={dragKey === item.key}
+                      isOver={overKey === item.key && dragKey !== item.key}
+                      onPrimary={() => moveImage(item.key, gallery[0].key)}
+                      onRemove={() => removeImage(item.key)}
+                      onDragStart={(event) => {
+                        event.dataTransfer.effectAllowed = "move";
+                        event.dataTransfer.setData("text/plain", item.key); // wajib untuk Firefox
+                        setDragKey(item.key);
+                      }}
+                      onDragOver={(event) => {
+                        if (!dragKey) return;
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = "move";
+                        setOverKey(item.key);
+                      }}
+                      onDrop={(event) => {
+                        if (!dragKey) return;
+                        event.preventDefault();
+                        swapImages(dragKey, item.key);
+                        endDrag();
+                      }}
+                      onDragEnd={endDrag}
+                      preview={
+                        item.kind === "existing" ? (
                           item.image.image_url ? (
                             <img
                               src={item.image.image_url}
                               alt="Gambar produk"
+                              draggable={false}
                               className="h-full w-full object-cover"
                             />
                           ) : null
-                        }
-                      />
-                    ) : (
-                      <GalleryTile
-                        key={item.key}
-                        label={item.file.name}
-                        isPrimary={item.isPrimary}
-                        disabled={isSaving}
-                        onPrimary={() => setNewPrimary(item.imageKey)}
-                        onRemove={() => removeNewImage(item.imageKey)}
-                        preview={
+                        ) : (
                           <ImagePreview file={item.file} alt={item.file.name} />
-                        }
-                      />
-                    ),
-                  )}
+                        )
+                      }
+                    />
+                  ))}
 
                   {totalImages < MAX_IMAGES && (
                     <AddImageTile

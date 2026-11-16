@@ -58,3 +58,9 @@ export async function updateCameraImages(id, formData) {
 
   return response.data.data;
 }
+export async function bulkDeleteCameras(ids) {
+  const response = await api.post("/owner/cameras/bulk-delete", { ids });
+
+  // Bentuk: { deleted, deleted_ids, not_found_ids }
+  return response.data?.data ?? response.data;
+}

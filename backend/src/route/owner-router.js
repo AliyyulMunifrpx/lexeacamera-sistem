@@ -23,6 +23,7 @@ import reportController from "../controller/owner/report-controller.js";
 import cameraImportController from "../controller/owner/camera-import-controller.js";
 import payrollController from "../controller/owner/payroll-controller.js";
 import contractController from "../controller/owner/contract-controller.js";
+import cameraBulkDeleteController from "../controller/owner/camera-bulk-delete-controller.js";
 
 const ownerRouter = express.Router();
 
@@ -149,4 +150,8 @@ ownerRouter.delete(
   contractController.remove,
 );
 ownerRouter.delete("/owner/orders/:id", orderController.remove);
+ownerRouter.post(
+  "/owner/cameras/bulk-delete",
+  cameraBulkDeleteController.deleteMany,
+);
 export default ownerRouter;

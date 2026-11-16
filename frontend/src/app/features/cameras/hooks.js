@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  bulkDeleteCameras,
   createCamera,
   deleteCamera,
   getCamera,
@@ -88,6 +89,17 @@ export function useUpdateCameraImages() {
           queryKey: ["cameras"],
         }),
       ]);
+    },
+  });
+}
+export function useBulkDeleteCameras() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (ids) => bulkDeleteCameras(ids),
+    onSuccess: () => {
+      // Samakan dengan invalidate di useDeleteCamera.
+      queryClient.invalidateQueries({ queryKey: ["cameras"] });
     },
   });
 }

@@ -36,10 +36,6 @@ const createCamera = async (request) => {
     throw new ResponseError(401, "UNAUTHORIZED");
   }
 
-  if (files.length === 0) {
-    throw new ResponseError(400, "CAMERA_IMAGES_REQUIRED");
-  }
-
   if (files.length > MAX_IMAGES) {
     throw new ResponseError(400, "TOO_MANY_CAMERA_IMAGES");
   }
