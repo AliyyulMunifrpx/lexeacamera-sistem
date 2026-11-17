@@ -10,6 +10,8 @@ import {
   FiArrowLeft,
   FiBox,
   FiLoader,
+  FiRotateCcw,
+  FiRotateCw,
   FiShoppingBag,
   FiTrash2,
   FiUploadCloud,
@@ -38,8 +40,8 @@ import CancelButton from "./../../../../../../components/cancel-button";
 /*  Galeri: satu array `gallery`. Item pertama = gambar utama. Urutan array   */
 /*  = urutan tampil. Drag-and-drop menukar posisi dua item di array.          */
 /*                                                                            */
-/*  Upload: file yang dipilih masuk antrean crop (1:1), dipotong satu per     */
-/*  satu, lalu hasilnya baru masuk ke galeri.                                 */
+/*  Upload: file yang dipilih masuk antrean crop (1:1), dipotong dan diputar  */
+/*  satu per satu, lalu hasilnya baru masuk ke galeri.                        */
 /* -------------------------------------------------------------------------- */
 
 const MAX_IMAGES = 12;
@@ -50,6 +52,8 @@ const CROP_ASPECT = 1;
 const CROP_MAX_OUTPUT = 1600;
 const CROP_MAX_ZOOM = 3;
 const CROP_QUALITY = 0.92;
+const CROP_MIN_ROTATION = -180;
+const CROP_MAX_ROTATION = 180;
 
 // Admin hanya mengisi 4 karakter di belakang prefix. Dikirim ke backend sebagai "WAV-XXXX".
 const SKU_PREFIX = "LX-";
@@ -139,8 +143,31 @@ function loadImage(src) {
   });
 }
 
-/* Potong gambar sesuai area piksel dari react-easy-crop -> File baru. */
-async function getCroppedFile(src, area, originalFile) {
+function toRadians(degrees) {
+  return (degrees * Math.PI) / 180;
+}
+
+/* Jaga rotasi tetap di rentang -180..180. */
+function normalizeRotation(degrees) {
+  return ((((degrees + 180) % 360) + 360) % 360) - 180;
+}
+
+/* Ukuran kotak pembatas gambar setelah diputar. `area` dari react-easy-crop
+   dihitung terhadap kotak ini, bukan terhadap gambar aslinya. */
+function getRotatedSize(width, height, rotation) {
+  const radians = toRadians(rotation);
+  const sin = Math.abs(Math.sin(radians));
+  const cos = Math.abs(Math.cos(radians));
+
+  return {
+    width: cos * width + sin * height,
+    height: sin * width + cos * height,
+  };
+}
+
+/* Potong gambar (setelah diputar) sesuai area piksel dari react-easy-crop
+   -> File baru. */
+async function getCroppedFile(src, area, originalFile, rotation = 0) {
   const image = await loadImage(src);
 
   const outputSize = Math.max(
@@ -156,18 +183,30 @@ async function getCroppedFile(src, area, originalFile) {
 
   if (!context) throw new Error("CANVAS_UNSUPPORTED");
 
-  context.imageSmoothingQuality = "high";
-  context.drawImage(
-    image,
-    area.x,
-    area.y,
-    area.width,
-    area.height,
-    0,
-    0,
-    canvas.width,
-    canvas.height,
+  // JPEG tidak punya transparansi: sudut kosong akibat rotasi miring
+  // akan jadi hitam kalau tidak diisi dulu dengan putih.
+  if (originalFile.type === "image/jpeg") {
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
+  const rotated = getRotatedSize(
+    image.naturalWidth,
+    image.naturalHeight,
+    rotation,
   );
+  const scale = canvas.width / area.width;
+
+  context.imageSmoothingQuality = "high";
+
+  // Urutan transformasi penting: skala -> geser ke area crop ->
+  // pindah ke pusat kotak -> putar -> pusatkan gambar.
+  context.scale(scale, scale);
+  context.translate(-area.x, -area.y);
+  context.translate(rotated.width / 2, rotated.height / 2);
+  context.rotate(toRadians(rotation));
+  context.translate(-image.naturalWidth / 2, -image.naturalHeight / 2);
+  context.drawImage(image, 0, 0);
 
   const blob = await new Promise((resolve) => {
     canvas.toBlob(resolve, originalFile.type, CROP_QUALITY);
@@ -362,6 +401,7 @@ function CropDialog({ item, remaining, onDone, onSkip, onCancelAll }) {
   const [src, setSrc] = useState("");
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
+  const [rotation, setRotation] = useState(0);
   const [area, setArea] = useState(null);
   const [processing, setProcessing] = useState(false);
 
@@ -382,13 +422,23 @@ function CropDialog({ item, remaining, onDone, onSkip, onCancelAll }) {
     };
   }, []);
 
+  function rotateBy(degrees) {
+    setRotation((previous) => normalizeRotation(previous + degrees));
+  }
+
+  function handleReset() {
+    setCrop({ x: 0, y: 0 });
+    setZoom(1);
+    setRotation(0);
+  }
+
   async function handleApply() {
     if (!area || !src || processing) return;
 
     setProcessing(true);
 
     try {
-      const cropped = await getCroppedFile(src, area, item.file);
+      const cropped = await getCroppedFile(src, area, item.file, rotation);
       onDone(cropped);
     } catch (error) {
       notify.error(
@@ -399,6 +449,8 @@ function CropDialog({ item, remaining, onDone, onSkip, onCancelAll }) {
       setProcessing(false);
     }
   }
+
+  const isDefault = zoom === 1 && rotation === 0;
 
   return (
     <div
@@ -427,6 +479,7 @@ function CropDialog({ item, remaining, onDone, onSkip, onCancelAll }) {
               image={src}
               crop={crop}
               zoom={zoom}
+              rotation={rotation}
               aspect={CROP_ASPECT}
               maxZoom={CROP_MAX_ZOOM}
               onCropChange={setCrop}
@@ -439,7 +492,7 @@ function CropDialog({ item, remaining, onDone, onSkip, onCancelAll }) {
         <div className="flex items-center gap-4">
           <label
             htmlFor="crop-zoom"
-            className="text-sm font-semibold text-second"
+            className="w-16 shrink-0 text-sm font-semibold text-second"
           >
             Zoom
           </label>
@@ -459,6 +512,62 @@ function CropDialog({ item, remaining, onDone, onSkip, onCancelAll }) {
           <span className="w-16 shrink-0 text-right text-xs tabular-nums text-second/60">
             {zoom.toFixed(1)}x
           </span>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <label
+            htmlFor="crop-rotation"
+            className="w-16 shrink-0 text-sm font-semibold text-second"
+          >
+            Putar
+          </label>
+
+          <input
+            id="crop-rotation"
+            type="range"
+            min={CROP_MIN_ROTATION}
+            max={CROP_MAX_ROTATION}
+            step={1}
+            value={rotation}
+            disabled={processing}
+            onChange={(event) => setRotation(Number(event.target.value))}
+            className={`min-w-0 flex-1 accent-second4 ${FOCUS_RING}`}
+          />
+
+          <span className="w-16 shrink-0 text-right text-xs tabular-nums text-second/60">
+            {rotation}°
+          </span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => rotateBy(-90)}
+            disabled={processing}
+            className={`${BTN_BASE} border border-second/30 text-second hover:border-second4 hover:text-second4 disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING}`}
+          >
+            <FiRotateCcw size={16} aria-hidden="true" />
+            Kiri 90°
+          </button>
+
+          <button
+            type="button"
+            onClick={() => rotateBy(90)}
+            disabled={processing}
+            className={`${BTN_BASE} border border-second/30 text-second hover:border-second4 hover:text-second4 disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING}`}
+          >
+            <FiRotateCw size={16} aria-hidden="true" />
+            Kanan 90°
+          </button>
+
+          <button
+            type="button"
+            onClick={handleReset}
+            disabled={processing || isDefault}
+            className={`${BTN_BASE} text-second/60 hover:text-second4 disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING}`}
+          >
+            Atur ulang
+          </button>
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2">
