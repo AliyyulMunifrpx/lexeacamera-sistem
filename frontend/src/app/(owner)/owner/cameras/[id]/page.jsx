@@ -466,6 +466,7 @@ export default function CameraDetailPage() {
               <Image
                 key={activeImage.image_url}
                 fill
+                unoptimized
                 priority
                 sizes="(min-width: 1024px) 50vw, 100vw"
                 src={activeImage.image_url}
@@ -514,6 +515,7 @@ export default function CameraDetailPage() {
                       {image.image_url ? (
                         <Image
                           fill
+                          unoptimized
                           sizes="(min-width: 1024px) 10vw, 25vw"
                           src={image.image_url}
                           alt=""
@@ -770,6 +772,7 @@ export default function CameraDetailPage() {
                         {item.marketplace?.logo_url ? (
                           <Image
                             alt=""
+                            unoptimized
                             src={item.marketplace.logo_url}
                             width={40}
                             height={40}

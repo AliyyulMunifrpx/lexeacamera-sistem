@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image.js";
+import Cropper from "react-easy-crop";
 import {
   FiAlertCircle,
   FiArrowLeft,
@@ -31,11 +32,19 @@ import CancelButton from "../../../../../components/cancel-button.jsx";
 /*                                                                            */
 /*  Galeri: satu array `images`. Item pertama = gambar utama. Urutan array    */
 /*  = urutan tampil = urutan upload. Drag-and-drop memindahkan posisi item.   */
+/*                                                                            */
+/*  Upload: file yang dipilih masuk antrean crop (1:1), dipotong satu per     */
+/*  satu, lalu hasilnya baru masuk ke galeri.                                 */
 /* -------------------------------------------------------------------------- */
 
 const MAX_IMAGES = 12;
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+const CROP_ASPECT = 1;
+const CROP_MAX_OUTPUT = 1600;
+const CROP_MAX_ZOOM = 3;
+const CROP_QUALITY = 0.92;
 
 // Admin hanya mengisi 4 karakter di belakang prefix. Dikirim ke backend sebagai "WAV-XXXX".
 const SKU_PREFIX = "LX-";
@@ -110,6 +119,63 @@ function formatMoney(value) {
 /* True kalau yang diseret adalah file dari komputer (bukan tile galeri). */
 function isFileDrag(event) {
   return Array.from(event.dataTransfer?.types ?? []).includes("Files");
+}
+
+/* ------------------------------- Crop utils ------------------------------- */
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    // window.Image: `Image` di file ini adalah komponen next/image.
+    const img = new window.Image();
+
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("IMAGE_LOAD_FAILED"));
+    img.src = src;
+  });
+}
+
+/* Potong gambar sesuai area piksel dari react-easy-crop -> File baru. */
+async function getCroppedFile(src, area, originalFile) {
+  const image = await loadImage(src);
+
+  const outputSize = Math.max(
+    1,
+    Math.min(Math.round(area.width), CROP_MAX_OUTPUT),
+  );
+
+  const canvas = document.createElement("canvas");
+  canvas.width = outputSize;
+  canvas.height = Math.max(1, Math.round(outputSize / CROP_ASPECT));
+
+  const context = canvas.getContext("2d");
+
+  if (!context) throw new Error("CANVAS_UNSUPPORTED");
+
+  context.imageSmoothingQuality = "high";
+  context.drawImage(
+    image,
+    area.x,
+    area.y,
+    area.width,
+    area.height,
+    0,
+    0,
+    canvas.width,
+    canvas.height,
+  );
+
+  const blob = await new Promise((resolve) => {
+    canvas.toBlob(resolve, originalFile.type, CROP_QUALITY);
+  });
+
+  if (!blob) throw new Error("CROP_FAILED");
+
+  if (blob.size > MAX_FILE_SIZE) throw new Error("CROP_TOO_LARGE");
+
+  return new File([blob], originalFile.name, {
+    type: originalFile.type,
+    lastModified: Date.now(),
+  });
 }
 
 /* ------------------------------ Small pieces ------------------------------ */
@@ -285,6 +351,157 @@ function ImagePreview({ file, alt }) {
   );
 }
 
+/* ------------------------------- Crop dialog ------------------------------ */
+
+function CropDialog({ item, remaining, onDone, onSkip, onCancelAll }) {
+  const [src, setSrc] = useState("");
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [area, setArea] = useState(null);
+  const [processing, setProcessing] = useState(false);
+
+  useEffect(() => {
+    const url = URL.createObjectURL(item.file);
+    setSrc(url);
+
+    return () => URL.revokeObjectURL(url);
+  }, [item.file]);
+
+  // Kunci scroll halaman selama dialog terbuka.
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, []);
+
+  async function handleApply() {
+    if (!area || !src || processing) return;
+
+    setProcessing(true);
+
+    try {
+      const cropped = await getCroppedFile(src, area, item.file);
+      onDone(cropped);
+    } catch (error) {
+      notify.error(
+        error?.message === "CROP_TOO_LARGE"
+          ? "Hasil crop melebihi 5 MB. Coba gambar lain."
+          : "Gagal memotong gambar. Coba lagi.",
+      );
+      setProcessing(false);
+    }
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="crop-title"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-second/60 p-4"
+    >
+      <div className="flex w-full max-w-xl flex-col gap-4 rounded-2xl border border-second/30 bg-primary p-4 shadow-xl shadow-second/5 sm:p-8">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h2 id="crop-title" className="text-lg font-bold text-second">
+              Atur potongan gambar
+            </h2>
+            <p className="mt-2 truncate text-sm text-second/60">
+              {item.file.name}
+            </p>
+          </div>
+
+          {remaining > 0 && <Tag tone="soft">+{remaining} lagi</Tag>}
+        </div>
+
+        <div className="relative aspect-square w-full overflow-hidden rounded-xl bg-second">
+          {src && (
+            <Cropper
+              image={src}
+              crop={crop}
+              zoom={zoom}
+              aspect={CROP_ASPECT}
+              maxZoom={CROP_MAX_ZOOM}
+              onCropChange={setCrop}
+              onZoomChange={setZoom}
+              onCropComplete={(_, pixels) => setArea(pixels)}
+            />
+          )}
+        </div>
+
+        <div className="flex items-center gap-4">
+          <label
+            htmlFor="crop-zoom"
+            className="text-sm font-semibold text-second"
+          >
+            Zoom
+          </label>
+
+          <input
+            id="crop-zoom"
+            type="range"
+            min={1}
+            max={CROP_MAX_ZOOM}
+            step={0.01}
+            value={zoom}
+            disabled={processing}
+            onChange={(event) => setZoom(Number(event.target.value))}
+            className={`min-w-0 flex-1 accent-second4 ${FOCUS_RING}`}
+          />
+
+          <span className="w-16 shrink-0 text-right text-xs tabular-nums text-second/60">
+            {zoom.toFixed(1)}x
+          </span>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancelAll}
+            disabled={processing}
+            className={`${BTN_BASE} border border-second/30 text-second hover:border-second2 hover:text-second2 disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING}`}
+          >
+            Batal
+          </button>
+
+          {remaining > 0 && (
+            <button
+              type="button"
+              onClick={onSkip}
+              disabled={processing}
+              className={`${BTN_BASE} border border-second/30 text-second hover:border-second4 hover:text-second4 disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING}`}
+            >
+              Lewati
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={handleApply}
+            disabled={processing || !area}
+            className={`${BTN_BASE} bg-grad text-primary shadow-lg shadow-second4/25 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING}`}
+          >
+            {processing ? (
+              <>
+                <FiLoader
+                  className="animate-spin motion-reduce:animate-none"
+                  size={16}
+                  aria-hidden="true"
+                />
+                Memproses…
+              </>
+            ) : (
+              "Terapkan"
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* --------------------------------- Gallery -------------------------------- */
 
 function GalleryTile({
@@ -373,7 +590,7 @@ function AddImageTile({ empty, disabled, dragging, hasError, onChange }) {
           <span>Tarik gambar ke sini atau pilih dari perangkat</span>
           <span className="text-xs font-normal text-second/60">
             JPEG, PNG, atau WebP. Maksimal {MAX_IMAGES} gambar, masing-masing 5
-            MB.
+            MB. Gambar dipotong persegi (1:1) sebelum ditambahkan.
           </span>
         </span>
       ) : (
@@ -520,6 +737,8 @@ export default function CreateCameraPage() {
   const [dragging, setDragging] = useState(false); // drop file dari komputer
   const [dragKey, setDragKey] = useState(null); // tile yang sedang digeser
   const [overKey, setOverKey] = useState(null); // tile tujuan
+  // Antrean file yang menunggu di-crop: [{ key, file }]. Item pertama = aktif.
+  const [cropQueue, setCropQueue] = useState([]);
 
   const isSubmitting = createCamera.isPending;
 
@@ -558,6 +777,7 @@ export default function CreateCameraPage() {
     setForm(initialForm);
     setErrors({});
     setImages([]);
+    setCropQueue([]);
     setMarketplaceUrls({});
     setDragKey(null);
     setOverKey(null);
@@ -603,7 +823,8 @@ export default function CreateCameraPage() {
   function addFiles(selectedFiles) {
     if (selectedFiles.length === 0) return;
 
-    if (images.length + selectedFiles.length > MAX_IMAGES) {
+    // Hitung juga file yang masih mengantre di dialog crop.
+    if (images.length + cropQueue.length + selectedFiles.length > MAX_IMAGES) {
       notify.error(`Maksimal ${MAX_IMAGES} gambar untuk satu produk.`);
       return;
     }
@@ -618,14 +839,14 @@ export default function CreateCameraPage() {
       return;
     }
 
-    // Gambar baru masuk di akhir, sesuai urutan dipilih.
-    const additions = selectedFiles.map((file) => ({
-      key: crypto.randomUUID(),
-      file,
-    }));
-
-    setImages((previous) => [...previous, ...additions]);
-    clearError("images");
+    // Belum masuk galeri: antre dulu untuk di-crop, sesuai urutan dipilih.
+    setCropQueue((previous) => [
+      ...previous,
+      ...selectedFiles.map((file) => ({
+        key: `crop-${crypto.randomUUID()}`,
+        file,
+      })),
+    ]);
   }
 
   function handleImageChange(event) {
@@ -644,9 +865,27 @@ export default function CreateCameraPage() {
     event.preventDefault();
     setDragging(false);
 
-    if (isSubmitting || images.length >= MAX_IMAGES) return;
+    if (isSubmitting || images.length + cropQueue.length >= MAX_IMAGES) return;
 
     addFiles(Array.from(event.dataTransfer.files ?? []));
+  }
+
+  // Hasil crop masuk di akhir galeri, lalu lanjut ke file berikutnya.
+  function handleCropDone(croppedFile) {
+    setImages((previous) => [
+      ...previous,
+      { key: crypto.randomUUID(), file: croppedFile },
+    ]);
+    clearError("images");
+    setCropQueue((previous) => previous.slice(1));
+  }
+
+  function handleCropSkip() {
+    setCropQueue((previous) => previous.slice(1));
+  }
+
+  function handleCropCancelAll() {
+    setCropQueue([]);
   }
 
   function removeImage(key) {
@@ -826,6 +1065,8 @@ export default function CreateCameraPage() {
     categories.length === 0 ||
     marketplacesPending ||
     marketplacesError;
+
+  const cropItem = cropQueue[0] ?? null;
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-screen-xl flex-col gap-8 bg-primary pb-16">
@@ -1417,6 +1658,17 @@ export default function CreateCameraPage() {
           </div>
         </aside>
       </form>
+
+      {cropItem && (
+        <CropDialog
+          key={cropItem.key}
+          item={cropItem}
+          remaining={cropQueue.length - 1}
+          onDone={handleCropDone}
+          onSkip={handleCropSkip}
+          onCancelAll={handleCropCancelAll}
+        />
+      )}
     </div>
   );
 }
