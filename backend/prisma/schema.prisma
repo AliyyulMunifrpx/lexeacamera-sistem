@@ -271,13 +271,14 @@ model Termsandcondition {
 // Karyawan biasa = Employee dengan user_id null (tanpa akun login).
 // -----------------------------------------------------------------------------
 model User {
-  id          String    @id @default(uuid())
-  supabase_id String    @unique
-  name        String
-  email       String    @unique
-  role        Role      @default(ADMIN)
-  is_active   Boolean   @default(true)
-  employee    Employee?
+  id           String        @id @default(uuid())
+  supabase_id  String        @unique
+  name         String
+  email        String        @unique
+  role         Role          @default(ADMIN)
+  is_active    Boolean       @default(true)
+  employee     Employee?
+  dailyReports DailyReport[]
 }
 
 model Employee {
@@ -409,8 +410,8 @@ model QualityControl {
   type            QcType
   status          QcStatus
   product_name    String
-  sku             String?
   serial_number   String?
+  sku             String?
   sender_name     String?
   tracking_number String?
   pic             String?
@@ -464,4 +465,43 @@ model QualityControlMedia {
   created_at   DateTime       @default(now())
 
   @@index([qc_id])
+}
+
+// Tambahkan ke model User:
+//   daily_reports DailyReport[]
+
+model DailyReport {
+  id                 String             @id @default(uuid())
+  date               DateTime           @db.Date
+  cashier_id         String
+  cashier            User               @relation(fields: [cashier_id], references: [id], onDelete: Restrict)
+  cashier_name       String
+  opening_balance    Int
+  transferred        Boolean            @default(false)
+  transferred_at     DateTime?
+  proof_path         String?            @unique
+  proof_content_type String?
+  proof_size         Int?
+  proof_uploaded_at  DateTime?
+  created_at         DateTime           @default(now())
+  updated_at         DateTime           @updatedAt
+  entries            DailyReportEntry[]
+
+  @@unique([date, cashier_id])
+  @@index([cashier_id, date])
+}
+
+model DailyReportEntry {
+  id         String      @id @default(uuid())
+  seq        Int         @default(autoincrement())
+  report_id  String
+  report     DailyReport @relation(fields: [report_id], references: [id], onDelete: Cascade)
+  name       String
+  note       String?
+  income     Int         @default(0)
+  expense    Int         @default(0)
+  created_at DateTime    @default(now())
+  updated_at DateTime    @updatedAt
+
+  @@index([report_id, seq])
 }

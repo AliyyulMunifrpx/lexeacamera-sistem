@@ -39,6 +39,7 @@ import { GrUserManager } from "react-icons/gr";
 import { HiOutlineUserCircle } from "react-icons/hi";
 import { LuUserRoundCheck } from "react-icons/lu";
 import { TbReportSearch } from "react-icons/tb";
+import { FaCashRegister } from "react-icons/fa";
 
 /*
   Urutan menu mengikuti frekuensi pemakaian dan alur kerja:
@@ -120,6 +121,12 @@ const navigation = [
     icon: BiMoney,
     group: "Tim",
   },
+  {
+    label: "Kasir",
+    href: "/owner/daily-reports",
+    icon: FaCashRegister,
+    group: "Tim",
+  },
 
   // Toko online dan promosi
   {
@@ -167,6 +174,7 @@ const pageTitles = {
   "/owner/categories": "Kategori",
   "/owner/quality-controls": "Quality Control",
   "/owner/invoices": "Invoice",
+  "/owner/daily-reports": "Kasir",
   "/owner/customers": "Pelanggan",
   "/owner/orders": "Pesanan",
   "/owner/marketplaces": "Toko Online",

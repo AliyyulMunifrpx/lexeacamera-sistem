@@ -15,6 +15,7 @@ import attendanceController from "../controller/owner/attendance-controller.js";
 import orderPaymentController from "../controller/admin/order-payment-controller.js";
 import qcItemController from "../controller/admin/qc-item-controller.js";
 import qcController from "../controller/admin/qc-controller.js";
+import dailyReportController from "../controller/admin/daily-report-controller.js";
 const adminRouter = express.Router();
 adminRouter.put("/users/pin", userController.setPin);
 adminRouter.get("/users/current", userController.get);
@@ -80,5 +81,40 @@ adminRouter.post("/admin/quality-controls/:id/media", qcController.addMedia);
 adminRouter.delete(
   "/admin/quality-controls/:id/media/:media_id",
   qcController.removeMedia,
+);
+adminRouter.get("/admin/daily-reports", dailyReportController.getAll);
+adminRouter.get("/admin/daily-reports/:id", dailyReportController.get);
+adminRouter.post("/admin/daily-reports", dailyReportController.create);
+adminRouter.patch("/admin/daily-reports/:id", dailyReportController.update);
+adminRouter.delete("/admin/daily-reports/:id", dailyReportController.remove);
+adminRouter.post(
+  "/admin/daily-reports/:id/entries",
+
+  dailyReportController.createEntry,
+);
+adminRouter.patch(
+  "/admin/daily-reports/:id/entries/:entry_id",
+
+  dailyReportController.updateEntry,
+);
+adminRouter.delete(
+  "/admin/daily-reports/:id/entries/:entry_id",
+
+  dailyReportController.removeEntry,
+);
+adminRouter.post(
+  "/admin/daily-reports/:id/proof/upload-url",
+
+  dailyReportController.createProofUploadUrl,
+);
+adminRouter.put(
+  "/admin/daily-reports/:id/proof",
+
+  dailyReportController.setProof,
+);
+adminRouter.delete(
+  "/admin/daily-reports/:id/proof",
+
+  dailyReportController.removeProof,
 );
 export default adminRouter;

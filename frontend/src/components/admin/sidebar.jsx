@@ -29,6 +29,7 @@ import notify from "../../lib/notify.js";
 import { TbFileReport, TbReportSearch } from "react-icons/tb";
 import { LuUserRoundCheck } from "react-icons/lu";
 import { MdOutlineFactCheck } from "react-icons/md";
+import { FaCashRegister } from "react-icons/fa";
 
 /*
   Hanya 4 menu, jadi tidak perlu dikelompokkan. Urutan mengikuti frekuensi
@@ -41,6 +42,8 @@ const navigation = [
   { label: "Pelanggan", href: "/admin/customers", icon: FiUsers },
   { label: "Report", href: "/admin/reports", icon: TbReportSearch },
   { label: "Produk", href: "/admin/cameras", icon: FiBox },
+  { label: "Kasir", href: "/admin/daily-reports", icon: FaCashRegister },
+
   {
     label: "Quality Control",
     href: "/admin/quality-controls",
@@ -54,7 +57,7 @@ const pageTitles = {
   "/admin/invoices": "Invoice",
   "/admin/customers": "Pelanggan",
   "/admin/quality-controls": "Quality Control",
-
+  "/admin/daily-reports": "Kasir",
   "/admin/reports": "Reports",
   "/admin/cameras": "Produk",
   "/admin/attendances": "Absensi",
