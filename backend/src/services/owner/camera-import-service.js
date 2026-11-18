@@ -14,6 +14,53 @@ const CONDITION = {
   bekas: "SECOND",
 };
 
+// Prefix SKU hasil akhir. Ganti di sini kalau prefix atau panjang kodenya berubah.
+const SKU_PREFIX = "LX-";
+const SKU_CODE_LENGTH = 4;
+
+// "LX-" -> "LX", dipakai untuk mendeteksi prefix yang nempel tanpa pemisah ("LX1234").
+const SKU_PREFIX_WORD = SKU_PREFIX.replace(/[\s-]+$/, "").toUpperCase();
+
+// Prefix = huruf di awal yang diikuti pemisah (spasi, strip, atau underscore).
+// Contoh: "ABC-1234", "LX 1234", "xy_1234".
+const SKU_PREFIX_WITH_SEPARATOR = /^([A-Z]+)[\s\-_]+(.+)$/;
+
+// Mengubah SKU apa pun menjadi SKU_PREFIX + KODE (huruf besar, SKU_CODE_LENGTH karakter):
+// - prefix apa pun (LX atau bukan) dibuang dan diganti SKU_PREFIX
+// - spasi/strip/simbol di dalam kode dibuang
+// - kode lebih panjang dari SKU_CODE_LENGTH dipotong, sisakan karakter pertama
+// Kalau kode kurang dari SKU_CODE_LENGTH, nilai dibiarkan apa adanya
+// supaya ditangani validasi biasa.
+const normalizeSku = (value) => {
+  const text = typeof value === "number" ? String(value) : value;
+  if (typeof text !== "string") return value;
+
+  const upper = text.trim().toUpperCase();
+  const onlyAlphanumeric = (s) => s.replace(/[^A-Z0-9]/g, "");
+
+  let code;
+  const withSeparator = upper.match(SKU_PREFIX_WITH_SEPARATOR);
+
+  if (withSeparator) {
+    code = onlyAlphanumeric(withSeparator[2]);
+  } else {
+    code = onlyAlphanumeric(upper);
+
+    // Prefix yang nempel tanpa pemisah ("LX1234"): dibuang hanya kalau
+    // sisanya masih cukup panjang untuk jadi kode utuh.
+    if (
+      code.startsWith(SKU_PREFIX_WORD) &&
+      code.length - SKU_PREFIX_WORD.length >= SKU_CODE_LENGTH
+    ) {
+      code = code.slice(SKU_PREFIX_WORD.length);
+    }
+  }
+
+  if (code.length < SKU_CODE_LENGTH) return value;
+
+  return `${SKU_PREFIX}${code.slice(0, SKU_CODE_LENGTH)}`;
+};
+
 const pairKey = (row) =>
   `${row.sku.toLowerCase()}\u0000${row.serial_number.toLowerCase()}`;
 
@@ -22,10 +69,15 @@ const validateRows = (rows) => {
   const rowErrors = [];
 
   rows.forEach((raw, index) => {
-    const { value, error } = importCameraRowSchema.validate(raw, {
-      abortEarly: false,
-      messages: ROW_MESSAGES,
-    });
+    // SKU dinormalkan dulu, jadi pengecekan duplikat di bawah juga memakai
+    // bentuk yang sudah berprefix.
+    const { value, error } = importCameraRowSchema.validate(
+      { ...raw, sku: normalizeSku(raw?.sku) },
+      {
+        abortEarly: false,
+        messages: ROW_MESSAGES,
+      },
+    );
 
     if (error) {
       for (const detail of error.details) {
