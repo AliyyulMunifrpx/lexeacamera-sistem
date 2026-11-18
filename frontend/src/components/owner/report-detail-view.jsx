@@ -1415,12 +1415,12 @@ function ProofPreview({ proof }) {
         target="_blank"
         rel="noopener noreferrer"
         className={`relative flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-second/30 bg-primary text-second/40 transition-shadow hover:shadow-lg ${FOCUS_RING}`}
-        aria-label="Buka bukti transfer di tab baru"
+        aria-label="Buka bukti setor di tab baru"
       >
         {previewable ? (
           <img
             src={proof.url}
-            alt="Bukti transfer"
+            alt="Bukti setor"
             className="h-full w-full object-cover"
           />
         ) : (
@@ -1443,7 +1443,7 @@ function ProofPreview({ proof }) {
           rel="noopener noreferrer"
           className={`mt-3 inline-flex items-center gap-2 rounded text-sm font-semibold text-second hover:text-second4 ${FOCUS_RING}`}
         >
-          Buka bukti transfer
+          Buka bukti setor
           <FiExternalLink size={16} aria-hidden="true" />
         </a>
         <p className="mt-2 text-xs text-second/60">
@@ -1507,6 +1507,7 @@ function RemitSection({ report, canRemit, canLock }) {
   const cashNumber = cash === "" ? null : Number(cash);
   const transferNumber = transfer === "" ? null : Number(transfer);
   const isSetor = amountsFilled;
+  const proofEditable = editing && !isSetor;
   // Perkiraan sisa dari isian form (tampilan ADMIN).
   const previewRemainingCash =
     cashNumber !== null && cashNumber <= closingCash
@@ -1553,7 +1554,7 @@ function RemitSection({ report, canRemit, canLock }) {
       done: locked || amountsFilled,
     },
     {
-      label: "Bukti transfer",
+      label: "Bukti setor",
       hint: proofRequired
         ? "ADMIN: wajib untuk setoran transfer"
         : "Tidak diperlukan",
@@ -1596,7 +1597,12 @@ function RemitSection({ report, canRemit, canLock }) {
     setErrors(found);
 
     if (Object.keys(found).length > 0) return;
-
+    if (Number(transfer) > 0 && !proof) {
+      notify.error(
+        "Setoran transfer wajib punya bukti. Unggah bukti setor dulu.",
+      );
+      return;
+    }
     updateReport.mutate(
       {
         id: report.id,
@@ -1651,7 +1657,7 @@ function RemitSection({ report, canRemit, canLock }) {
     uploadProof.mutate(
       { id: report.id, file },
       {
-        onSuccess: () => notify.success("Bukti transfer berhasil diunggah."),
+        onSuccess: () => notify.success("Bukti setor berhasil diunggah."),
         onError: (err) => notify.error(describeError(err)),
       },
     );
@@ -1663,7 +1669,7 @@ function RemitSection({ report, canRemit, canLock }) {
       {
         onSuccess: () => {
           setConfirmingDelete(false);
-          notify.success("Bukti transfer dihapus.");
+          notify.success("Bukti setor dihapus.");
         },
         onError: (err) => {
           setConfirmingDelete(false);
@@ -1757,8 +1763,8 @@ function RemitSection({ report, canRemit, canLock }) {
   const panelText = locked
     ? `Disetor ${formatDateTime(report.remitted_at)}. Laporan terapprove dan sisa saldo menjadi saldo awal laporan berikutnya.`
     : !amountsFilled
-      ? "ADMIN mengisi jumlah setoran tunai dan transfer serta mengunggah bukti transfer. OWNER lalu memeriksa dan mengapprove laporan."
-      : "ADMIN sudah mengisi jumlah setoran. Periksa jumlah dan bukti transfer di bawah, lalu approve laporan.";
+      ? "ADMIN mengisi jumlah setoran tunai dan transfer serta mengunggah bukti setor. OWNER lalu memeriksa dan mengapprove laporan."
+      : "ADMIN sudah mengisi jumlah setoran. Periksa jumlah dan bukti setor di bawah, lalu approve laporan.";
 
   return (
     <FormSection
@@ -2011,12 +2017,12 @@ function RemitSection({ report, canRemit, canLock }) {
         </div>
       )}
 
-      {/* Bukti transfer */}
+      {/* Bukti setor */}
       <div className="flex flex-col gap-4 rounded-2xl border border-second/30 p-4 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-3">
             <IconChip icon={FiFileText} />
-            <h3 className="text-sm font-bold text-second">Bukti transfer</h3>
+            <h3 className="text-sm font-bold text-second">Bukti setor</h3>
           </div>
           {proofRequired && !proof ? (
             <Tag tone="failure">Wajib</Tag>
@@ -2029,7 +2035,7 @@ function RemitSection({ report, canRemit, canLock }) {
 
         {proof ? (
           <ProofPreview proof={proof} />
-        ) : editing ? (
+        ) : proofEditable ? (
           <label
             className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-second/30 px-4 py-8 text-center transition-colors hover:border-second4 hover:bg-second4/5 focus-within:ring-2 focus-within:ring-second4/40 ${
               busy ? "pointer-events-none opacity-60" : ""
@@ -2050,7 +2056,7 @@ function RemitSection({ report, canRemit, canLock }) {
                   aria-hidden="true"
                 />
                 <span className="text-sm font-semibold text-second">
-                  Unggah bukti transfer
+                  Unggah bukti setor
                 </span>
                 <span className="text-xs text-second/60">
                   JPEG, PNG, WebP, HEIC, atau PDF · maks 10 MB
@@ -2062,12 +2068,14 @@ function RemitSection({ report, canRemit, canLock }) {
         ) : (
           <p className="rounded-xl border border-dashed border-second/30 p-6 text-center text-sm text-second/60">
             {locked
-              ? "Laporan terapprove, jadi bukti transfer tidak bisa diunggah. OWNER perlu membatalkan approve dulu."
-              : "Belum ada bukti transfer. ADMIN yang mengunggahnya."}
+              ? "Laporan terapprove, jadi bukti setor tidak bisa diunggah. OWNER perlu membatalkan approve dulu."
+              : editing && isSetor
+                ? "Setoran sudah dicatat tanpa bukti, jadi bukti setor terkunci. Klik “Batalkan setor” kalau perlu mengunggahnya."
+                : "Belum ada bukti setor. ADMIN yang mengunggahnya."}
           </p>
         )}
 
-        {editing && proof && (
+        {proofEditable && proof && (
           <div className="flex flex-wrap items-center gap-2">
             <label
               className={`${BTN_OUTLINE} cursor-pointer focus-within:ring-2 focus-within:ring-second4/40 ${
@@ -2122,19 +2130,27 @@ function RemitSection({ report, canRemit, canLock }) {
           </div>
         )}
 
+        {editing && isSetor && proof && (
+          <p className="flex items-start gap-2 text-xs text-second/60">
+            <FiLock size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+            Setoran sudah dicatat, jadi bukti setor terkunci. Klik “Batalkan
+            setor” dulu kalau perlu mengganti atau menghapusnya.
+          </p>
+        )}
+
         {locked && proof && (
           <p className="flex items-start gap-2 text-xs text-second/60">
             <FiLock size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
             {canLock
-              ? "Laporan terapprove, jadi bukti transfer tidak bisa diganti atau dihapus. Batalkan approve laporan dulu kalau perlu mengubahnya."
-              : "Laporan terapprove, jadi bukti transfer tidak bisa diganti atau dihapus. Minta OWNER membatalkan approve kalau perlu mengubahnya."}
+              ? "Laporan terapprove, jadi bukti setor tidak bisa diganti atau dihapus. Batalkan approve laporan dulu kalau perlu mengubahnya."
+              : "Laporan terapprove, jadi bukti setor tidak bisa diganti atau dihapus. Minta OWNER membatalkan approve kalau perlu mengubahnya."}
           </p>
         )}
 
         <p className="text-xs text-second/50">
           {canRemit
-            ? "Wajib kalau ada setoran transfer, tidak diperlukan untuk setoran tunai saja. Unggah ulang akan mengganti file lama. Tidak bisa diubah selama laporan terapprove."
-            : "Hanya ADMIN yang bisa mengunggah, mengganti, atau menghapus bukti transfer, dan hanya selama laporan belum terapprove."}
+            ? "Wajib kalau ada setoran transfer, tidak diperlukan untuk setoran tunai saja. Unggah sebelum klik Setor. Setelah setor, bukti terkunci sampai setor dibatalkan."
+            : "Hanya ADMIN yang bisa mengunggah, mengganti, atau menghapus bukti setor, dan hanya selama belum setor dan belum approve."}
         </p>
       </div>
     </FormSection>
@@ -2357,7 +2373,7 @@ function DeleteReportSection({ report, basePath, canLock }) {
   return (
     <FormSection
       title="Hapus laporan"
-      description="Menghapus laporan beserta semua baris, riwayat, dan bukti transfernya secara permanen. Salah tanggal? Hapus lalu buat ulang."
+      description="Menghapus laporan beserta semua baris, riwayat, dan bukti setornya secara permanen. Salah tanggal? Hapus lalu buat ulang."
     >
       {report.remitted ? (
         <p className="flex items-start gap-2 text-sm text-second/60">
@@ -2406,7 +2422,7 @@ function DeleteReportSection({ report, basePath, canLock }) {
 
 export default function ReportDetailView({ id, role }) {
   const basePath = `/${role}/daily-reports`;
-  // ADMIN mengisi jumlah setoran dan mengunggah bukti transfer. OWNER sebagai
+  // ADMIN mengisi jumlah setoran dan mengunggah bukti setor. OWNER sebagai
   // penerima setoran yang memeriksa lalu mengunci atau membuka kunci.
   const canRemit = role === "admin";
   const canLock = role === "owner";
@@ -2507,7 +2523,7 @@ export default function ReportDetailView({ id, role }) {
             </Tag>
           )}
           <Tag tone={report.proof ? "soft" : "outline"}>
-            {report.proof ? "Ada bukti transfer" : "Belum ada bukti"}
+            {report.proof ? "Ada bukti setor" : "Belum ada bukti"}
           </Tag>
           {canLock && <Tag tone="outline">Setoran: Anda yang approve</Tag>}{" "}
         </div>
