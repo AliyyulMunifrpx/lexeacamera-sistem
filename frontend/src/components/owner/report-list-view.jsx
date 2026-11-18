@@ -190,7 +190,7 @@ function CreateReportPanel({ onCancel, basePath }) {
     openingHint =
       "Saldo awal manual. Kolom yang dikosongkan dianggap Rp 0, tidak diambil dari laporan sebelumnya.";
   } else if (!pending && source) {
-    openingHint = `Dikosongkan = sisa belum disetor dari laporan ${formatShortDate(source.date)} (laporan terakhir sebelum tanggal ini): tunai ${formatMoney(autoCash)}, non tunai ${formatMoney(autoNoncash)}.`;
+    openingHint = `Dikosongkan = saldo setelah disetor dari laporan ${formatShortDate(source.date)} (laporan terakhir sebelum tanggal ini): tunai ${formatMoney(autoCash)}, non tunai ${formatMoney(autoNoncash)}.`;
   } else if (!pending) {
     openingHint =
       "Belum ada laporan sebelumnya. Dikosongkan = Rp 0 untuk keduanya.";
@@ -199,7 +199,7 @@ function CreateReportPanel({ onCancel, basePath }) {
   return (
     <FormSection
       title="Buat laporan baru"
-      description="Satu laporan untuk satu hari dan dipakai bersama. Saldo awal otomatis dari sisa saldo laporan terakhir sebelum tanggal itu, dipisah tunai dan non tunai, dan tetap bisa diisi manual."
+      description="Satu laporan untuk satu hari dan dipakai bersama. Saldo awal otomatis dari saldo setelah disetor laporan terakhir sebelum tanggal itu, dipisah tunai dan non tunai, dan tetap bisa diisi manual."
     >
       <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -722,7 +722,8 @@ export default function ReportListView({ role }) {
                         </p>
                       )}
                       <p className="mt-2 text-xs tabular-nums text-second/60">
-                        Sisa {formatMoney(remainingTotal(report))} (tunai{" "}
+                        Saldo setelah disetor{" "}
+                        {formatMoney(remainingTotal(report))} (tunai{" "}
                         {formatMoney(remainingCash(report))}, non tunai{" "}
                         {formatMoney(remainingNoncash(report))})
                       </p>

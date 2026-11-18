@@ -58,7 +58,8 @@ const STATUS_STYLES = {
  * Urutan kolom (0..18):
  *  0 No | 1 Tanggal | 2-3 Saldo awal (tunai, non tunai) | 4-5 Masuk | 6-7 Keluar
  *  8-10 Saldo akhir (tunai, non tunai, total) | 11-12 Setoran (tunai, transfer)
- *  13-15 Sisa (tunai, non tunai, total) | 16 Baris | 17 Status | 18 Bukti
+ *  13-15 Saldo setelah disetor (tunai, non tunai, total) | 16 Baris
+ *  17 Status | 18 Bukti
  */
 const MONEY_WIDTH = 14.3;
 const SUMMARY_WIDTHS = [7, 17, ...Array(14).fill(MONEY_WIDTH), 10, 30, 14];
@@ -94,7 +95,7 @@ const SUMMARY_HEAD = [
     group("Keluar", 2),
     group("Saldo akhir", 3),
     group("Setoran", 2),
-    group("Sisa belum disetor", 3),
+    group("Saldo setelah disetor", 3),
     tall("Baris"),
     tall("Status setoran"),
     tall("Bukti"),
@@ -507,8 +508,9 @@ async function exportReportsPdf(filters) {
   const includeEntries = reports.length <= MAX_DETAIL_REPORTS;
   const details = includeEntries ? await fetchDetails(reports) : [];
 
-  // Saldo awal, saldo akhir, dan sisa tidak dijumlahkan: sisa satu hari menjadi
-  // saldo awal hari berikutnya, jadi penjumlahannya menghitung dobel.
+  // Saldo awal, saldo akhir, dan saldo setelah disetor tidak dijumlahkan:
+  // saldo setelah disetor satu hari menjadi saldo awal hari berikutnya, jadi
+  // penjumlahannya menghitung dobel.
   const sums = reports.reduce(
     (total, report) => {
       const f = figures(report);
@@ -572,7 +574,7 @@ async function exportReportsPdf(filters) {
   let y = drawBand(
     doc,
     "LAPORAN HARIAN",
-    "Kas harian dipisah tunai dan non tunai: saldo awal, pemasukan, pengeluaran, setoran ke owner, dan sisa yang belum disetor. Semua angka dalam Rupiah.",
+    "Kas harian dipisah tunai dan non tunai: saldo awal, pemasukan, pengeluaran, setoran ke owner, dan saldo setelah disetor. Semua angka dalam Rupiah.",
   );
   y = writeMeta(doc, y, meta);
 
@@ -661,10 +663,10 @@ async function exportReportsPdf(filters) {
   const notes = [
     "Catatan:",
     "- Saldo akhir tunai = saldo awal tunai + masuk tunai - keluar tunai. Saldo akhir non tunai dihitung dengan cara yang sama.",
-    "- Tunai hanya disetor tunai, non tunai hanya disetor lewat transfer. Sisa = saldo akhir - setoran, dan menjadi saldo awal laporan berikutnya.",
-    "- Saldo awal, saldo akhir, dan sisa tidak dijumlahkan karena sisa satu hari menjadi saldo awal hari berikutnya.",
+    "- Tunai hanya disetor tunai, non tunai hanya disetor lewat transfer. Saldo setelah disetor = saldo akhir - setoran, dan menjadi saldo awal laporan berikutnya.",
+    "- Saldo awal, saldo akhir, dan saldo setelah disetor tidak dijumlahkan karena saldo setelah disetor satu hari menjadi saldo awal hari berikutnya.",
     "- Status: Belum disetor (admin belum mengisi setoran), Sudah setor (admin sudah mengisi, menunggu owner), Approve owner (sudah diapprove dan terkunci).",
-    "- Laporan yang belum disetor dihitung belum menyetor apa pun, sehingga sisanya sama dengan saldo akhir. Sisa pada laporan Sudah setor adalah perkiraan sampai owner meng-approve.",
+    "- Laporan yang belum disetor dianggap belum menyetor apa pun, sehingga saldo setelah disetornya sama dengan saldo akhir. Pada laporan Sudah setor, angkanya dihitung dari isian admin dan baru final setelah owner meng-approve.",
     includeEntries
       ? "- Rincian setiap baris pemasukan dan pengeluaran ada di bagian Rincian Kas pada halaman berikutnya."
       : "- Rincian baris tidak disertakan karena jumlah laporan terlalu banyak. Persempit filter atau ekspor per laporan.",
@@ -901,7 +903,7 @@ async function exportReportPdf(report) {
     columnStyles: DETAIL_COLUMN_STYLES,
   });
 
-  /* Rincian per metode, setoran, dan sisa */
+  /* Rincian per metode, setoran, dan saldo setelah disetor */
   const breakdown = [
     ["Saldo akhir tunai", f.closingCash],
     ["Saldo akhir non tunai", f.closingNoncash],
@@ -910,9 +912,9 @@ async function exportReportPdf(report) {
       filled ? "Disetor transfer" : "Disetor transfer (belum disetor)",
       f.remitTransfer,
     ],
-    ["Sisa belum disetor (tunai)", f.remainingCash],
-    ["Sisa belum disetor (non tunai)", f.remainingNoncash],
-    ["Sisa belum disetor (total)", f.remainingCash + f.remainingNoncash],
+    ["Saldo setelah disetor (tunai)", f.remainingCash],
+    ["Saldo setelah disetor (non tunai)", f.remainingNoncash],
+    ["Saldo setelah disetor (total)", f.remainingCash + f.remainingNoncash],
   ];
 
   const lastIndex = breakdown.length - 1;
@@ -946,12 +948,12 @@ async function exportReportPdf(report) {
   const notes = [
     "Catatan:",
     "- Saldo dihitung berjalan dari saldo awal (tunai + non tunai) mengikuti urutan pencatatan.",
-    "- Tunai hanya disetor tunai, non tunai hanya disetor lewat transfer. Sisa belum disetor menjadi saldo awal laporan berikutnya.",
+    "- Tunai hanya disetor tunai, non tunai hanya disetor lewat transfer. Saldo setelah disetor menjadi saldo awal laporan berikutnya.",
     report.remitted
       ? "- Laporan sudah di-approve owner dan terkunci."
       : filled
-        ? "- Admin sudah mengisi setoran, menunggu approve owner. Sisa adalah perkiraan sampai laporan di-approve."
-        : "- Laporan belum disetor, sehingga sisanya sama dengan saldo akhir.",
+        ? "- Admin sudah mengisi setoran, menunggu approve owner. Saldo setelah disetor dihitung dari isian admin dan baru final setelah laporan di-approve."
+        : "- Laporan belum disetor, sehingga saldo setelah disetor sama dengan saldo akhir.",
   ];
   const warningIndexes = [];
 
