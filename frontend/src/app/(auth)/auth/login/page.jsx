@@ -6,7 +6,6 @@ import { useLogin } from "../../../features/auth/hooks.js";
 import { normalizeApiError } from "../../../../lib/api/errors.js";
 import notify from "../../../../lib/notify.js";
 import { useRouter } from "next/navigation";
-import { FiEye, FiEyeOff } from "react-icons/fi";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -14,7 +13,6 @@ export default function LoginPage() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -85,30 +83,16 @@ export default function LoginPage() {
             </Link>
           </div>
 
-          <div className="relative">
-            <input
-              id="password"
-              type={showPassword ? "text" : "password"}
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="Masukkan kata sandi"
-              className="w-full rounded-xl border border-second/30 bg-transparent px-4 py-3 pr-12 outline-none transition-colors placeholder:text-second/35 focus:border-second/50"
-            />
-
-            <button
-              type="button"
-              onClick={() => setShowPassword((current) => !current)}
-              aria-label={
-                showPassword ? "Sembunyikan kata sandi" : "Tampilkan kata sandi"
-              }
-              aria-pressed={showPassword}
-              className="absolute inset-y-0 right-0 flex items-center justify-center px-4 text-second/50 transition-colors hover:text-second focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-4px] focus-visible:outline-second"
-            >
-              {showPassword ? <FiEyeOff size={18} /> : <FiEye size={18} />}
-            </button>
-          </div>
+          <input
+            id="password"
+            type="password"
+            autoComplete="current-password"
+            required
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            placeholder="Masukkan kata sandi"
+            className="w-full rounded-xl border border-second/30 bg-transparent px-4 py-3 outline-none transition-colors placeholder:text-second/35 focus:border-second/50 [&::-ms-reveal]:hidden [&::-ms-clear]:hidden"
+          />
         </div>
 
         <button
