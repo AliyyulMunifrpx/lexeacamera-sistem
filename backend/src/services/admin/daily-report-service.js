@@ -100,6 +100,10 @@ const assertCanSettle = (actor) => {
   if (isOwner(actor)) throw new ResponseError(403, "REMIT_ADMIN_ONLY");
 };
 
+const assertCanLock = (actor) => {
+  if (!isOwner(actor)) throw new ResponseError(403, "LOCK_OWNER_ONLY");
+};
+
 const paging = (page, total) => ({
   page,
   per_page: PER_PAGE,
@@ -594,10 +598,10 @@ const updateReport = async (request, user) => {
   const actor = actorOf(user);
   const req = validate(updateReportValidation, request);
 
-  const touchesRemit = [req.remit_cash, req.remit_transfer, req.remitted].some(
-    (value) => value !== undefined,
-  );
-  if (touchesRemit) assertCanSettle(actor);
+  if (req.remitted !== undefined) assertCanLock(actor);
+  if ([req.remit_cash, req.remit_transfer].some((v) => v !== undefined)) {
+    assertCanSettle(actor);
+  }
 
   await prisma.$transaction(async (tx) => {
     const current = await lockReport(tx, req.id);
@@ -804,9 +808,10 @@ const createProofUploadUrl = async (request, user) => {
 
   const report = await prisma.dailyReport.findUnique({
     where: { id: req.id },
-    select: { id: true },
+    select: { id: true, remitted: true },
   });
   if (!report) throw new ResponseError(404, "REPORT_NOT_FOUND");
+  if (report.remitted) throw new ResponseError(409, "PROOF_LOCKED");
 
   const path = `daily-reports/${req.id}/${crypto.randomUUID()}.${ext}`;
   const { data, error } = await supabase.storage
@@ -879,6 +884,7 @@ const setProof = async (request, user) => {
   try {
     oldPath = await prisma.$transaction(async (tx) => {
       const current = await lockReport(tx, req.id);
+      if (current.remitted) throw new ResponseError(409, "PROOF_LOCKED");
       if (current.proof_path === req.path) return null;
 
       const proofType = contentType ?? EXT_TYPE[match[1]];
@@ -904,7 +910,10 @@ const setProof = async (request, user) => {
     if (error.code === "P2002") {
       throw new ResponseError(409, "PROOF_ALREADY_ADDED");
     }
-    if (error instanceof ResponseError && error.status === 404) {
+    if (
+      error instanceof ResponseError &&
+      (error.status === 404 || error.message === "PROOF_LOCKED")
+    ) {
       await removeFiles([req.path]);
     }
     throw error;
@@ -929,9 +938,7 @@ const deleteProof = async (request, user) => {
   const oldPath = await prisma.$transaction(async (tx) => {
     const current = await lockReport(tx, req.id);
     if (!current.proof_path) throw new ResponseError(404, "PROOF_NOT_FOUND");
-    if (current.remitted && current.remit_transfer > 0) {
-      throw new ResponseError(409, "PROOF_LOCKED");
-    }
+    if (current.remitted) throw new ResponseError(409, "PROOF_LOCKED");
 
     await tx.dailyReport.update({
       where: { id: req.id },

@@ -59,6 +59,13 @@ const ERROR_MESSAGES = {
     "Terlalu banyak permintaan dalam waktu singkat. Silakan coba beberapa saat lagi.",
   TOO_MANY_REQUESTS:
     "Terlalu banyak permintaan dalam waktu singkat. Silakan coba beberapa saat lagi.",
+  REMIT_ADMIN_ONLY:
+    "Hanya ADMIN yang bisa mengisi jumlah setoran dan mengelola bukti transfer.",
+  LOCK_OWNER_ONLY: "Hanya OWNER yang bisa mengunci atau membuka kunci setoran.",
+  PROOF_LOCKED:
+    "Laporan terkunci, jadi bukti transfer tidak bisa diubah. Minta OWNER membuka kunci dulu.",
+  PROOF_REQUIRED:
+    "Setoran transfer wajib punya bukti. Minta ADMIN mengunggahnya dulu.",
 };
 export function getErrorMessage(code, fallback) {
   return (

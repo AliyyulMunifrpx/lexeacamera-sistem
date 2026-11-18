@@ -1107,19 +1107,19 @@ function EntryRow({ report, entry, index, canEdit }) {
 function CashSplit({ cash, noncash }) {
   return (
     <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-base font-bold tabular-nums text-second">
-      <span>
-        <span className="mr-2 text-sm">Tunai</span>
+      <span className="bg-second2 px-2 rounded-full text-primary">
+        <span className="mr-2 text-sm text-primary">Tunai</span>
         {formatMoney(cash)}
       </span>
-      <span>
-        <span className="mr-2 text-sm">Non tunai</span>
+      <span className="bg-second2 px-2 rounded-full text-primary">
+        <span className="mr-2 text-sm text-primary">Non tunai</span>
         {formatMoney(noncash)}
       </span>
     </div>
   );
 }
 
-function EntriesSection({ report, canRemit }) {
+function EntriesSection({ report, canLock }) {
   const entries = report.entries ?? [];
   const canEdit = !report.remitted;
 
@@ -1136,9 +1136,9 @@ function EntriesSection({ report, canRemit }) {
       {report.remitted && (
         <p className="flex items-start gap-2 rounded-xl bg-second/5 p-4 text-sm text-second/60">
           <FiLock size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
-          {canRemit
+          {canLock
             ? "Laporan sudah disetor dan terkunci untuk semua orang. Buka kunci di bagian Setoran untuk menambah, mengubah, atau menghapus baris."
-            : "Laporan sudah disetor dan terkunci. Minta admin membuka kuncinya kalau ada yang perlu diubah."}
+            : "Laporan sudah disetor dan terkunci. Minta OWNER membuka kuncinya kalau ada yang perlu diubah."}
         </p>
       )}
 
@@ -1398,16 +1398,23 @@ function ProofPreview({ proof }) {
   );
 }
 
-function RemitSection({ report, canRemit }) {
+function RemitSection({ report, canRemit, canLock }) {
   const updateReport = useUpdateDailyReport();
   const uploadProof = useUploadProof();
   const deleteProof = useDeleteProof();
 
   const toText = (value) =>
     value !== null && value !== undefined ? String(value) : "";
+  const toNumber = (value) =>
+    value !== null && value !== undefined ? Number(value) : null;
 
+  // Nilai yang sudah tersimpan di server (isian ADMIN).
   const savedCash = toText(report.remit_cash);
   const savedTransfer = toText(report.remit_transfer);
+  const savedCashNumber = toNumber(report.remit_cash);
+  const savedTransferNumber = toNumber(report.remit_transfer);
+  const amountsFilled =
+    savedCashNumber !== null && savedTransferNumber !== null;
 
   const [cash, setCash] = useState(savedCash);
   const [transfer, setTransfer] = useState(savedTransfer);
@@ -1425,12 +1432,16 @@ function RemitSection({ report, canRemit }) {
   const closingNoncash = Number(report.closing_noncash) || 0;
   const locked = report.remitted;
   const proof = report.proof;
+  // ADMIN mengisi jumlah setoran selama laporan belum dikunci OWNER.
+  const editing = canRemit && !locked;
   const busy =
     updateReport.isPending || uploadProof.isPending || deleteProof.isPending;
 
   const cashNumber = cash === "" ? null : Number(cash);
   const transferNumber = transfer === "" ? null : Number(transfer);
+  const dirty = cash !== savedCash || transfer !== savedTransfer;
 
+  // Perkiraan sisa dari isian form (tampilan ADMIN).
   const previewRemainingCash =
     cashNumber !== null && cashNumber <= closingCash
       ? closingCash - cashNumber
@@ -1440,66 +1451,82 @@ function RemitSection({ report, canRemit }) {
       ? closingNoncash - transferNumber
       : null;
 
-  // Bukti wajib kalau setoran transfer lebih dari 0. Setelah dikunci, bukti tidak bisa dihapus.
-  const proofRequired = locked
-    ? needsProof(report)
-    : transferNumber !== null && transferNumber > 0;
-  const proofLocked = locked && needsProof(report);
+  // Sisa yang ditampilkan di ringkasan: dari server kalau sudah dikunci,
+  // kalau belum dihitung dari jumlah yang sudah tersimpan.
+  let remainingShown = null;
+  if (locked) {
+    remainingShown = {
+      cash: Number(report.remaining_cash) || 0,
+      noncash: Number(report.remaining_noncash) || 0,
+      total: Number(report.remaining_balance) || 0,
+    };
+  } else if (
+    amountsFilled &&
+    savedCashNumber <= closingCash &&
+    savedTransferNumber <= closingNoncash
+  ) {
+    const cashLeft = closingCash - savedCashNumber;
+    const noncashLeft = closingNoncash - savedTransferNumber;
+    remainingShown = {
+      cash: cashLeft,
+      noncash: noncashLeft,
+      total: cashLeft + noncashLeft,
+    };
+  }
+
+  // Bukti wajib kalau setoran transfer lebih dari 0. Saat ADMIN mengisi, ikut
+  // isian form; selain itu ikut nilai yang tersimpan.
+  const proofRequired = editing
+    ? transferNumber !== null && transferNumber > 0
+    : needsProof(report);
 
   const steps = [
     {
       label: "Isi jumlah setoran",
-      hint: "Tunai dan transfer (boleh 0)",
-      done: locked || (cash !== "" && transfer !== ""),
+      hint: "ADMIN: tunai dan transfer (boleh 0)",
+      done: locked || amountsFilled,
     },
     {
       label: "Bukti transfer",
-      hint: proofRequired ? "Wajib untuk setoran transfer" : "Tidak diperlukan",
+      hint: proofRequired
+        ? "ADMIN: wajib untuk setoran transfer"
+        : "Tidak diperlukan",
       done: locked || !proofRequired || Boolean(proof),
     },
     {
-      label: "Tandai disetor",
-      hint: locked ? "Laporan terkunci" : "Mengunci laporan",
+      label: "Kunci setoran",
+      hint: locked ? "Laporan terkunci" : "OWNER memeriksa lalu mengunci",
       done: locked,
     },
   ];
 
-  function validate(forRemit) {
+  /* --------------------------------- ADMIN -------------------------------- */
+
+  function validateAmounts() {
     const found = {};
 
-    if (cash !== "" && Number(cash) > MAX_AMOUNT) {
-      found.cash = "Nominal terlalu besar.";
-    }
-    if (transfer !== "" && Number(transfer) > MAX_AMOUNT) {
-      found.transfer = "Nominal terlalu besar.";
-    }
-
-    if (!forRemit) return found;
-
-    if (cash === "") found.cash = "Isi setoran tunai (boleh 0).";
-    else if (!found.cash && Number(cash) > closingCash) {
-      found.cash = `Melebihi saldo akhir tunai (${formatMoney(closingCash)}).`;
+    if (cash !== "") {
+      if (Number(cash) > MAX_AMOUNT) {
+        found.cash = "Nominal terlalu besar.";
+      } else if (Number(cash) > closingCash) {
+        found.cash = `Melebihi saldo akhir tunai (${formatMoney(closingCash)}).`;
+      }
     }
 
-    if (transfer === "") found.transfer = "Isi setoran transfer (boleh 0).";
-    else if (!found.transfer && Number(transfer) > closingNoncash) {
-      found.transfer = `Melebihi saldo akhir non tunai (${formatMoney(closingNoncash)}).`;
-    }
-
-    if (closingCash < 0 || closingNoncash < 0) {
-      found.form =
-        "Saldo akhir tunai atau non tunai negatif. Perbaiki baris yang salah dulu, misalnya pengeluaran yang salah metode.";
-    }
-
-    if (transfer !== "" && Number(transfer) > 0 && !proof) {
-      found.proof = "Setoran transfer wajib punya bukti. Unggah bukti dulu.";
+    if (transfer !== "") {
+      if (Number(transfer) > MAX_AMOUNT) {
+        found.transfer = "Nominal terlalu besar.";
+      } else if (Number(transfer) > closingNoncash) {
+        found.transfer = `Melebihi saldo akhir non tunai (${formatMoney(closingNoncash)}).`;
+      }
     }
 
     return found;
   }
 
-  function save(forRemit) {
-    const found = validate(forRemit);
+  // ADMIN hanya menyimpan isian. Mengunci adalah hak OWNER (request terpisah).
+  function saveAmounts() {
+    const found = validateAmounts();
     setErrors(found);
 
     if (Object.keys(found).length > 0) return;
@@ -1510,26 +1537,10 @@ function RemitSection({ report, canRemit }) {
         data: {
           remit_cash: cash === "" ? null : Number(cash),
           remit_transfer: transfer === "" ? null : Number(transfer),
-          ...(forRemit && { remitted: true }),
         },
       },
       {
-        onSuccess: () =>
-          notify.success(
-            forRemit
-              ? "Laporan ditandai sudah disetor dan dikunci."
-              : "Isian setoran disimpan.",
-          ),
-        onError: (err) => notify.error(describeError(err)),
-      },
-    );
-  }
-
-  function unlock() {
-    updateReport.mutate(
-      { id: report.id, data: { remitted: false } },
-      {
-        onSuccess: () => notify.success("Kunci laporan dibuka."),
+        onSuccess: () => notify.success("Jumlah setoran disimpan."),
         onError: (err) => notify.error(describeError(err)),
       },
     );
@@ -1556,10 +1567,7 @@ function RemitSection({ report, canRemit }) {
     uploadProof.mutate(
       { id: report.id, file },
       {
-        onSuccess: () => {
-          setErrors((previous) => ({ ...previous, proof: undefined }));
-          notify.success("Bukti transfer berhasil diunggah.");
-        },
+        onSuccess: () => notify.success("Bukti transfer berhasil diunggah."),
         onError: (err) => notify.error(describeError(err)),
       },
     );
@@ -1581,6 +1589,66 @@ function RemitSection({ report, canRemit }) {
     );
   }
 
+  /* --------------------------------- OWNER -------------------------------- */
+
+  // Server menilai dari jumlah yang sudah tersimpan, jadi pengecekan di sini
+  // juga memakai nilai tersimpan, bukan isian form.
+  function lock() {
+    const problems = [];
+
+    if (!amountsFilled) {
+      problems.push(
+        "ADMIN belum mengisi jumlah setoran tunai dan transfer (boleh 0).",
+      );
+    } else {
+      if (savedCashNumber > closingCash) {
+        problems.push(
+          `Setoran tunai melebihi saldo akhir tunai (${formatMoney(closingCash)}).`,
+        );
+      }
+      if (savedTransferNumber > closingNoncash) {
+        problems.push(
+          `Setoran transfer melebihi saldo akhir non tunai (${formatMoney(closingNoncash)}).`,
+        );
+      }
+      if (savedTransferNumber > 0 && !proof) {
+        problems.push(
+          "Setoran transfer wajib punya bukti. Minta ADMIN mengunggahnya dulu.",
+        );
+      }
+    }
+
+    if (closingCash < 0 || closingNoncash < 0) {
+      problems.push(
+        "Saldo akhir tunai atau non tunai negatif. Perbaiki baris yang salah dulu, misalnya pengeluaran yang salah metode.",
+      );
+    }
+
+    setErrors({ lock: problems });
+    if (problems.length > 0) return;
+
+    updateReport.mutate(
+      { id: report.id, data: { remitted: true } },
+      {
+        onSuccess: () =>
+          notify.success(
+            "Setoran dikunci. Laporan terkunci untuk semua orang.",
+          ),
+        onError: (err) => notify.error(describeError(err)),
+      },
+    );
+  }
+
+  function unlock() {
+    updateReport.mutate(
+      { id: report.id, data: { remitted: false } },
+      {
+        onSuccess: () => notify.success("Kunci laporan dibuka."),
+        onError: (err) => notify.error(describeError(err)),
+      },
+    );
+  }
+
   const fileInput = (
     <input
       type="file"
@@ -1594,10 +1662,24 @@ function RemitSection({ report, canRemit }) {
   const remitNumber = (value) =>
     value !== null && value !== undefined ? formatMoney(value) : "—";
 
+  const panelTitle = locked
+    ? "Setoran sudah dicatat"
+    : !amountsFilled
+      ? "Menunggu ADMIN mengisi setoran"
+      : canLock
+        ? "Periksa lalu kunci setoran"
+        : "Menunggu OWNER mengunci";
+
+  const panelText = locked
+    ? `Disetor ${formatDateTime(report.remitted_at)}. Laporan terkunci dan sisa saldo menjadi saldo awal laporan berikutnya.`
+    : !amountsFilled
+      ? "ADMIN mengisi jumlah setoran tunai dan transfer serta mengunggah bukti transfer. OWNER lalu memeriksa dan mengunci laporan."
+      : "ADMIN sudah mengisi jumlah setoran. Periksa jumlah dan bukti transfer di bawah, lalu kunci laporan.";
+
   return (
     <FormSection
       title="Setoran ke owner"
-      description="Uang tunai disetor tunai, uang non tunai disetor lewat transfer. Jumlah tidak harus seluruh saldo. Sisa yang belum disetor otomatis menjadi saldo awal laporan berikutnya."
+      description="Uang tunai disetor tunai, uang non tunai disetor lewat transfer. Jumlah tidak harus seluruh saldo. ADMIN mengisi jumlah dan mengunggah bukti, OWNER memeriksa lalu mengunci. Sisa yang belum disetor otomatis menjadi saldo awal laporan berikutnya."
       aside={
         <Tag tone={locked ? "success" : "outline"}>
           {locked ? "Sudah disetor" : "Belum disetor"}
@@ -1606,8 +1688,8 @@ function RemitSection({ report, canRemit }) {
     >
       <Stepper steps={steps} />
 
-      {/* Isian / ringkasan setoran */}
-      {locked || !canRemit ? (
+      {/* Ringkasan setoran (OWNER, atau semua orang setelah dikunci) */}
+      {!editing ? (
         <div
           className={`flex flex-col gap-4 rounded-2xl border p-4 sm:p-6 ${
             locked
@@ -1625,14 +1707,8 @@ function RemitSection({ report, canRemit }) {
               }
             />
             <div className="min-w-0">
-              <p className="text-sm font-bold text-second">
-                {locked ? "Setoran sudah dicatat" : "Menunggu setoran admin"}
-              </p>
-              <p className="mt-1 text-sm text-second/60">
-                {locked
-                  ? `Disetor ${formatDateTime(report.remitted_at)}. Laporan terkunci dan sisa saldo menjadi saldo awal laporan berikutnya.`
-                  : "Setoran hanya diisi dan ditandai oleh admin. Owner hanya melihat status dan bukti transfer."}
-              </p>
+              <p className="text-sm font-bold text-second">{panelTitle}</p>
+              <p className="mt-1 text-sm text-second/60">{panelText}</p>
             </div>
           </div>
 
@@ -1658,25 +1734,27 @@ function RemitSection({ report, canRemit }) {
             <div className="rounded-xl bg-primary p-4 shadow-sm">
               <dt className="flex items-center gap-2 text-xs text-second/60">
                 <FiInbox size={16} aria-hidden="true" />
-                Sisa belum disetor
+                {locked ? "Sisa belum disetor" : "Sisa jika dikunci"}
               </dt>
               <dd className="mt-2 text-lg font-bold tabular-nums text-second">
-                {formatMoney(report.remaining_balance)}
+                {remainingShown ? formatMoney(remainingShown.total) : "—"}
               </dd>
-              <p className="mt-1 text-xs tabular-nums text-second/60">
-                Tunai {formatMoney(report.remaining_cash)} · Non tunai{" "}
-                {formatMoney(report.remaining_noncash)}
-              </p>
+              {remainingShown && (
+                <p className="mt-1 text-xs tabular-nums text-second/60">
+                  Tunai {formatMoney(remainingShown.cash)} · Non tunai{" "}
+                  {formatMoney(remainingShown.noncash)}
+                </p>
+              )}
             </div>
           </dl>
 
-          {locked && !canRemit && (
+          {locked && !canLock && (
             <p className="text-sm text-second/60">
-              Minta admin membuka kunci kalau ada yang perlu diubah.
+              Minta OWNER membuka kunci kalau ada yang perlu diubah.
             </p>
           )}
 
-          {locked && canRemit && (
+          {locked && canLock && (
             <button
               type="button"
               onClick={unlock}
@@ -1691,8 +1769,37 @@ function RemitSection({ report, canRemit }) {
               Buka kunci
             </button>
           )}
+
+          {!locked && canLock && (
+            <div className="flex flex-col gap-2">
+              {errors.lock?.map((problem) => (
+                <ErrorText key={problem}>{problem}</ErrorText>
+              ))}
+
+              <button
+                type="button"
+                onClick={lock}
+                disabled={busy}
+                className={`${BTN_PRIMARY} w-full sm:w-fit`}
+              >
+                {updateReport.isPending ? (
+                  <Spinner />
+                ) : (
+                  <FiLock size={16} aria-hidden="true" />
+                )}
+                Kunci setoran
+              </button>
+
+              <p className="text-xs text-second/50">
+                Mengunci akan menandai laporan sudah disetor dan mengunci
+                laporan untuk semua orang. Jumlah dan bukti hanya bisa diubah
+                ADMIN setelah Anda membuka kunci.
+              </p>
+            </div>
+          )}
         </div>
       ) : (
+        /* Isian setoran (ADMIN, selama belum dikunci) */
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <RemitField
@@ -1726,19 +1833,11 @@ function RemitSection({ report, canRemit }) {
               error={errors.transfer}
               onChange={(next) => {
                 setTransfer(next);
-                setErrors((previous) => ({
-                  ...previous,
-                  transfer: undefined,
-                  proof: undefined,
-                }));
+                setErrors((previous) => ({ ...previous, transfer: undefined }));
               }}
               onFillAll={() => {
                 setTransfer(String(Math.max(0, closingNoncash)));
-                setErrors((previous) => ({
-                  ...previous,
-                  transfer: undefined,
-                  proof: undefined,
-                }));
+                setErrors((previous) => ({ ...previous, transfer: undefined }));
               }}
             />
           </div>
@@ -1767,24 +1866,30 @@ function RemitSection({ report, canRemit }) {
 
             <button
               type="button"
-              onClick={() => save(true)}
-              disabled={busy}
+              onClick={saveAmounts}
+              disabled={busy || !dirty}
               className={`${BTN_PRIMARY} w-full sm:w-auto`}
             >
               {updateReport.isPending ? (
                 <Spinner />
               ) : (
-                <FiSend size={16} aria-hidden="true" />
+                <FiCheck size={16} aria-hidden="true" />
               )}
-              Tandai sudah disetor
+              Simpan setoran
             </button>
           </div>
 
-          {errors.form && <ErrorText>{errors.form}</ErrorText>}
+          {amountsFilled && !dirty && (
+            <p className="flex items-center gap-2 text-sm text-second3">
+              <FiCheckCircle size={16} aria-hidden="true" />
+              Jumlah setoran tersimpan. Menunggu OWNER memeriksa dan mengunci.
+            </p>
+          )}
 
           <p className="text-xs text-second/50">
-            Menandai sudah disetor akan mengunci laporan untuk semua orang.
-            Kedua jumlah wajib diisi (boleh 0), tidak boleh melebihi saldo akhir
+            Menyimpan hanya mengisi jumlah setoran. Laporan baru terkunci
+            setelah OWNER memeriksa dan mengunci. Kedua jumlah wajib terisi
+            (boleh 0) sebelum bisa dikunci, tidak boleh melebihi saldo akhir
             masing-masing, dan setoran transfer lebih dari 0 wajib punya bukti.
           </p>
         </div>
@@ -1808,13 +1913,11 @@ function RemitSection({ report, canRemit }) {
 
         {proof ? (
           <ProofPreview proof={proof} />
-        ) : canRemit ? (
+        ) : editing ? (
           <label
-            className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-8 text-center transition-colors focus-within:ring-2 focus-within:ring-second4/40 ${
-              errors.proof
-                ? "border-second2/60 bg-second2/5"
-                : "border-second/30 hover:border-second4 hover:bg-second4/5"
-            } ${busy ? "pointer-events-none opacity-60" : ""}`}
+            className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-second/30 px-4 py-8 text-center transition-colors hover:border-second4 hover:bg-second4/5 focus-within:ring-2 focus-within:ring-second4/40 ${
+              busy ? "pointer-events-none opacity-60" : ""
+            }`}
           >
             {uploadProof.isPending ? (
               <>
@@ -1842,13 +1945,13 @@ function RemitSection({ report, canRemit }) {
           </label>
         ) : (
           <p className="rounded-xl border border-dashed border-second/30 p-6 text-center text-sm text-second/60">
-            Belum ada bukti transfer yang diunggah.
+            {locked
+              ? "Laporan terkunci, jadi bukti transfer tidak bisa diunggah. OWNER perlu membuka kunci dulu."
+              : "Belum ada bukti transfer. ADMIN yang mengunggahnya."}
           </p>
         )}
 
-        {errors.proof && <ErrorText>{errors.proof}</ErrorText>}
-
-        {canRemit && proof && (
+        {editing && proof && (
           <div className="flex flex-wrap items-center gap-2">
             <label
               className={`${BTN_OUTLINE} cursor-pointer focus-within:ring-2 focus-within:ring-second4/40 ${
@@ -1869,53 +1972,53 @@ function RemitSection({ report, canRemit }) {
               {fileInput}
             </label>
 
-            {!proofLocked &&
-              (confirmingDelete ? (
-                <>
-                  <span className="text-sm text-second/60">Hapus bukti?</span>
-                  <button
-                    type="button"
-                    onClick={removeProof}
-                    disabled={busy}
-                    className={BTN_DANGER}
-                  >
-                    {deleteProof.isPending ? <Spinner /> : "Ya, hapus"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmingDelete(false)}
-                    disabled={busy}
-                    className={BTN_OUTLINE}
-                  >
-                    Batal
-                  </button>
-                </>
-              ) : (
+            {confirmingDelete ? (
+              <>
+                <span className="text-sm text-second/60">Hapus bukti?</span>
                 <button
                   type="button"
-                  onClick={() => setConfirmingDelete(true)}
+                  onClick={removeProof}
                   disabled={busy}
                   className={BTN_DANGER}
                 >
-                  <FiTrash2 size={16} aria-hidden="true" />
-                  Hapus bukti
+                  {deleteProof.isPending ? <Spinner /> : "Ya, hapus"}
                 </button>
-              ))}
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDelete(false)}
+                  disabled={busy}
+                  className={BTN_OUTLINE}
+                >
+                  Batal
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(true)}
+                disabled={busy}
+                className={BTN_DANGER}
+              >
+                <FiTrash2 size={16} aria-hidden="true" />
+                Hapus bukti
+              </button>
+            )}
           </div>
         )}
 
-        {canRemit && proofLocked && proof && (
+        {locked && proof && (
           <p className="flex items-start gap-2 text-xs text-second/60">
             <FiLock size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
-            Bukti setoran transfer yang sudah disetor hanya bisa diganti. Buka
-            kunci laporan dulu kalau perlu menghapusnya.
+            {canLock
+              ? "Laporan terkunci, jadi bukti transfer tidak bisa diganti atau dihapus. Buka kunci laporan dulu kalau perlu mengubahnya."
+              : "Laporan terkunci, jadi bukti transfer tidak bisa diganti atau dihapus. Minta OWNER membuka kunci kalau perlu mengubahnya."}
           </p>
         )}
 
         <p className="text-xs text-second/50">
           {canRemit
-            ? "Wajib kalau ada setoran transfer, tidak diperlukan untuk setoran tunai saja. Unggah ulang akan mengganti file lama."
-            : "Hanya admin yang bisa mengunggah atau menghapus bukti transfer."}
+            ? "Wajib kalau ada setoran transfer, tidak diperlukan untuk setoran tunai saja. Unggah ulang akan mengganti file lama. Tidak bisa diubah selama laporan terkunci."
+            : "Hanya ADMIN yang bisa mengunggah, mengganti, atau menghapus bukti transfer, dan hanya selama laporan belum terkunci."}
         </p>
       </div>
     </FormSection>
@@ -2114,7 +2217,7 @@ function HistorySection({ report }) {
 
 /* ------------------------------ Delete report ----------------------------- */
 
-function DeleteReportSection({ report, basePath, canRemit }) {
+function DeleteReportSection({ report, basePath, canLock }) {
   const router = useRouter();
   const deleteReport = useDeleteDailyReport();
   const [confirming, setConfirming] = useState(false);
@@ -2143,9 +2246,9 @@ function DeleteReportSection({ report, basePath, canRemit }) {
       {report.remitted ? (
         <p className="flex items-start gap-2 text-sm text-second/60">
           <FiLock size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
-          {canRemit
+          {canLock
             ? "Laporan yang sudah disetor tidak bisa dihapus. Buka kuncinya di bagian Setoran terlebih dahulu."
-            : "Laporan yang sudah disetor tidak bisa dihapus. Minta admin membuka kuncinya terlebih dahulu."}
+            : "Laporan yang sudah disetor tidak bisa dihapus. Minta OWNER membuka kuncinya terlebih dahulu."}
         </p>
       ) : confirming ? (
         <div className="flex flex-wrap items-center gap-2">
@@ -2187,8 +2290,10 @@ function DeleteReportSection({ report, basePath, canRemit }) {
 
 export default function ReportDetailView({ id, role }) {
   const basePath = `/${role}/daily-reports`;
-  // Hanya admin yang bisa menyetor. Owner adalah penerima setoran.
+  // ADMIN mengisi jumlah setoran dan mengunggah bukti transfer. OWNER sebagai
+  // penerima setoran yang memeriksa lalu mengunci atau membuka kunci.
   const canRemit = role === "admin";
+  const canLock = role === "owner";
 
   const query = useGetDailyReport(id);
   const report = query.data;
@@ -2284,7 +2389,7 @@ export default function ReportDetailView({ id, role }) {
           <Tag tone={report.proof ? "soft" : "outline"}>
             {report.proof ? "Ada bukti transfer" : "Belum ada bukti"}
           </Tag>
-          {!canRemit && <Tag tone="outline">Setoran: lihat saja</Tag>}
+          {canLock && <Tag tone="outline">Setoran: Anda yang mengunci</Tag>}
         </div>
 
         {report.updated_at && (
@@ -2328,16 +2433,16 @@ export default function ReportDetailView({ id, role }) {
 
       <BalanceSection report={report} />
 
-      <EntriesSection report={report} canRemit={canRemit} />
+      <EntriesSection report={report} canLock={canLock} />
 
-      <RemitSection report={report} canRemit={canRemit} />
+      <RemitSection report={report} canRemit={canRemit} canLock={canLock} />
 
       <HistorySection report={report} />
 
       <DeleteReportSection
         report={report}
         basePath={basePath}
-        canRemit={canRemit}
+        canLock={canLock}
       />
     </div>
   );
