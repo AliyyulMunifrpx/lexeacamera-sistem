@@ -73,22 +73,24 @@ function hasRemitAmounts(report) {
 }
 
 // belum disetor → sudah setor (ADMIN sudah isi) → approve owner
-
 function RemitStatusTags({ report }) {
-  const status = getRemitStatus(report);
+  const approved = Boolean(report.remitted);
+  // Kalau sudah di-approve owner, pasti sudah setor.
+  const setor = approved || hasRemitAmounts(report);
+  const bukti = Boolean(report.has_proof);
 
   return (
     <>
-      <Tag tone={status.tone}>{status.label}</Tag>
-      {report.has_proof ? (
-        <Tag tone="soft">
-          <FiPaperclip size={16} aria-hidden="true" />
-          Ada bukti
-        </Tag>
-      ) : (
-        hasRemitAmounts(report) &&
-        needsProof(report) && <Tag tone="failure">Tanpa bukti</Tag>
-      )}
+      <Tag tone={setor ? "success" : "outline"}>
+        {setor ? "Sudah setor" : "Belum setor"}
+      </Tag>
+      <Tag tone={approved ? "success" : "outline"}>
+        {approved ? "Approve owner" : "Belum approve"}
+      </Tag>
+      <Tag tone={bukti ? "success" : "outline"}>
+        <FiPaperclip size={16} aria-hidden="true" />
+        {bukti ? "Ada bukti" : "Belum ada bukti"}
+      </Tag>
     </>
   );
 }
