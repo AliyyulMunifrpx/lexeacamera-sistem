@@ -682,7 +682,7 @@ function BalanceSection({ report }) {
 function EntryForm({ report }) {
   const createEntry = useCreateEntry();
   const nameRef = useRef(null);
-
+  const [pendingAction, setPendingAction] = useState(null); // "add" | "save" | null
   const [method, setMethod] = useState("CASH");
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
@@ -696,6 +696,9 @@ function EntryForm({ report }) {
     event.preventDefault();
 
     if (createEntry.isPending || atLimit) return;
+
+    // Tombol yang diklik. Kalau tekan Enter di input, defaultnya "add".
+    const action = event.nativeEvent.submitter?.value ?? "add";
 
     const found = validateEntry({ name, amount });
     setErrors(found);
@@ -716,6 +719,8 @@ function EntryForm({ report }) {
 
     if (note.trim()) payload.note = note.trim();
 
+    setPendingAction(action);
+
     createEntry.mutate(
       { id: report.id, data: payload },
       {
@@ -725,12 +730,18 @@ function EntryForm({ report }) {
           setAmount("");
           setErrors({});
           nameRef.current?.focus();
+          // Kalau "simpan" perlu perilaku beda dari "tambah" (misalnya
+          // menutup form atau pindah halaman), taruh di sini:
+          // if (action === "save") { ... }
         },
         onError: (err) => notify.error(describeError(err)),
+        onSettled: () => setPendingAction(null),
       },
     );
   }
 
+  const isAdding = createEntry.isPending && pendingAction === "add";
+  const isSaving = createEntry.isPending && pendingAction === "save";
   const disabled = createEntry.isPending || atLimit;
 
   return (
@@ -842,23 +853,45 @@ function EntryForm({ report }) {
         </ErrorText>
       )}
 
-      <button
-        type="submit"
-        disabled={disabled}
-        className={`${BTN_PRIMARY} w-fit`}
-      >
-        {createEntry.isPending ? (
-          <>
-            <Spinner />
-            Menambahkan…
-          </>
-        ) : (
-          <>
-            <FiPlus size={16} aria-hidden="true" />
-            Tambah baris
-          </>
-        )}
-      </button>
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          value="add"
+          disabled={disabled}
+          className={`${BTN_PRIMARY} w-fit`}
+        >
+          {isAdding ? (
+            <>
+              <Spinner />
+              Menambahkan…
+            </>
+          ) : (
+            <>
+              <FiPlus size={16} aria-hidden="true" />
+              Tambah
+            </>
+          )}
+        </button>
+
+        <button
+          type="submit"
+          value="save"
+          disabled={disabled}
+          className={`${BTN_PRIMARY} w-fit`}
+        >
+          {isSaving ? (
+            <>
+              <Spinner />
+              Menyimpan…
+            </>
+          ) : (
+            <>
+              <FiCheck size={16} aria-hidden="true" />
+              Simpan
+            </>
+          )}
+        </button>
+      </div>
     </form>
   );
 }
@@ -1785,15 +1818,15 @@ function RemitSection({ report, canRemit, canLock }) {
                 {updateReport.isPending ? (
                   <Spinner />
                 ) : (
-                  <FiLock size={16} aria-hidden="true" />
+                  <FiCheck size={16} aria-hidden="true" />
                 )}
-                Kunci setoran
+                Approve
               </button>
 
               <p className="text-xs text-second/50">
-                Mengunci akan menandai laporan sudah disetor dan mengunci
-                laporan untuk semua orang. Jumlah dan bukti hanya bisa diubah
-                ADMIN setelah Anda membuka kunci.
+                Approve akan menandai laporan sudah disetor dan mengunci laporan
+                untuk semua orang. Jumlah dan bukti hanya bisa diubah ADMIN
+                setelah Anda membuka kunci.
               </p>
             </div>
           )}
@@ -1875,7 +1908,7 @@ function RemitSection({ report, canRemit, canLock }) {
               ) : (
                 <FiCheck size={16} aria-hidden="true" />
               )}
-              Simpan setoran
+              {amountsFilled && !dirty ? "Sudah setor" : "Setor"}
             </button>
           </div>
 
@@ -2345,7 +2378,7 @@ export default function ReportDetailView({ id, role }) {
             </div>
             <div className="min-w-0">
               <h1 className="text-balance text-2xl font-bold tracking-tight text-second sm:text-3xl">
-                Laporan <span className="text-grad">harian</span>
+                Laporan <span className="text-grad">kasir</span>
               </h1>
               <p className="mt-2 text-pretty text-sm text-second/60">
                 {formatDate(report.date)}

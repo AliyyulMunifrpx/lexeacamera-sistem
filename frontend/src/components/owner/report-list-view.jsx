@@ -142,7 +142,7 @@ function CreateReportPanel({ onCancel, basePath }) {
 
     createReport.mutate(payload, {
       onSuccess: (report) => {
-        notify.success("Laporan harian berhasil dibuat.");
+        notify.success("Laporan kasir berhasil dibuat.");
         router.push(`${basePath}/${report.id}`);
       },
       onError: (error) => {
@@ -396,7 +396,7 @@ export default function ReportListView({ role }) {
           </div>
           <div className="min-w-0">
             <h1 className="text-balance text-2xl font-bold tracking-tight text-second sm:text-3xl">
-              <span className="text-grad">Laporan harian</span>
+              <span className="text-grad">Laporan Kasir</span>
             </h1>
             <p className="mt-2 text-pretty text-sm text-second/60">
               Kas harian toko, dipisah tunai dan non tunai. Satu laporan untuk
