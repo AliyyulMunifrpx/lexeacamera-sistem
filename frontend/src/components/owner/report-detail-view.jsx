@@ -74,6 +74,7 @@ import {
   needsProof,
 } from "./daily-reports-shared.jsx";
 import notify from "../../lib/notify.js";
+import { MdCancel } from "react-icons/md";
 
 /* ------------------------------ Error mapping ----------------------------- */
 
@@ -134,7 +135,18 @@ function Spinner() {
     />
   );
 }
+// Status setoran: belum disetor → sudah setor (ADMIN sudah isi) → approve owner.
+function getRemitStatus(report) {
+  const adminFilled =
+    report.remit_cash !== null &&
+    report.remit_cash !== undefined &&
+    report.remit_transfer !== null &&
+    report.remit_transfer !== undefined;
 
+  if (report.remitted) return { label: "Approve owner", tone: "success" };
+  if (adminFilled) return { label: "Sudah setor", tone: "soft" };
+  return { label: "Belum disetor", tone: "outline" };
+}
 function IconButton({ label, onClick, disabled, tone = "default", children }) {
   const tones = {
     default: "text-second/60 hover:bg-second4 hover:text-primary",
@@ -678,11 +690,10 @@ function BalanceSection({ report }) {
 }
 
 /* --------------------------------- Entries -------------------------------- */
-
 function EntryForm({ report }) {
   const createEntry = useCreateEntry();
   const nameRef = useRef(null);
-  const [pendingAction, setPendingAction] = useState(null); // "add" | "save" | null
+  const [open, setOpen] = useState(false);
   const [method, setMethod] = useState("CASH");
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
@@ -692,13 +703,22 @@ function EntryForm({ report }) {
 
   const atLimit = (report.entries?.length ?? 0) >= MAX_ENTRIES;
 
+  // Fokus ke "Atas nama" begitu form dibuka.
+  useEffect(() => {
+    if (open) nameRef.current?.focus();
+  }, [open]);
+
+  function resetForm() {
+    setName("");
+    setNote("");
+    setAmount("");
+    setErrors({});
+  }
+
   function handleSubmit(event) {
     event.preventDefault();
 
     if (createEntry.isPending || atLimit) return;
-
-    // Tombol yang diklik. Kalau tekan Enter di input, defaultnya "add".
-    const action = event.nativeEvent.submitter?.value ?? "add";
 
     const found = validateEntry({ name, amount });
     setErrors(found);
@@ -719,30 +739,41 @@ function EntryForm({ report }) {
 
     if (note.trim()) payload.note = note.trim();
 
-    setPendingAction(action);
-
     createEntry.mutate(
       { id: report.id, data: payload },
       {
         onSuccess: () => {
-          setName("");
-          setNote("");
-          setAmount("");
-          setErrors({});
-          nameRef.current?.focus();
-          // Kalau "simpan" perlu perilaku beda dari "tambah" (misalnya
-          // menutup form atau pindah halaman), taruh di sini:
-          // if (action === "save") { ... }
+          resetForm();
+          setOpen(false); // form hilang, tinggal tombol "Tambah baris"
         },
         onError: (err) => notify.error(describeError(err)),
-        onSettled: () => setPendingAction(null),
       },
     );
   }
 
-  const isAdding = createEntry.isPending && pendingAction === "add";
-  const isSaving = createEntry.isPending && pendingAction === "save";
   const disabled = createEntry.isPending || atLimit;
+
+  // Keadaan tertutup: hanya tombol "Tambah baris".
+  if (!open) {
+    return (
+      <div className="flex flex-col gap-2">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          disabled={atLimit}
+          className={`${BTN_PRIMARY} w-fit`}
+        >
+          <FiPlus size={16} aria-hidden="true" />
+          Tambah baris
+        </button>
+        {atLimit && (
+          <ErrorText>
+            Jumlah baris sudah mencapai batas maksimal ({MAX_ENTRIES}).
+          </ErrorText>
+        )}
+      </div>
+    );
+  }
 
   return (
     <form
@@ -856,30 +887,10 @@ function EntryForm({ report }) {
       <div className="flex gap-2">
         <button
           type="submit"
-          value="add"
           disabled={disabled}
           className={`${BTN_PRIMARY} w-fit`}
         >
-          {isAdding ? (
-            <>
-              <Spinner />
-              Menambahkan…
-            </>
-          ) : (
-            <>
-              <FiPlus size={16} aria-hidden="true" />
-              Tambah
-            </>
-          )}
-        </button>
-
-        <button
-          type="submit"
-          value="save"
-          disabled={disabled}
-          className={`${BTN_PRIMARY} w-fit`}
-        >
-          {isSaving ? (
+          {createEntry.isPending ? (
             <>
               <Spinner />
               Menyimpan…
@@ -891,11 +902,22 @@ function EntryForm({ report }) {
             </>
           )}
         </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            resetForm();
+            setOpen(false);
+          }}
+          disabled={createEntry.isPending}
+          className={BTN_OUTLINE}
+        >
+          Batal
+        </button>
       </div>
     </form>
   );
 }
-
 function EntryEditRow({ report, entry, onClose }) {
   const updateEntry = useUpdateEntry();
 
@@ -1170,8 +1192,8 @@ function EntriesSection({ report, canLock }) {
         <p className="flex items-start gap-2 rounded-xl bg-second/5 p-4 text-sm text-second/60">
           <FiLock size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
           {canLock
-            ? "Laporan sudah disetor dan terkunci untuk semua orang. Buka kunci di bagian Setoran untuk menambah, mengubah, atau menghapus baris."
-            : "Laporan sudah disetor dan terkunci. Minta OWNER membuka kuncinya kalau ada yang perlu diubah."}
+            ? "Laporan sudah disetor dan terapprove untuk semua orang. Batalkan approve di bagian Setoran untuk menambah, mengubah, atau menghapus baris."
+            : "Laporan sudah disetor dan terapprove. Minta OWNER membatalkan approve kalau ada yang perlu diubah."}
         </p>
       )}
 
@@ -1527,8 +1549,9 @@ function RemitSection({ report, canRemit, canLock }) {
       done: locked || !proofRequired || Boolean(proof),
     },
     {
-      label: "Kunci setoran",
-      hint: locked ? "Laporan terkunci" : "OWNER memeriksa lalu mengunci",
+      label: "Approve setoran (oleh owner)",
+      hint: locked ? "Laporan terapprove" : "OWNER memeriksa lalu mengapprove",
+
       done: locked,
     },
   ];
@@ -1665,7 +1688,7 @@ function RemitSection({ report, canRemit, canLock }) {
       {
         onSuccess: () =>
           notify.success(
-            "Setoran dikunci. Laporan terkunci untuk semua orang.",
+            "Setoran diapprove. Laporan terapprove untuk semua orang.",
           ),
         onError: (err) => notify.error(describeError(err)),
       },
@@ -1676,7 +1699,7 @@ function RemitSection({ report, canRemit, canLock }) {
     updateReport.mutate(
       { id: report.id, data: { remitted: false } },
       {
-        onSuccess: () => notify.success("Kunci laporan dibuka."),
+        onSuccess: () => notify.success("Approve dibatalkan."),
         onError: (err) => notify.error(describeError(err)),
       },
     );
@@ -1700,22 +1723,22 @@ function RemitSection({ report, canRemit, canLock }) {
     : !amountsFilled
       ? "Menunggu ADMIN mengisi setoran"
       : canLock
-        ? "Periksa lalu kunci setoran"
-        : "Menunggu OWNER mengunci";
+        ? "Periksa lalu approve setoran"
+        : "Menunggu OWNER approve";
 
   const panelText = locked
-    ? `Disetor ${formatDateTime(report.remitted_at)}. Laporan terkunci dan sisa saldo menjadi saldo awal laporan berikutnya.`
+    ? `Disetor ${formatDateTime(report.remitted_at)}. Laporan terapprove dan sisa saldo menjadi saldo awal laporan berikutnya.`
     : !amountsFilled
-      ? "ADMIN mengisi jumlah setoran tunai dan transfer serta mengunggah bukti transfer. OWNER lalu memeriksa dan mengunci laporan."
-      : "ADMIN sudah mengisi jumlah setoran. Periksa jumlah dan bukti transfer di bawah, lalu kunci laporan.";
+      ? "ADMIN mengisi jumlah setoran tunai dan transfer serta mengunggah bukti transfer. OWNER lalu memeriksa dan mengapprove laporan."
+      : "ADMIN sudah mengisi jumlah setoran. Periksa jumlah dan bukti transfer di bawah, lalu approve laporan.";
 
   return (
     <FormSection
       title="Setoran ke owner"
-      description="Uang tunai disetor tunai, uang non tunai disetor lewat transfer. Jumlah tidak harus seluruh saldo. ADMIN mengisi jumlah dan mengunggah bukti, OWNER memeriksa lalu mengunci. Sisa yang belum disetor otomatis menjadi saldo awal laporan berikutnya."
+      description="Uang tunai disetor tunai, uang non tunai disetor lewat transfer. Jumlah tidak harus seluruh saldo. ADMIN mengisi jumlah dan mengunggah bukti, OWNER memeriksa lalu mengapprove. Sisa yang belum disetor otomatis menjadi saldo awal laporan berikutnya."
       aside={
-        <Tag tone={locked ? "success" : "outline"}>
-          {locked ? "Sudah disetor" : "Belum disetor"}
+        <Tag tone={getRemitStatus(report).tone}>
+          {getRemitStatus(report).label}
         </Tag>
       }
     >
@@ -1767,7 +1790,7 @@ function RemitSection({ report, canRemit, canLock }) {
             <div className="rounded-xl bg-primary p-4 shadow-sm">
               <dt className="flex items-center gap-2 text-xs text-second/60">
                 <FiInbox size={16} aria-hidden="true" />
-                {locked ? "Sisa belum disetor" : "Sisa jika dikunci"}
+                {locked ? "Sisa belum disetor" : "Sisa jika diapprove"}
               </dt>
               <dd className="mt-2 text-lg font-bold tabular-nums text-second">
                 {remainingShown ? formatMoney(remainingShown.total) : "—"}
@@ -1799,7 +1822,7 @@ function RemitSection({ report, canRemit, canLock }) {
               ) : (
                 <FiUnlock size={16} aria-hidden="true" />
               )}
-              Buka kunci
+              Batalkan Approve{" "}
             </button>
           )}
 
@@ -1826,7 +1849,7 @@ function RemitSection({ report, canRemit, canLock }) {
               <p className="text-xs text-second/50">
                 Approve akan menandai laporan sudah disetor dan mengunci laporan
                 untuk semua orang. Jumlah dan bukti hanya bisa diubah ADMIN
-                setelah Anda membuka kunci.
+                setelah Anda membatalkan approve.
               </p>
             </div>
           )}
@@ -1915,14 +1938,15 @@ function RemitSection({ report, canRemit, canLock }) {
           {amountsFilled && !dirty && (
             <p className="flex items-center gap-2 text-sm text-second3">
               <FiCheckCircle size={16} aria-hidden="true" />
-              Jumlah setoran tersimpan. Menunggu OWNER memeriksa dan mengunci.
+              Jumlah setoran tersimpan. Menunggu OWNER memeriksa dan
+              mengapprove.
             </p>
           )}
 
           <p className="text-xs text-second/50">
-            Menyimpan hanya mengisi jumlah setoran. Laporan baru terkunci
-            setelah OWNER memeriksa dan mengunci. Kedua jumlah wajib terisi
-            (boleh 0) sebelum bisa dikunci, tidak boleh melebihi saldo akhir
+            Menyimpan hanya mengisi jumlah setoran. Laporan baru terapprove
+            setelah OWNER memeriksa dan mengapprove. Kedua jumlah wajib terisi
+            (boleh 0) sebelum bisa diapprove, tidak boleh melebihi saldo akhir
             masing-masing, dan setoran transfer lebih dari 0 wajib punya bukti.
           </p>
         </div>
@@ -1979,7 +2003,7 @@ function RemitSection({ report, canRemit, canLock }) {
         ) : (
           <p className="rounded-xl border border-dashed border-second/30 p-6 text-center text-sm text-second/60">
             {locked
-              ? "Laporan terkunci, jadi bukti transfer tidak bisa diunggah. OWNER perlu membuka kunci dulu."
+              ? "Laporan terapprove, jadi bukti transfer tidak bisa diunggah. OWNER perlu membatalkan approve dulu."
               : "Belum ada bukti transfer. ADMIN yang mengunggahnya."}
           </p>
         )}
@@ -2043,15 +2067,15 @@ function RemitSection({ report, canRemit, canLock }) {
           <p className="flex items-start gap-2 text-xs text-second/60">
             <FiLock size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
             {canLock
-              ? "Laporan terkunci, jadi bukti transfer tidak bisa diganti atau dihapus. Buka kunci laporan dulu kalau perlu mengubahnya."
-              : "Laporan terkunci, jadi bukti transfer tidak bisa diganti atau dihapus. Minta OWNER membuka kunci kalau perlu mengubahnya."}
+              ? "Laporan terapprove, jadi bukti transfer tidak bisa diganti atau dihapus. Batalkan approve laporan dulu kalau perlu mengubahnya."
+              : "Laporan terapprove, jadi bukti transfer tidak bisa diganti atau dihapus. Minta OWNER membatalkan approve kalau perlu mengubahnya."}
           </p>
         )}
 
         <p className="text-xs text-second/50">
           {canRemit
-            ? "Wajib kalau ada setoran transfer, tidak diperlukan untuk setoran tunai saja. Unggah ulang akan mengganti file lama. Tidak bisa diubah selama laporan terkunci."
-            : "Hanya ADMIN yang bisa mengunggah, mengganti, atau menghapus bukti transfer, dan hanya selama laporan belum terkunci."}
+            ? "Wajib kalau ada setoran transfer, tidak diperlukan untuk setoran tunai saja. Unggah ulang akan mengganti file lama. Tidak bisa diubah selama laporan terapprove."
+            : "Hanya ADMIN yang bisa mengunggah, mengganti, atau menghapus bukti transfer, dan hanya selama laporan belum terapprove."}
         </p>
       </div>
     </FormSection>
@@ -2280,8 +2304,8 @@ function DeleteReportSection({ report, basePath, canLock }) {
         <p className="flex items-start gap-2 text-sm text-second/60">
           <FiLock size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
           {canLock
-            ? "Laporan yang sudah disetor tidak bisa dihapus. Buka kuncinya di bagian Setoran terlebih dahulu."
-            : "Laporan yang sudah disetor tidak bisa dihapus. Minta OWNER membuka kuncinya terlebih dahulu."}
+            ? "Laporan yang sudah disetor tidak bisa dihapus. Batalkan approvenya di bagian Setoran terlebih dahulu."
+            : "Laporan yang sudah disetor tidak bisa dihapus. Minta OWNER membatalkan approve terlebih dahulu."}
         </p>
       ) : confirming ? (
         <div className="flex flex-wrap items-center gap-2">
@@ -2357,7 +2381,7 @@ export default function ReportDetailView({ id, role }) {
       </div>
     );
   }
-
+  const remitStatus = getRemitStatus(report);
   const remainingTotal = report.remaining_balance ?? report.closing_balance;
   const remainingCash = report.remaining_cash ?? report.closing_cash;
   const remainingNoncash = report.remaining_noncash ?? report.closing_noncash;
@@ -2410,19 +2434,22 @@ export default function ReportDetailView({ id, role }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Tag tone={report.remitted ? "success" : "outline"}>
-            {report.remitted ? "Sudah disetor" : "Belum disetor"}
-          </Tag>
-          {report.remitted && (
+          <Tag tone={remitStatus.tone}>{remitStatus.label}</Tag>
+          {report.remitted ? (
             <Tag tone="soft">
               <FiLock size={16} aria-hidden="true" />
               Terkunci
+            </Tag>
+          ) : (
+            <Tag tone="soft">
+              <MdCancel size={16} aria-hidden="true" />
+              Belum Approve
             </Tag>
           )}
           <Tag tone={report.proof ? "soft" : "outline"}>
             {report.proof ? "Ada bukti transfer" : "Belum ada bukti"}
           </Tag>
-          {canLock && <Tag tone="outline">Setoran: Anda yang mengunci</Tag>}
+          {canLock && <Tag tone="outline">Setoran: Anda yang approve</Tag>}{" "}
         </div>
 
         {report.updated_at && (
