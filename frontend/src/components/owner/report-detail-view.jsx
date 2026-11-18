@@ -1103,6 +1103,22 @@ function EntryRow({ report, entry, index, canEdit }) {
   );
 }
 
+// Rincian tunai / non tunai di bawah label "Saldo awal" dan "Saldo akhir".
+function CashSplit({ cash, noncash }) {
+  return (
+    <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-base font-bold tabular-nums text-second">
+      <span>
+        <span className="mr-2 text-sm">Tunai</span>
+        {formatMoney(cash)}
+      </span>
+      <span>
+        <span className="mr-2 text-sm">Non tunai</span>
+        {formatMoney(noncash)}
+      </span>
+    </div>
+  );
+}
+
 function EntriesSection({ report, canRemit }) {
   const entries = report.entries ?? [];
   const canEdit = !report.remitted;
@@ -1154,10 +1170,10 @@ function EntriesSection({ report, canRemit }) {
             <tr className="bg-second/[0.03]">
               <td className="px-4 py-3 text-sm font-semibold text-second">
                 Saldo awal
-                <span className="mt-2 block text-xs font-normal text-second/60">
-                  Tunai {formatMoney(report.opening_cash)} · Non tunai{" "}
-                  {formatMoney(report.opening_noncash)}
-                </span>
+                <CashSplit
+                  cash={report.opening_cash}
+                  noncash={report.opening_noncash}
+                />
               </td>
               <td className="px-4 py-3 text-right text-sm text-second/40">—</td>
               <td className="px-4 py-3 text-right text-sm text-second/40">—</td>
@@ -1193,6 +1209,10 @@ function EntriesSection({ report, canRemit }) {
             <tr>
               <td className="px-4 py-3 text-sm font-bold text-second">
                 Saldo akhir
+                <CashSplit
+                  cash={report.closing_cash}
+                  noncash={report.closing_noncash}
+                />
               </td>
               <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-semibold tabular-nums text-second3">
                 {formatMoney(report.total_in)}
