@@ -563,7 +563,7 @@ function MoneyBreakdown({
             </p>
           </div>
           <div className="min-w-0 text-right">
-            <p className="text-second/60">Saldo akhir</p>
+            <p className="text-second/60">Saldo setelah disetor</p>
             <p className="mt-1 text-sm font-semibold tabular-nums text-second">
               {formatMoney(remaining)}
             </p>
@@ -601,8 +601,8 @@ function BalanceSection({ report }) {
       <div>
         <h2 className="text-lg font-bold text-second">Saldo akhir</h2>
         <p className="mt-2 text-pretty text-sm text-second/60">
-          Tunai dan non tunai dihitung terpisah. Sisa yang belum diapprove
-          otomatis menjadi saldo awal laporan berikutnya.
+          Tunai dan non tunai dihitung terpisah. Saldo setelah disetor otomatis
+          menjadi saldo awal laporan berikutnya.
         </p>
       </div>
 
@@ -645,7 +645,7 @@ function BalanceSection({ report }) {
         <div className="flex min-w-0 items-start gap-4 rounded-2xl border border-second4/30 bg-second4/5 p-4 sm:p-6">
           <IconChip icon={FiInbox} />
           <div className="min-w-0">
-            <dt className="text-xs text-second4">Saldo akhir</dt>
+            <dt className="text-xs text-second4">Saldo setelah disetor</dt>
             <dd className="mt-2 break-words text-2xl font-bold tabular-nums text-second">
               {formatMoney(remainingTotal)}
             </dd>
@@ -1769,7 +1769,7 @@ function RemitSection({ report, canRemit, canLock }) {
   return (
     <FormSection
       title="Setoran ke owner"
-      description="Uang tunai diapprove tunai, uang non tunai diapprove lewat transfer. Jumlah tidak harus seluruh saldo. ADMIN mengisi jumlah dan mengunggah bukti, OWNER memeriksa lalu mengapprove. Sisa yang belum diapprove otomatis menjadi saldo awal laporan berikutnya."
+      description="Uang tunai diapprove tunai, uang non tunai diapprove lewat transfer. Jumlah tidak harus seluruh saldo. ADMIN mengisi jumlah dan mengunggah bukti, OWNER memeriksa lalu mengapprove. Saldo setelah disetor otomatis menjadi saldo awal laporan berikutnya."
       aside={
         <Tag tone={getRemitStatus(report).tone}>
           {getRemitStatus(report).label}
@@ -1824,7 +1824,7 @@ function RemitSection({ report, canRemit, canLock }) {
             <div className="rounded-xl bg-primary p-4 shadow-sm">
               <dt className="flex items-center gap-2 text-xs text-second/60">
                 <FiInbox size={16} aria-hidden="true" />
-                {locked ? "Saldo akhir" : "Sisa jika diapprove"}
+                {locked ? "Saldo setelah disetor" : "Sisa jika diapprove"}
               </dt>
               <dd className="mt-2 text-lg font-bold tabular-nums text-second">
                 {remainingShown ? formatMoney(remainingShown.total) : "—"}
@@ -2563,7 +2563,7 @@ export default function ReportDetailView({ id, role }) {
         />
         <StatCard
           icon={FiInbox}
-          label="Saldo akhir"
+          label="Saldo setelah disetor"
           value={formatMoney(remainingTotal)}
           hint={`Tunai ${formatMoney(remainingCash)} · Non tunai ${formatMoney(remainingNoncash)}`}
           tone="pending"

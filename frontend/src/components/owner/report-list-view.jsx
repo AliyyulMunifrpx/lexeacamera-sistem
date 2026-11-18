@@ -610,7 +610,7 @@ export default function ReportListView({ role }) {
                     Disetor
                   </th>
                   <th scope="col" className="px-4 py-3 font-semibold">
-                    Sisa belum disetor
+                    Saldo setelah disetor{" "}
                   </th>
                   <th scope="col" className="px-4 py-3 font-semibold">
                     Status
