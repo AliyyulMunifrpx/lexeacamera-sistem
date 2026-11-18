@@ -23,6 +23,29 @@ const get = async (req, res, next) => {
   }
 };
 
+const nextOpening = async (req, res, next) => {
+  try {
+    const result = await dailyReportService.getNextOpening(req.query, req.user);
+
+    res.status(200).json({ data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const history = async (req, res, next) => {
+  try {
+    const result = await dailyReportService.getHistory(
+      { ...req.query, id: req.params.id },
+      req.user,
+    );
+
+    res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
 const create = async (req, res, next) => {
   try {
     const result = await dailyReportService.createReport(
@@ -143,6 +166,8 @@ const removeProof = async (req, res, next) => {
 export default {
   getAll,
   get,
+  nextOpening,
+  history,
   create,
   update,
   remove,

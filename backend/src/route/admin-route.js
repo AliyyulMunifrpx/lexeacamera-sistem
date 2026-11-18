@@ -83,6 +83,14 @@ adminRouter.delete(
   qcController.removeMedia,
 );
 adminRouter.get("/admin/daily-reports", dailyReportController.getAll);
+adminRouter.get(
+  "/admin/daily-reports/next-opening",
+  dailyReportController.nextOpening,
+);
+adminRouter.get(
+  "/admin/daily-reports/:id/history",
+  dailyReportController.history,
+);
 adminRouter.get("/admin/daily-reports/:id", dailyReportController.get);
 adminRouter.post("/admin/daily-reports", dailyReportController.create);
 adminRouter.patch("/admin/daily-reports/:id", dailyReportController.update);
@@ -117,4 +125,5 @@ adminRouter.delete(
 
   dailyReportController.removeProof,
 );
+
 export default adminRouter;

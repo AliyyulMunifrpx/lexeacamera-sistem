@@ -12,16 +12,17 @@ import {
   FiPaperclip,
   FiPlus,
   FiRefreshCw,
-  FiSearch,
   FiX,
 } from "react-icons/fi";
 
 import {
   useCreateDailyReport,
   useGetDailyReports,
+  useGetNextOpening,
 } from "../../app/features/daily-reports/hooks.js";
 import { ExportReportsButton } from "./export-reports-button.jsx";
 import {
+  AmountInput,
   BTN_OUTLINE,
   BTN_PRIMARY,
   ErrorText,
@@ -29,13 +30,12 @@ import {
   FormSection,
   Tag,
   describeError,
-  digitsOnly,
   formatDate,
   formatMoney,
-  formatThousands,
   inputClass,
   labelClass,
   MAX_AMOUNT,
+  needsProof,
   todayWib,
 } from "./daily-reports-shared.jsx";
 import notify from "../../lib/notify.js";
@@ -56,15 +56,56 @@ function formatShortDate(value) {
   }).format(new Date(`${value}T00:00:00+07:00`));
 }
 
+// Sisa saldo yang belum disetor. Sebelum dicentang disetor, sama dengan saldo akhir.
+const remainingTotal = (report) =>
+  report.remaining_balance ?? report.closing_balance;
+const remainingCash = (report) => report.remaining_cash ?? report.closing_cash;
+const remainingNoncash = (report) =>
+  report.remaining_noncash ?? report.closing_noncash;
+
+function RemitStatusTags({ report }) {
+  return (
+    <>
+      <Tag tone={report.remitted ? "success" : "outline"}>
+        {report.remitted ? "Sudah disetor" : "Belum disetor"}
+      </Tag>
+      {report.has_proof ? (
+        <Tag tone="soft">
+          <FiPaperclip size={16} aria-hidden="true" />
+          Ada bukti
+        </Tag>
+      ) : (
+        report.remitted &&
+        needsProof(report) && <Tag tone="failure">Tanpa bukti</Tag>
+      )}
+    </>
+  );
+}
+
 /* --------------------------------- Create --------------------------------- */
 
-function CreateReportPanel({ onCancel }) {
+function CreateReportPanel({ onCancel, basePath }) {
   const router = useRouter();
   const createReport = useCreateDailyReport();
 
   const [date, setDate] = useState(todayWib());
-  const [opening, setOpening] = useState("");
+  const [openingCash, setOpeningCash] = useState("");
+  const [openingNoncash, setOpeningNoncash] = useState("");
   const [errors, setErrors] = useState({});
+
+  const validDate = date && date <= todayWib() ? date : undefined;
+  const next = useGetNextOpening(validDate);
+
+  const pending = next.data?.pending ?? null;
+  const autoCash = next.data?.opening_cash ?? null;
+  const autoNoncash = next.data?.opening_noncash ?? null;
+  const source = next.data?.source ?? null;
+
+  const manual = openingCash !== "" || openingNoncash !== "";
+
+  function clearError(name) {
+    setErrors((previous) => ({ ...previous, [name]: undefined }));
+  }
 
   function handleSubmit(event) {
     event.preventDefault();
@@ -73,9 +114,16 @@ function CreateReportPanel({ onCancel }) {
 
     const found = {};
 
-    if (opening === "") found.opening_balance = "Saldo awal wajib diisi.";
-    else if (Number(opening) > MAX_AMOUNT) {
-      found.opening_balance = "Nominal terlalu besar.";
+    if (openingCash !== "" && Number(openingCash) > MAX_AMOUNT) {
+      found.opening_cash = "Nominal terlalu besar.";
+    }
+    if (openingNoncash !== "" && Number(openingNoncash) > MAX_AMOUNT) {
+      found.opening_noncash = "Nominal terlalu besar.";
+    }
+
+    if (!manual && pending) {
+      found.opening =
+        "Selesaikan laporan sebelumnya dulu, atau isi saldo awal secara manual.";
     }
 
     if (date && date > todayWib()) {
@@ -85,27 +133,63 @@ function CreateReportPanel({ onCancel }) {
     setErrors(found);
     if (Object.keys(found).length > 0) return;
 
-    const payload = { opening_balance: Number(opening) };
-    if (date) payload.date = date;
+    // Kalau salah satu dikirim, server menganggap yang lain 0.
+    const payload = {
+      ...(date && { date }),
+      ...(openingCash !== "" && { opening_cash: Number(openingCash) }),
+      ...(openingNoncash !== "" && { opening_noncash: Number(openingNoncash) }),
+    };
 
     createReport.mutate(payload, {
       onSuccess: (report) => {
         notify.success("Laporan harian berhasil dibuat.");
-        router.push(`/admin/daily-reports/${report.id}`);
+        router.push(`${basePath}/${report.id}`);
       },
-      onError: (error) => notify.error(describeError(error)),
+      onError: (error) => {
+        const body = error?.response?.data;
+        const existingId =
+          body?.errors === "REPORT_ALREADY_EXISTS"
+            ? body?.details?.report_id
+            : null;
+
+        if (existingId) {
+          notify.error(
+            "Laporan untuk tanggal itu sudah ada. Membuka laporan tersebut…",
+          );
+          router.push(`${basePath}/${existingId}`);
+          return;
+        }
+
+        notify.error(describeError(error));
+      },
     });
   }
 
   const disabled = createReport.isPending;
 
+  let openingHint = null;
+
+  if (next.isPending) {
+    openingHint = "Memeriksa saldo laporan sebelumnya…";
+  } else if (next.isError) {
+    openingHint = `${describeError(next.error)} Isi saldo awal secara manual.`;
+  } else if (manual) {
+    openingHint =
+      "Saldo awal manual. Kolom yang dikosongkan dianggap Rp 0, tidak diambil dari laporan sebelumnya.";
+  } else if (!pending && source) {
+    openingHint = `Dikosongkan = sisa belum disetor dari laporan ${formatShortDate(source.date)} (laporan terakhir sebelum tanggal ini): tunai ${formatMoney(autoCash)}, non tunai ${formatMoney(autoNoncash)}.`;
+  } else if (!pending) {
+    openingHint =
+      "Belum ada laporan sebelumnya. Dikosongkan = Rp 0 untuk keduanya.";
+  }
+
   return (
     <FormSection
       title="Buat laporan baru"
-      description="Satu laporan untuk satu hari. Isi saldo awal, lalu catat pemasukan dan pengeluaran di halaman detail."
+      description="Satu laporan untuk satu hari dan dipakai bersama. Saldo awal otomatis dari sisa saldo laporan terakhir sebelum tanggal itu, dipisah tunai dan non tunai, dan tetap bisa diisi manual."
     >
       <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="min-w-0">
             <label htmlFor="report-date" className={labelClass}>
               Tanggal
@@ -125,55 +209,103 @@ function CreateReportPanel({ onCancel }) {
               <ErrorText id="report-date-desc">{errors.date}</ErrorText>
             ) : (
               <p className="mt-2 text-sm text-second/60">
-                Tanggal tidak bisa diubah setelah dibuat.
+                Tidak bisa diubah setelah dibuat.
               </p>
             )}
           </div>
 
           <div className="min-w-0">
-            <label htmlFor="opening-balance" className={labelClass}>
-              Saldo awal
-              <span className="ml-2 text-second2" aria-hidden="true">
-                *
+            <label htmlFor="opening-cash" className={labelClass}>
+              Saldo awal tunai
+              <span className="ml-2 text-xs font-normal text-second/50">
+                Opsional
               </span>
             </label>
-            <div className="flex">
-              <span
-                aria-hidden="true"
-                className="inline-flex shrink-0 items-center rounded-l-xl border border-r-0 border-second/30 bg-second/5 px-4 text-sm font-medium text-second/60"
-              >
-                Rp
+            <AmountInput
+              id="opening-cash"
+              value={openingCash}
+              onChange={(value) => {
+                setOpeningCash(value);
+                clearError("opening_cash");
+                clearError("opening");
+              }}
+              disabled={disabled}
+              hasError={Boolean(errors.opening_cash || errors.opening)}
+              describedBy="opening-balance-desc"
+              placeholder={
+                autoCash !== null
+                  ? String(autoCash).replace(/\B(?=(\d{3})+(?!\d))/g, ".")
+                  : "0"
+              }
+            />
+            {errors.opening_cash && (
+              <ErrorText>{errors.opening_cash}</ErrorText>
+            )}
+          </div>
+
+          <div className="min-w-0">
+            <label htmlFor="opening-noncash" className={labelClass}>
+              Saldo awal non tunai
+              <span className="ml-2 text-xs font-normal text-second/50">
+                Opsional
               </span>
-              <input
-                id="opening-balance"
-                type="text"
-                inputMode="numeric"
-                autoComplete="off"
-                value={formatThousands(opening)}
-                onChange={(event) => {
-                  setOpening(digitsOnly(event.target.value));
-                  setErrors((previous) => ({
-                    ...previous,
-                    opening_balance: undefined,
-                  }));
-                }}
-                placeholder="50.000"
-                className={`${inputClass(Boolean(errors.opening_balance))} rounded-l-none tabular-nums`}
-                disabled={disabled}
-                aria-required="true"
-                aria-invalid={errors.opening_balance ? true : undefined}
-                aria-describedby={
-                  errors.opening_balance ? "opening-balance-desc" : undefined
-                }
-              />
-            </div>
-            {errors.opening_balance && (
-              <ErrorText id="opening-balance-desc">
-                {errors.opening_balance}
-              </ErrorText>
+            </label>
+            <AmountInput
+              id="opening-noncash"
+              value={openingNoncash}
+              onChange={(value) => {
+                setOpeningNoncash(value);
+                clearError("opening_noncash");
+                clearError("opening");
+              }}
+              disabled={disabled}
+              hasError={Boolean(errors.opening_noncash || errors.opening)}
+              describedBy="opening-balance-desc"
+              placeholder={
+                autoNoncash !== null
+                  ? String(autoNoncash).replace(/\B(?=(\d{3})+(?!\d))/g, ".")
+                  : "0"
+              }
+            />
+            {errors.opening_noncash && (
+              <ErrorText>{errors.opening_noncash}</ErrorText>
             )}
           </div>
         </div>
+
+        {errors.opening ? (
+          <ErrorText id="opening-balance-desc">{errors.opening}</ErrorText>
+        ) : (
+          openingHint && (
+            <p id="opening-balance-desc" className="text-sm text-second/60">
+              {openingHint}
+            </p>
+          )
+        )}
+
+        {pending && (
+          <p
+            role="status"
+            className="flex flex-wrap items-start gap-2 rounded-xl border border-second2/30 bg-second2/5 p-4 text-sm text-second2"
+          >
+            <FiAlertTriangle
+              size={16}
+              className="mt-0.5 shrink-0"
+              aria-hidden="true"
+            />
+            <span className="min-w-0">
+              Laporan {formatDate(pending.date)} belum disetor, jadi saldo awal
+              tidak bisa dihitung otomatis.{" "}
+              <Link
+                href={`${basePath}/${pending.id}`}
+                className={`rounded font-semibold underline ${FOCUS_RING}`}
+              >
+                Buka laporan itu
+              </Link>{" "}
+              atau isi saldo awal secara manual.
+            </span>
+          </p>
+        )}
 
         <div className="flex items-center gap-2">
           <button type="submit" disabled={disabled} className={BTN_PRIMARY}>
@@ -207,33 +339,21 @@ function CreateReportPanel({ onCancel }) {
 /* ---------------------------------- View ---------------------------------- */
 
 export default function ReportListView({ role }) {
-  const isAdmin = role === "admin";
+  // ADMIN dan OWNER sama-sama melihat dan mengelola semua laporan.
   const basePath = `/${role}/daily-reports`;
 
-  const [searchInput, setSearchInput] = useState("");
-  const [search, setSearch] = useState("");
-  const [transferred, setTransferred] = useState("");
+  const [remitted, setRemitted] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
   const [showCreate, setShowCreate] = useState(false);
-
-  // Pencarian nama kasir (owner) ditunda 400 ms, sama seperti halaman QC.
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setSearch(searchInput.trim());
-      setPage(1);
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [searchInput]);
 
   const rangeInvalid = Boolean(dateFrom && dateTo && dateFrom > dateTo);
 
   const filters = {
     date_from: rangeInvalid ? "" : dateFrom,
     date_to: rangeInvalid ? "" : dateTo,
-    transferred,
-    cashier: isAdmin ? "" : search,
+    remitted,
   };
 
   const params = {
@@ -255,15 +375,10 @@ export default function ReportListView({ role }) {
   const total = paging?.total ?? 0;
   const totalPages = Math.max(1, paging?.total_pages ?? 1);
   const safePage = paging?.page ?? page;
-
-  const hasFilters = Boolean(
-    (!isAdmin && search) || transferred || dateFrom || dateTo,
-  );
+  const hasFilters = Boolean(remitted || dateFrom || dateTo);
 
   function resetFilters() {
-    setSearchInput("");
-    setSearch("");
-    setTransferred("");
+    setRemitted("");
     setDateFrom("");
     setDateTo("");
     setPage(1);
@@ -284,9 +399,9 @@ export default function ReportListView({ role }) {
               <span className="text-grad">Laporan harian</span>
             </h1>
             <p className="mt-2 text-pretty text-sm text-second/60">
-              {isAdmin
-                ? "Catatan kas harian milik Anda. Transfer ke owner saat toko tutup."
-                : "Laporan kas harian dari semua kasir."}
+              Kas harian toko, dipisah tunai dan non tunai. Satu laporan untuk
+              satu hari, bisa diisi dan diubah oleh admin maupun owner. Setoran
+              hanya diurus admin.
             </p>
           </div>
         </div>
@@ -300,7 +415,7 @@ export default function ReportListView({ role }) {
             filters={filters}
             disabled={isPending || list.length === 0}
           />
-          {isAdmin && !showCreate && (
+          {!showCreate && (
             <button
               type="button"
               onClick={() => setShowCreate(true)}
@@ -313,8 +428,11 @@ export default function ReportListView({ role }) {
         </div>
       </header>
 
-      {isAdmin && showCreate && (
-        <CreateReportPanel onCancel={() => setShowCreate(false)} />
+      {showCreate && (
+        <CreateReportPanel
+          basePath={basePath}
+          onCancel={() => setShowCreate(false)}
+        />
       )}
 
       {/* Filter */}
@@ -322,48 +440,23 @@ export default function ReportListView({ role }) {
         aria-label="Filter laporan"
         className="flex min-w-0 flex-col gap-4 rounded-2xl border border-second/30 bg-primary p-4 shadow-xl shadow-second/5 sm:p-8"
       >
-        {!isAdmin && (
-          <div className="min-w-0">
-            <label htmlFor="report-search" className={labelClass}>
-              Cari
-            </label>
-            <div className="relative">
-              <FiSearch
-                size={16}
-                aria-hidden="true"
-                className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-second/40"
-              />
-              <input
-                id="report-search"
-                type="search"
-                autoComplete="off"
-                maxLength={100}
-                value={searchInput}
-                onChange={(event) => setSearchInput(event.target.value)}
-                placeholder="Nama kasir…"
-                className={`${inputClass(false)} pl-8`}
-              />
-            </div>
-          </div>
-        )}
-
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div>
             <label htmlFor="report-status" className={labelClass}>
-              Status transfer
+              Status setoran
             </label>
             <select
               id="report-status"
-              value={transferred}
+              value={remitted}
               onChange={(event) => {
-                setTransferred(event.target.value);
+                setRemitted(event.target.value);
                 setPage(1);
               }}
               className={inputClass(false)}
             >
               <option value="">Semua</option>
-              <option value="true">Sudah transfer</option>
-              <option value="false">Belum transfer</option>
+              <option value="true">Sudah disetor</option>
+              <option value="false">Belum disetor</option>
             </select>
           </div>
 
@@ -465,9 +558,7 @@ export default function ReportListView({ role }) {
           <p className="mt-2 max-w-sm text-sm text-second/60">
             {hasFilters
               ? "Tidak ada laporan yang sesuai dengan filter."
-              : isAdmin
-                ? "Buat laporan pertama Anda dengan mengisi saldo awal."
-                : "Laporan akan muncul setelah kasir membuatnya."}
+              : "Buat laporan pertama dengan tombol “Buat laporan”."}
           </p>
         </div>
       ) : (
@@ -483,18 +574,13 @@ export default function ReportListView({ role }) {
           )}
 
           {/* Tabel desktop */}
-          <div className="hidden overflow-hidden rounded-2xl bg-primary shadow-xl shadow-second/5 md:block">
+          <div className="hidden overflow-x-auto rounded-2xl bg-primary shadow-xl shadow-second/5 md:block">
             <table className="min-w-full text-left">
               <thead className="bg-grad text-sm text-primary">
                 <tr>
                   <th scope="col" className="px-4 py-3 font-semibold">
                     Tanggal
                   </th>
-                  {!isAdmin && (
-                    <th scope="col" className="px-4 py-3 font-semibold">
-                      Kasir
-                    </th>
-                  )}
                   <th scope="col" className="px-4 py-3 font-semibold">
                     Saldo awal
                   </th>
@@ -506,6 +592,12 @@ export default function ReportListView({ role }) {
                   </th>
                   <th scope="col" className="px-4 py-3 font-semibold">
                     Saldo akhir
+                  </th>
+                  <th scope="col" className="px-4 py-3 font-semibold">
+                    Disetor
+                  </th>
+                  <th scope="col" className="px-4 py-3 font-semibold">
+                    Sisa belum disetor
                   </th>
                   <th scope="col" className="px-4 py-3 font-semibold">
                     Status
@@ -532,13 +624,6 @@ export default function ReportListView({ role }) {
                         {formatNumber(report.entry_count)} baris
                       </p>
                     </td>
-                    {!isAdmin && (
-                      <td className="max-w-48 px-4 py-4">
-                        <p className="truncate text-sm text-second/70">
-                          {report.cashier_name}
-                        </p>
-                      </td>
-                    )}
                     <td className="whitespace-nowrap px-4 py-4 text-sm tabular-nums text-second/70">
                       {formatMoney(report.opening_balance)}
                     </td>
@@ -551,23 +636,32 @@ export default function ReportListView({ role }) {
                     <td className="whitespace-nowrap px-4 py-4 text-sm font-semibold tabular-nums text-second">
                       {formatMoney(report.closing_balance)}
                     </td>
+                    <td className="whitespace-nowrap px-4 py-4 text-xs tabular-nums text-second/70">
+                      {report.remitted ? (
+                        <>
+                          <p>Tunai {formatMoney(report.remit_cash)}</p>
+                          <p className="mt-2">
+                            Transfer {formatMoney(report.remit_transfer)}
+                          </p>
+                        </>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-4">
+                      <p className="text-sm font-semibold tabular-nums text-second">
+                        {formatMoney(remainingTotal(report))}
+                      </p>
+                      <p className="mt-2 text-xs tabular-nums text-second/60">
+                        Tunai {formatMoney(remainingCash(report))}
+                      </p>
+                      <p className="mt-2 text-xs tabular-nums text-second/60">
+                        Non tunai {formatMoney(remainingNoncash(report))}
+                      </p>
+                    </td>
                     <td className="px-4 py-4">
                       <div className="flex flex-col items-start gap-2">
-                        <Tag tone={report.transferred ? "success" : "outline"}>
-                          {report.transferred
-                            ? "Sudah transfer"
-                            : "Belum transfer"}
-                        </Tag>
-                        {report.has_proof ? (
-                          <Tag tone="soft">
-                            <FiPaperclip size={16} aria-hidden="true" />
-                            Ada bukti
-                          </Tag>
-                        ) : (
-                          report.transferred && (
-                            <Tag tone="failure">Tanpa bukti</Tag>
-                          )
-                        )}
+                        <RemitStatusTags report={report} />
                       </div>
                     </td>
                     <td className="px-4 py-4 text-right">
@@ -595,11 +689,6 @@ export default function ReportListView({ role }) {
                       <p className="break-words text-sm font-semibold text-second group-hover:text-second4">
                         {formatDate(report.date)}
                       </p>
-                      {!isAdmin && (
-                        <p className="mt-2 text-xs text-second/60">
-                          Kasir {report.cashier_name}
-                        </p>
-                      )}
                       <p className="mt-2 text-sm font-semibold tabular-nums text-second">
                         {formatMoney(report.closing_balance)}
                       </p>
@@ -613,6 +702,17 @@ export default function ReportListView({ role }) {
                         </span>{" "}
                         keluar
                       </p>
+                      {report.remitted && (
+                        <p className="mt-2 text-xs tabular-nums text-second/60">
+                          Disetor tunai {formatMoney(report.remit_cash)} ·
+                          transfer {formatMoney(report.remit_transfer)}
+                        </p>
+                      )}
+                      <p className="mt-2 text-xs tabular-nums text-second/60">
+                        Sisa {formatMoney(remainingTotal(report))} (tunai{" "}
+                        {formatMoney(remainingCash(report))}, non tunai{" "}
+                        {formatMoney(remainingNoncash(report))})
+                      </p>
                     </div>
                     <FiChevronRight
                       size={18}
@@ -621,19 +721,7 @@ export default function ReportListView({ role }) {
                     />
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2">
-                    <Tag tone={report.transferred ? "success" : "outline"}>
-                      {report.transferred ? "Sudah transfer" : "Belum transfer"}
-                    </Tag>
-                    {report.has_proof ? (
-                      <Tag tone="soft">
-                        <FiPaperclip size={16} aria-hidden="true" />
-                        Ada bukti
-                      </Tag>
-                    ) : (
-                      report.transferred && (
-                        <Tag tone="failure">Tanpa bukti</Tag>
-                      )
-                    )}
+                    <RemitStatusTags report={report} />
                     <Tag>{formatNumber(report.entry_count)} baris</Tag>
                   </div>
                 </Link>

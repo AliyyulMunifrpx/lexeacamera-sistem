@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link.js";
 import { useRouter } from "next/navigation";
 import {
@@ -8,18 +8,26 @@ import {
   FiArrowLeft,
   FiBookOpen,
   FiCheck,
+  FiCheckCircle,
+  FiChevronLeft,
+  FiChevronRight,
+  FiClock,
+  FiCreditCard,
+  FiDollarSign,
   FiEdit2,
   FiExternalLink,
   FiFileText,
+  FiInbox,
   FiLayers,
-  FiList,
   FiLoader,
   FiLock,
   FiPlus,
   FiRefreshCw,
+  FiSend,
   FiTrash2,
   FiTrendingDown,
   FiTrendingUp,
+  FiUnlock,
   FiUploadCloud,
   FiX,
 } from "react-icons/fi";
@@ -30,12 +38,14 @@ import {
   useDeleteEntry,
   useDeleteProof,
   useGetDailyReport,
+  useGetReportHistory,
   useUpdateDailyReport,
   useUpdateEntry,
   useUploadProof,
 } from "../../app/features/daily-reports/hooks.js";
 import { ExportReportButton } from "./export-reports-button.jsx";
 import {
+  AmountInput,
   BTN_BASE,
   BTN_DANGER,
   BTN_OUTLINE,
@@ -43,26 +53,27 @@ import {
   ErrorText,
   FOCUS_RING,
   FormSection,
+  HISTORY_LABELS,
+  MethodTag,
+  METHODS,
   PREVIEWABLE_TYPES,
   PROOF_TYPES,
+  ROLE_LABELS,
   Tag,
   describeError,
-  digitsOnly,
+  describeHistory,
   formatBytes,
   formatDate,
   formatDateTime,
   formatMoney,
-  formatThousands,
   inputClass,
   labelClass,
   MAX_AMOUNT,
   MAX_ENTRIES,
   MAX_PROOF_SIZE,
+  needsProof,
 } from "./daily-reports-shared.jsx";
 import notify from "../../lib/notify.js";
-
-const formatNumber = (value = 0) =>
-  new Intl.NumberFormat("id-ID").format(Math.round(value));
 
 /* ------------------------------ Error mapping ----------------------------- */
 
@@ -73,7 +84,7 @@ function explainError(error) {
   if (status === 404 || code === "REPORT_NOT_FOUND") {
     return {
       title: "Laporan tidak ditemukan",
-      description: "Laporan ini tidak ada atau bukan milik Anda.",
+      description: "Laporan ini tidak ada atau sudah dihapus.",
       canRetry: false,
     };
   }
@@ -145,6 +156,40 @@ function IconButton({ label, onClick, disabled, tone = "default", children }) {
   );
 }
 
+function ProgressBar({ value, max, tone = "bg-second3", label }) {
+  const percent =
+    max > 0
+      ? Math.min(100, Math.max(0, ((Number(value) || 0) / max) * 100))
+      : 0;
+
+  return (
+    <div
+      role="progressbar"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(percent)}
+      className="h-2 w-full overflow-hidden rounded-full bg-second/10"
+    >
+      <div
+        className={`h-full rounded-full transition-[width] duration-500 motion-reduce:transition-none ${tone}`}
+        style={{ width: `${percent}%` }}
+      />
+    </div>
+  );
+}
+
+function IconChip({ icon: Icon, className = "bg-second4/10 text-second4" }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`flex size-8 shrink-0 items-center justify-center rounded-xl ${className}`}
+    >
+      <Icon size={16} />
+    </span>
+  );
+}
+
 function StatCard({
   icon: Icon,
   label,
@@ -173,7 +218,7 @@ function StatCard({
           {value}
         </div>
         {hint && (
-          <p className="mt-0.5 truncate text-xs tabular-nums text-second/60">
+          <p className="mt-0.5 break-words text-xs tabular-nums text-second/60">
             {hint}
           </p>
         )}
@@ -183,27 +228,10 @@ function StatCard({
   );
 }
 
-// Pilih jenis baris: pemasukan atau pengeluaran.
-function KindToggle({ value, onChange, disabled }) {
-  const options = [
-    {
-      id: "income",
-      label: "Pemasukan",
-      active: "border-second3 bg-second3/10 text-second3",
-    },
-    {
-      id: "expense",
-      label: "Pengeluaran",
-      active: "border-second2 bg-second2/10 text-second2",
-    },
-  ];
-
+// Dua pilihan bergaya tombol (jenis baris, metode).
+function Toggle({ label, options, value, onChange, disabled }) {
   return (
-    <div
-      role="group"
-      aria-label="Jenis baris"
-      className="grid grid-cols-2 gap-2"
-    >
+    <div role="group" aria-label={label} className="grid grid-cols-2 gap-2">
       {options.map((option) => (
         <button
           key={option.id}
@@ -213,7 +241,7 @@ function KindToggle({ value, onChange, disabled }) {
           onClick={() => onChange(option.id)}
           className={`rounded-xl border px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50 touch-manipulation ${FOCUS_RING} ${
             value === option.id
-              ? option.active
+              ? (option.active ?? "border-second4 bg-second4/10 text-second4")
               : "border-second/30 text-second/60 hover:border-second4"
           }`}
         >
@@ -224,31 +252,18 @@ function KindToggle({ value, onChange, disabled }) {
   );
 }
 
-function AmountInput({ id, value, onChange, disabled, hasError, describedBy }) {
-  return (
-    <div className="flex">
-      <span
-        aria-hidden="true"
-        className="inline-flex shrink-0 items-center rounded-l-xl border border-r-0 border-second/30 bg-second/5 px-4 text-sm font-medium text-second/60"
-      >
-        Rp
-      </span>
-      <input
-        id={id}
-        type="text"
-        inputMode="numeric"
-        autoComplete="off"
-        value={formatThousands(value)}
-        onChange={(event) => onChange(digitsOnly(event.target.value))}
-        placeholder="10.000"
-        disabled={disabled}
-        className={`${inputClass(hasError)} rounded-l-none tabular-nums`}
-        aria-invalid={hasError ? true : undefined}
-        aria-describedby={describedBy}
-      />
-    </div>
-  );
-}
+const KIND_OPTIONS = [
+  {
+    id: "income",
+    label: "Pemasukan",
+    active: "border-second3 bg-second3/10 text-second3",
+  },
+  {
+    id: "expense",
+    label: "Pengeluaran",
+    active: "border-second2 bg-second2/10 text-second2",
+  },
+];
 
 function validateEntry({ name, amount }) {
   const found = {};
@@ -331,33 +346,44 @@ function ErrorState({ error, onRetry, isFetching }) {
 function OpeningBalanceCard({ report, canEdit }) {
   const updateReport = useUpdateDailyReport();
   const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState("");
-  const [error, setError] = useState("");
+  const [cash, setCash] = useState("");
+  const [noncash, setNoncash] = useState("");
+  const [errors, setErrors] = useState({});
 
   function startEdit() {
-    setValue(String(report.opening_balance));
-    setError("");
+    setCash(String(report.opening_cash ?? 0));
+    setNoncash(String(report.opening_noncash ?? 0));
+    setErrors({});
     setEditing(true);
   }
 
   function save() {
-    if (value === "") {
-      setError("Saldo awal wajib diisi.");
-      return;
+    const found = {};
+
+    if (Number(cash || 0) > MAX_AMOUNT) found.cash = "Nominal terlalu besar.";
+    if (Number(noncash || 0) > MAX_AMOUNT) {
+      found.noncash = "Nominal terlalu besar.";
     }
 
-    if (Number(value) > MAX_AMOUNT) {
-      setError("Nominal terlalu besar.");
-      return;
-    }
+    setErrors(found);
+    if (Object.keys(found).length > 0) return;
 
-    if (Number(value) === report.opening_balance) {
+    const nextCash = Number(cash || 0);
+    const nextNoncash = Number(noncash || 0);
+
+    if (
+      nextCash === Number(report.opening_cash) &&
+      nextNoncash === Number(report.opening_noncash)
+    ) {
       setEditing(false);
       return;
     }
 
     updateReport.mutate(
-      { id: report.id, data: { opening_balance: Number(value) } },
+      {
+        id: report.id,
+        data: { opening_cash: nextCash, opening_noncash: nextNoncash },
+      },
       {
         onSuccess: () => {
           setEditing(false);
@@ -371,39 +397,65 @@ function OpeningBalanceCard({ report, canEdit }) {
   }
 
   if (editing) {
+    const disabled = updateReport.isPending;
+
     return (
       <StatCard
         icon={FiLayers}
         label="Saldo awal"
         value={
           <div className="flex flex-col gap-2 text-base font-normal">
+            <label
+              htmlFor="opening-cash-edit"
+              className="text-xs text-second/60"
+            >
+              Tunai
+            </label>
             <AmountInput
-              id="opening-balance-edit"
-              value={value}
-              onChange={(next) => {
-                setValue(next);
-                setError("");
+              id="opening-cash-edit"
+              value={cash}
+              onChange={(value) => {
+                setCash(value);
+                setErrors((previous) => ({ ...previous, cash: undefined }));
               }}
-              disabled={updateReport.isPending}
-              hasError={Boolean(error)}
-              describedBy={error ? "opening-balance-edit-desc" : undefined}
+              disabled={disabled}
+              hasError={Boolean(errors.cash)}
+              placeholder="0"
             />
-            {error && (
-              <ErrorText id="opening-balance-edit-desc">{error}</ErrorText>
-            )}
+            {errors.cash && <ErrorText>{errors.cash}</ErrorText>}
+
+            <label
+              htmlFor="opening-noncash-edit"
+              className="text-xs text-second/60"
+            >
+              Non tunai
+            </label>
+            <AmountInput
+              id="opening-noncash-edit"
+              value={noncash}
+              onChange={(value) => {
+                setNoncash(value);
+                setErrors((previous) => ({ ...previous, noncash: undefined }));
+              }}
+              disabled={disabled}
+              hasError={Boolean(errors.noncash)}
+              placeholder="0"
+            />
+            {errors.noncash && <ErrorText>{errors.noncash}</ErrorText>}
+
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={save}
-                disabled={updateReport.isPending}
+                disabled={disabled}
                 className={`${BTN_PRIMARY} flex-1`}
               >
-                {updateReport.isPending ? <Spinner /> : "Simpan"}
+                {disabled ? <Spinner /> : "Simpan"}
               </button>
               <button
                 type="button"
                 onClick={() => setEditing(false)}
-                disabled={updateReport.isPending}
+                disabled={disabled}
                 className={BTN_OUTLINE}
               >
                 Batal
@@ -420,7 +472,7 @@ function OpeningBalanceCard({ report, canEdit }) {
       icon={FiLayers}
       label="Saldo awal"
       value={formatMoney(report.opening_balance)}
-      hint="Kas di laci saat toko buka"
+      hint={`Tunai ${formatMoney(report.opening_cash)} · Non tunai ${formatMoney(report.opening_noncash)}`}
       action={
         canEdit ? (
           <IconButton label="Ubah saldo awal" onClick={startEdit}>
@@ -432,12 +484,206 @@ function OpeningBalanceCard({ report, canEdit }) {
   );
 }
 
+/* ------------------------------- Saldo akhir ------------------------------ */
+
+function MoneyBreakdown({
+  title,
+  icon,
+  opening,
+  income,
+  expense,
+  closing,
+  remitLabel,
+  remitValue, // number | null (null = belum disetor)
+  remaining,
+}) {
+  const settled = remitValue !== null;
+
+  return (
+    <article className="flex min-w-0 flex-col gap-4 rounded-2xl border border-second/30 bg-primary p-4 shadow-xl shadow-second/5">
+      <header className="flex items-center justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <IconChip icon={icon} />
+          <h3 className="truncate text-sm font-bold text-second">{title}</h3>
+        </div>
+        <div className="text-right">
+          <p className="text-xs text-second/60">Saldo akhir</p>
+          <p
+            className={`text-lg font-bold tabular-nums ${
+              closing < 0 ? "text-second2" : "text-second"
+            }`}
+          >
+            {formatMoney(closing)}
+          </p>
+        </div>
+      </header>
+
+      <dl className="grid grid-cols-3 gap-2">
+        <div className="min-w-0 rounded-xl bg-second/[0.04] p-3">
+          <dt className="text-xs text-second/60">Awal</dt>
+          <dd className="mt-1 break-words text-sm font-semibold tabular-nums text-second">
+            {formatMoney(opening)}
+          </dd>
+        </div>
+        <div className="min-w-0 rounded-xl bg-second3/10 p-3">
+          <dt className="text-xs text-second3">Masuk</dt>
+          <dd className="mt-1 break-words text-sm font-semibold tabular-nums text-second3">
+            + {formatMoney(income)}
+          </dd>
+        </div>
+        <div className="min-w-0 rounded-xl bg-second2/10 p-3">
+          <dt className="text-xs text-second2">Keluar</dt>
+          <dd className="mt-1 break-words text-sm font-semibold tabular-nums text-second2">
+            − {formatMoney(expense)}
+          </dd>
+        </div>
+      </dl>
+
+      <div className="flex flex-col gap-2 border-t border-second/10 pt-4">
+        <ProgressBar
+          value={settled ? remitValue : 0}
+          max={closing}
+          label={remitLabel}
+        />
+        <div className="flex items-start justify-between gap-4 text-xs">
+          <div className="min-w-0">
+            <p className="text-second/60">{remitLabel}</p>
+            <p className="mt-1 text-sm font-semibold tabular-nums text-second3">
+              {settled ? formatMoney(remitValue) : "Belum disetor"}
+            </p>
+          </div>
+          <div className="min-w-0 text-right">
+            <p className="text-second/60">Sisa belum disetor</p>
+            <p className="mt-1 text-sm font-semibold tabular-nums text-second">
+              {formatMoney(remaining)}
+            </p>
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function BalanceSection({ report }) {
+  const net = (Number(report.total_in) || 0) - (Number(report.total_out) || 0);
+  const remainingTotal = report.remaining_balance ?? report.closing_balance;
+  const remainingCash = report.remaining_cash ?? report.closing_cash;
+  const remainingNoncash = report.remaining_noncash ?? report.closing_noncash;
+
+  const cashRemitted =
+    report.remitted &&
+    report.remit_cash !== null &&
+    report.remit_cash !== undefined
+      ? Number(report.remit_cash)
+      : null;
+  const transferRemitted =
+    report.remitted &&
+    report.remit_transfer !== null &&
+    report.remit_transfer !== undefined
+      ? Number(report.remit_transfer)
+      : null;
+
+  return (
+    <section
+      aria-label="Saldo akhir"
+      className="flex min-w-0 flex-col gap-8 rounded-2xl border border-second/30 bg-primary p-4 shadow-xl shadow-second/5 sm:p-8"
+    >
+      <div>
+        <h2 className="text-lg font-bold text-second">Saldo akhir</h2>
+        <p className="mt-2 text-pretty text-sm text-second/60">
+          Tunai dan non tunai dihitung terpisah. Sisa yang belum disetor
+          otomatis menjadi saldo awal laporan berikutnya.
+        </p>
+      </div>
+
+      {/* Tiga angka utama */}
+      <dl className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="flex min-w-0 flex-col justify-between gap-4 rounded-2xl bg-grad p-4 text-primary shadow-lg shadow-second4/25 sm:p-6">
+          <dt className="text-xs text-primary/90">
+            Saldo akhir (tunai + non tunai)
+          </dt>
+          <dd className="break-words text-3xl font-bold tabular-nums">
+            {formatMoney(report.closing_balance)}
+          </dd>
+          <p className="text-xs text-primary/90">Gabungan kedua jenis uang</p>
+        </div>
+
+        <div className="flex min-w-0 items-start gap-4 rounded-2xl border border-second/30 p-4 sm:p-6">
+          <IconChip
+            icon={net < 0 ? FiTrendingDown : FiTrendingUp}
+            className={
+              net < 0
+                ? "bg-second2/10 text-second2"
+                : "bg-second3/10 text-second3"
+            }
+          />
+          <div className="min-w-0">
+            <dt className="text-xs text-second/60">Selisih hari ini</dt>
+            <dd
+              className={`mt-2 break-words text-2xl font-bold tabular-nums ${
+                net < 0 ? "text-second2" : "text-second3"
+              }`}
+            >
+              {formatMoney(net)}
+            </dd>
+            <p className="mt-2 text-xs text-second/60">
+              Total masuk dikurangi total keluar
+            </p>
+          </div>
+        </div>
+
+        <div className="flex min-w-0 items-start gap-4 rounded-2xl border border-second4/30 bg-second4/5 p-4 sm:p-6">
+          <IconChip icon={FiInbox} />
+          <div className="min-w-0">
+            <dt className="text-xs text-second4">Sisa belum disetor</dt>
+            <dd className="mt-2 break-words text-2xl font-bold tabular-nums text-second">
+              {formatMoney(remainingTotal)}
+            </dd>
+            <p className="mt-2 text-xs text-second/60">
+              {report.remitted
+                ? "Jadi saldo awal laporan berikutnya"
+                : "Sama dengan saldo akhir sampai disetor"}
+            </p>
+          </div>
+        </div>
+      </dl>
+
+      {/* Rincian per jenis uang */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <MoneyBreakdown
+          title="Tunai"
+          icon={FiDollarSign}
+          opening={Number(report.opening_cash) || 0}
+          income={Number(report.cash_in) || 0}
+          expense={Number(report.cash_out) || 0}
+          closing={Number(report.closing_cash) || 0}
+          remitLabel="Disetor tunai"
+          remitValue={cashRemitted}
+          remaining={Number(remainingCash) || 0}
+        />
+        <MoneyBreakdown
+          title="Non tunai"
+          icon={FiCreditCard}
+          opening={Number(report.opening_noncash) || 0}
+          income={Number(report.noncash_in) || 0}
+          expense={Number(report.noncash_out) || 0}
+          closing={Number(report.closing_noncash) || 0}
+          remitLabel="Disetor transfer"
+          remitValue={transferRemitted}
+          remaining={Number(remainingNoncash) || 0}
+        />
+      </div>
+    </section>
+  );
+}
+
 /* --------------------------------- Entries -------------------------------- */
 
 function EntryForm({ report }) {
   const createEntry = useCreateEntry();
   const nameRef = useRef(null);
 
+  const [method, setMethod] = useState("CASH");
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
   const [kind, setKind] = useState("income");
@@ -463,6 +709,7 @@ function EntryForm({ report }) {
     }
 
     const payload = {
+      method,
       name: name.trim(),
       [kind]: Number(amount),
     };
@@ -496,6 +743,28 @@ function EntryForm({ report }) {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="min-w-0">
+          <span className={labelClass}>Metode uang</span>
+          <Toggle
+            label="Metode uang"
+            options={METHODS}
+            value={method}
+            onChange={setMethod}
+            disabled={disabled}
+          />
+        </div>
+
+        <div className="min-w-0">
+          <span className={labelClass}>Jenis</span>
+          <Toggle
+            label="Jenis baris"
+            options={KIND_OPTIONS}
+            value={kind}
+            onChange={setKind}
+            disabled={disabled}
+          />
+        </div>
+
+        <div className="min-w-0">
           <label htmlFor="entry-name" className={labelClass}>
             Atas nama
             <span className="ml-2 text-second2" aria-hidden="true">
@@ -525,30 +794,6 @@ function EntryForm({ report }) {
         </div>
 
         <div className="min-w-0">
-          <label htmlFor="entry-note" className={labelClass}>
-            Keterangan
-            <span className="ml-2 text-xs font-normal text-second/50">
-              Opsional
-            </span>
-          </label>
-          <input
-            id="entry-note"
-            autoComplete="off"
-            value={note}
-            onChange={(event) => setNote(event.target.value)}
-            placeholder="Contoh: Jual lensa 50mm…"
-            maxLength={255}
-            disabled={disabled}
-            className={inputClass(false)}
-          />
-        </div>
-
-        <div className="min-w-0">
-          <span className={labelClass}>Jenis</span>
-          <KindToggle value={kind} onChange={setKind} disabled={disabled} />
-        </div>
-
-        <div className="min-w-0">
           <label htmlFor="entry-amount" className={labelClass}>
             Nominal
             <span className="ml-2 text-second2" aria-hidden="true">
@@ -569,6 +814,25 @@ function EntryForm({ report }) {
           {errors.amount && (
             <ErrorText id="entry-amount-desc">{errors.amount}</ErrorText>
           )}
+        </div>
+
+        <div className="min-w-0 sm:col-span-2">
+          <label htmlFor="entry-note" className={labelClass}>
+            Keterangan
+            <span className="ml-2 text-xs font-normal text-second/50">
+              Opsional
+            </span>
+          </label>
+          <input
+            id="entry-note"
+            autoComplete="off"
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            placeholder="Contoh: Jual lensa 50mm…"
+            maxLength={255}
+            disabled={disabled}
+            className={inputClass(false)}
+          />
         </div>
       </div>
 
@@ -602,6 +866,7 @@ function EntryForm({ report }) {
 function EntryEditRow({ report, entry, onClose }) {
   const updateEntry = useUpdateEntry();
 
+  const [method, setMethod] = useState(entry.method ?? "CASH");
   const [name, setName] = useState(entry.name);
   const [note, setNote] = useState(entry.note ?? "");
   const [kind, setKind] = useState(entry.income > 0 ? "income" : "expense");
@@ -622,6 +887,7 @@ function EntryEditRow({ report, entry, onClose }) {
         id: report.id,
         entryId: entry.id,
         data: {
+          method,
           name: name.trim(),
           note: note.trim() || null,
           income: kind === "income" ? Number(amount) : 0,
@@ -645,6 +911,28 @@ function EntryEditRow({ report, entry, onClose }) {
       <td colSpan={5} className="p-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="min-w-0">
+            <span className={labelClass}>Metode uang</span>
+            <Toggle
+              label="Metode uang"
+              options={METHODS}
+              value={method}
+              onChange={setMethod}
+              disabled={disabled}
+            />
+          </div>
+
+          <div className="min-w-0">
+            <span className={labelClass}>Jenis</span>
+            <Toggle
+              label="Jenis baris"
+              options={KIND_OPTIONS}
+              value={kind}
+              onChange={setKind}
+              disabled={disabled}
+            />
+          </div>
+
+          <div className="min-w-0">
             <label htmlFor={`edit-name-${entry.id}`} className={labelClass}>
               Atas nama
             </label>
@@ -661,6 +949,20 @@ function EntryEditRow({ report, entry, onClose }) {
           </div>
 
           <div className="min-w-0">
+            <label htmlFor={`edit-amount-${entry.id}`} className={labelClass}>
+              Nominal
+            </label>
+            <AmountInput
+              id={`edit-amount-${entry.id}`}
+              value={amount}
+              onChange={setAmount}
+              disabled={disabled}
+              hasError={Boolean(errors.amount)}
+            />
+            {errors.amount && <ErrorText>{errors.amount}</ErrorText>}
+          </div>
+
+          <div className="min-w-0 sm:col-span-2">
             <label htmlFor={`edit-note-${entry.id}`} className={labelClass}>
               Keterangan
             </label>
@@ -673,25 +975,6 @@ function EntryEditRow({ report, entry, onClose }) {
               disabled={disabled}
               className={inputClass(false)}
             />
-          </div>
-
-          <div className="min-w-0">
-            <span className={labelClass}>Jenis</span>
-            <KindToggle value={kind} onChange={setKind} disabled={disabled} />
-          </div>
-
-          <div className="min-w-0">
-            <label htmlFor={`edit-amount-${entry.id}`} className={labelClass}>
-              Nominal
-            </label>
-            <AmountInput
-              id={`edit-amount-${entry.id}`}
-              value={amount}
-              onChange={setAmount}
-              disabled={disabled}
-              hasError={Boolean(errors.amount)}
-            />
-            {errors.amount && <ErrorText>{errors.amount}</ErrorText>}
           </div>
         </div>
 
@@ -751,9 +1034,12 @@ function EntryRow({ report, entry, index, canEdit }) {
       className={`align-top transition-colors hover:bg-second/20 ${index % 2 === 0 ? "" : "bg-second3/20"}`}
     >
       <td className="min-w-0 px-4 py-3">
-        <p className="break-words text-sm font-semibold text-second">
-          {entry.name}
-        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="break-words text-sm font-semibold text-second">
+            {entry.name}
+          </p>
+          <MethodTag method={entry.method} />
+        </div>
         {entry.note && (
           <p className="mt-2 break-words text-xs text-second/60">
             {entry.note}
@@ -817,25 +1103,26 @@ function EntryRow({ report, entry, index, canEdit }) {
   );
 }
 
-function EntriesSection({ report, isAdmin }) {
+function EntriesSection({ report, canRemit }) {
   const entries = report.entries ?? [];
-  const canEdit = isAdmin && !report.transferred;
+  const canEdit = !report.remitted;
 
   return (
     <FormSection
       title="Catatan kas"
-      description="Saldo dihitung berjalan dari saldo awal, mengikuti urutan pencatatan."
+      description="Setiap baris bermetode tunai atau non tunai. Saldo di tabel adalah saldo berjalan gabungan keduanya, mengikuti urutan pencatatan."
       aside={
         <Tag tone="soft">
           {entries.length}/{MAX_ENTRIES} baris
         </Tag>
       }
     >
-      {isAdmin && report.transferred && (
+      {report.remitted && (
         <p className="flex items-start gap-2 rounded-xl bg-second/5 p-4 text-sm text-second/60">
           <FiLock size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
-          Laporan sudah ditransfer dan terkunci. Hilangkan centang transfer
-          untuk menambah, mengubah, atau menghapus baris.
+          {canRemit
+            ? "Laporan sudah disetor dan terkunci untuk semua orang. Buka kunci di bagian Setoran untuk menambah, mengubah, atau menghapus baris."
+            : "Laporan sudah disetor dan terkunci. Minta admin membuka kuncinya kalau ada yang perlu diubah."}
         </p>
       )}
 
@@ -867,6 +1154,10 @@ function EntriesSection({ report, isAdmin }) {
             <tr className="bg-second/[0.03]">
               <td className="px-4 py-3 text-sm font-semibold text-second">
                 Saldo awal
+                <span className="mt-2 block text-xs font-normal text-second/60">
+                  Tunai {formatMoney(report.opening_cash)} · Non tunai{" "}
+                  {formatMoney(report.opening_noncash)}
+                </span>
               </td>
               <td className="px-4 py-3 text-right text-sm text-second/40">—</td>
               <td className="px-4 py-3 text-right text-sm text-second/40">—</td>
@@ -923,19 +1214,128 @@ function EntriesSection({ report, isAdmin }) {
   );
 }
 
-/* ---------------------------- Transfer & Bukti ---------------------------- */
+/* ------------------------------ Setoran & bukti --------------------------- */
+
+function Stepper({ steps }) {
+  return (
+    <ol className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+      {steps.map((step, index) => (
+        <li
+          key={step.label}
+          className={`flex min-w-0 items-center gap-3 rounded-xl border p-3 transition-colors ${
+            step.done
+              ? "border-second3/40 bg-second3/5"
+              : "border-second/20 bg-second/[0.02]"
+          }`}
+        >
+          <span
+            className={`flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
+              step.done
+                ? "bg-second3 text-primary"
+                : "bg-second/10 text-second/60"
+            }`}
+          >
+            {step.done ? (
+              <FiCheck size={16} aria-hidden="true" />
+            ) : (
+              <span aria-hidden="true">{index + 1}</span>
+            )}
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-second">{step.label}</p>
+            <p className="break-words text-xs text-second/60">{step.hint}</p>
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function RemitField({
+  id,
+  icon,
+  title,
+  source,
+  closing,
+  value,
+  amount, // number | null
+  onChange,
+  onFillAll,
+  error,
+  disabled,
+}) {
+  const remaining =
+    amount !== null && amount <= closing ? closing - amount : null;
+
+  return (
+    <div className="flex min-w-0 flex-col gap-4 rounded-2xl border border-second/30 bg-primary p-4 shadow-xl shadow-second/5">
+      <div className="flex items-center gap-3">
+        <IconChip icon={icon} />
+        <div className="min-w-0">
+          <label
+            htmlFor={id}
+            className="block text-sm font-semibold text-second"
+          >
+            {title}
+            <span className="ml-2 text-second2" aria-hidden="true">
+              *
+            </span>
+          </label>
+          <p className="text-xs text-second/60">{source}</p>
+        </div>
+      </div>
+
+      <div>
+        <AmountInput
+          id={id}
+          value={value}
+          onChange={onChange}
+          disabled={disabled}
+          hasError={Boolean(error)}
+          describedBy={error ? `${id}-desc` : undefined}
+          placeholder="0"
+        />
+        {error && <ErrorText id={`${id}-desc`}>{error}</ErrorText>}
+      </div>
+
+      <button
+        type="button"
+        onClick={onFillAll}
+        disabled={disabled || closing <= 0}
+        className={`${BTN_OUTLINE} w-fit !px-3 !py-1 text-xs`}
+      >
+        Setor semua ({formatMoney(Math.max(0, closing))})
+      </button>
+
+      <div className="flex flex-col gap-2 rounded-xl bg-second/[0.03] p-3">
+        <ProgressBar
+          value={amount !== null && amount <= closing ? amount : 0}
+          max={closing}
+          tone="bg-second4"
+          label={`Porsi ${title}`}
+        />
+        <div className="flex items-center justify-between gap-2 text-xs tabular-nums text-second/60">
+          <span>Saldo akhir {formatMoney(closing)}</span>
+          <span className="font-semibold text-second">
+            {remaining !== null ? `Sisa ${formatMoney(remaining)}` : "Sisa —"}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function ProofPreview({ proof }) {
   const previewable = PREVIEWABLE_TYPES.includes(proof.content_type);
   const isPdf = proof.content_type === "application/pdf";
 
   return (
-    <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center">
+    <div className="flex min-w-0 flex-col gap-4 rounded-xl border border-second/20 bg-second/[0.02] p-4 sm:flex-row sm:items-center">
       <a
         href={proof.url}
         target="_blank"
         rel="noopener noreferrer"
-        className={`relative flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-second/30 bg-second/5 text-second/40 ${FOCUS_RING}`}
+        className={`relative flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-second/30 bg-primary text-second/40 transition-shadow hover:shadow-lg ${FOCUS_RING}`}
         aria-label="Buka bukti transfer di tab baru"
       >
         {previewable ? (
@@ -945,28 +1345,32 @@ function ProofPreview({ proof }) {
             className="h-full w-full object-cover"
           />
         ) : (
-          <FiFileText size={16} aria-hidden="true" />
+          <FiFileText size={32} aria-hidden="true" />
         )}
       </a>
 
       <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <Tag tone="soft">
+            {isPdf
+              ? "PDF"
+              : proof.content_type.replace("image/", "").toUpperCase()}
+          </Tag>
+          <Tag tone="outline">{formatBytes(proof.size)}</Tag>
+        </div>
         <a
           href={proof.url}
           target="_blank"
           rel="noopener noreferrer"
-          className={`inline-flex items-center gap-2 rounded text-sm font-semibold text-second hover:text-second4 ${FOCUS_RING}`}
+          className={`mt-3 inline-flex items-center gap-2 rounded text-sm font-semibold text-second hover:text-second4 ${FOCUS_RING}`}
         >
           Buka bukti transfer
           <FiExternalLink size={16} aria-hidden="true" />
         </a>
         <p className="mt-2 text-xs text-second/60">
-          {isPdf
-            ? "PDF"
-            : proof.content_type.replace("image/", "").toUpperCase()}{" "}
-          · {formatBytes(proof.size)} · diunggah{" "}
-          {formatDateTime(proof.uploaded_at)}
+          Diunggah {formatDateTime(proof.uploaded_at)}
         </p>
-        <p className="mt-2 text-xs text-second/50">
+        <p className="mt-1 text-xs text-second/50">
           Link berlaku sekitar 1 jam. Muat ulang halaman jika sudah kedaluwarsa.
         </p>
       </div>
@@ -974,28 +1378,138 @@ function ProofPreview({ proof }) {
   );
 }
 
-function TransferSection({ report, isAdmin }) {
+function RemitSection({ report, canRemit }) {
   const updateReport = useUpdateDailyReport();
   const uploadProof = useUploadProof();
   const deleteProof = useDeleteProof();
+
+  const toText = (value) =>
+    value !== null && value !== undefined ? String(value) : "";
+
+  const savedCash = toText(report.remit_cash);
+  const savedTransfer = toText(report.remit_transfer);
+
+  const [cash, setCash] = useState(savedCash);
+  const [transfer, setTransfer] = useState(savedTransfer);
+  const [errors, setErrors] = useState({});
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
+  // Samakan isian dengan data server setelah disimpan atau dibuka kuncinya.
+  useEffect(() => {
+    setCash(savedCash);
+    setTransfer(savedTransfer);
+    setErrors({});
+  }, [savedCash, savedTransfer]);
+
+  const closingCash = Number(report.closing_cash) || 0;
+  const closingNoncash = Number(report.closing_noncash) || 0;
+  const locked = report.remitted;
   const proof = report.proof;
   const busy =
     updateReport.isPending || uploadProof.isPending || deleteProof.isPending;
 
-  function handleToggle(event) {
-    const checked = event.target.checked;
+  const cashNumber = cash === "" ? null : Number(cash);
+  const transferNumber = transfer === "" ? null : Number(transfer);
+
+  const previewRemainingCash =
+    cashNumber !== null && cashNumber <= closingCash
+      ? closingCash - cashNumber
+      : null;
+  const previewRemainingNoncash =
+    transferNumber !== null && transferNumber <= closingNoncash
+      ? closingNoncash - transferNumber
+      : null;
+
+  // Bukti wajib kalau setoran transfer lebih dari 0. Setelah dikunci, bukti tidak bisa dihapus.
+  const proofRequired = locked
+    ? needsProof(report)
+    : transferNumber !== null && transferNumber > 0;
+  const proofLocked = locked && needsProof(report);
+
+  const steps = [
+    {
+      label: "Isi jumlah setoran",
+      hint: "Tunai dan transfer (boleh 0)",
+      done: locked || (cash !== "" && transfer !== ""),
+    },
+    {
+      label: "Bukti transfer",
+      hint: proofRequired ? "Wajib untuk setoran transfer" : "Tidak diperlukan",
+      done: locked || !proofRequired || Boolean(proof),
+    },
+    {
+      label: "Tandai disetor",
+      hint: locked ? "Laporan terkunci" : "Mengunci laporan",
+      done: locked,
+    },
+  ];
+
+  function validate(forRemit) {
+    const found = {};
+
+    if (cash !== "" && Number(cash) > MAX_AMOUNT) {
+      found.cash = "Nominal terlalu besar.";
+    }
+    if (transfer !== "" && Number(transfer) > MAX_AMOUNT) {
+      found.transfer = "Nominal terlalu besar.";
+    }
+
+    if (!forRemit) return found;
+
+    if (cash === "") found.cash = "Isi setoran tunai (boleh 0).";
+    else if (!found.cash && Number(cash) > closingCash) {
+      found.cash = `Melebihi saldo akhir tunai (${formatMoney(closingCash)}).`;
+    }
+
+    if (transfer === "") found.transfer = "Isi setoran transfer (boleh 0).";
+    else if (!found.transfer && Number(transfer) > closingNoncash) {
+      found.transfer = `Melebihi saldo akhir non tunai (${formatMoney(closingNoncash)}).`;
+    }
+
+    if (closingCash < 0 || closingNoncash < 0) {
+      found.form =
+        "Saldo akhir tunai atau non tunai negatif. Perbaiki baris yang salah dulu, misalnya pengeluaran yang salah metode.";
+    }
+
+    if (transfer !== "" && Number(transfer) > 0 && !proof) {
+      found.proof = "Setoran transfer wajib punya bukti. Unggah bukti dulu.";
+    }
+
+    return found;
+  }
+
+  function save(forRemit) {
+    const found = validate(forRemit);
+    setErrors(found);
+
+    if (Object.keys(found).length > 0) return;
 
     updateReport.mutate(
-      { id: report.id, data: { transferred: checked } },
+      {
+        id: report.id,
+        data: {
+          remit_cash: cash === "" ? null : Number(cash),
+          remit_transfer: transfer === "" ? null : Number(transfer),
+          ...(forRemit && { remitted: true }),
+        },
+      },
       {
         onSuccess: () =>
           notify.success(
-            checked
-              ? "Laporan ditandai sudah transfer dan dikunci."
-              : "Kunci laporan dibuka.",
+            forRemit
+              ? "Laporan ditandai sudah disetor dan dikunci."
+              : "Isian setoran disimpan.",
           ),
+        onError: (err) => notify.error(describeError(err)),
+      },
+    );
+  }
+
+  function unlock() {
+    updateReport.mutate(
+      { id: report.id, data: { remitted: false } },
+      {
+        onSuccess: () => notify.success("Kunci laporan dibuka."),
         onError: (err) => notify.error(describeError(err)),
       },
     );
@@ -1022,7 +1536,10 @@ function TransferSection({ report, isAdmin }) {
     uploadProof.mutate(
       { id: report.id, file },
       {
-        onSuccess: () => notify.success("Bukti transfer berhasil diunggah."),
+        onSuccess: () => {
+          setErrors((previous) => ({ ...previous, proof: undefined }));
+          notify.success("Bukti transfer berhasil diunggah.");
+        },
         onError: (err) => notify.error(describeError(err)),
       },
     );
@@ -1044,69 +1561,274 @@ function TransferSection({ report, isAdmin }) {
     );
   }
 
+  const fileInput = (
+    <input
+      type="file"
+      accept={PROOF_TYPES.join(",")}
+      disabled={busy}
+      onChange={handleFile}
+      className="sr-only"
+    />
+  );
+
+  const remitNumber = (value) =>
+    value !== null && value !== undefined ? formatMoney(value) : "—";
+
   return (
     <FormSection
-      title="Transfer ke owner"
-      description="Setelah toko tutup, transfer saldo akhir ke owner, unggah bukti, lalu centang sudah transfer."
+      title="Setoran ke owner"
+      description="Uang tunai disetor tunai, uang non tunai disetor lewat transfer. Jumlah tidak harus seluruh saldo. Sisa yang belum disetor otomatis menjadi saldo awal laporan berikutnya."
+      aside={
+        <Tag tone={locked ? "success" : "outline"}>
+          {locked ? "Sudah disetor" : "Belum disetor"}
+        </Tag>
+      }
     >
-      <div
-        className={`rounded-xl border p-4 transition-colors ${
-          report.transferred
-            ? "border-second3 bg-second3/5"
-            : "border-second/30"
-        }`}
-      >
-        {isAdmin ? (
-          <label className="flex cursor-pointer items-center gap-4">
-            <input
-              type="checkbox"
-              checked={report.transferred}
-              onChange={handleToggle}
-              disabled={busy}
-              className={`size-4 shrink-0 cursor-pointer accent-second4 ${FOCUS_RING}`}
-            />
-            <span className="min-w-0">
-              <span className="block text-sm font-semibold text-second">
-                Sudah transfer ke owner
-              </span>
-              <span className="mt-2 block text-sm text-second/60">
-                {report.transferred
-                  ? `Ditransfer ${formatDateTime(report.transferred_at)}. Laporan terkunci.`
-                  : `Nominal yang ditransfer: ${formatMoney(report.closing_balance)}. Mencentang akan mengunci laporan.`}
-              </span>
-            </span>
-          </label>
-        ) : (
-          <div className="flex flex-wrap items-center gap-4">
-            <Tag tone={report.transferred ? "success" : "outline"}>
-              {report.transferred ? "Sudah transfer" : "Belum transfer"}
-            </Tag>
-            <p className="text-sm text-second/60">
-              {report.transferred
-                ? `Ditransfer ${formatDateTime(report.transferred_at)}`
-                : "Kasir belum menandai laporan ini sebagai ditransfer."}
-            </p>
-          </div>
-        )}
-      </div>
+      <Stepper steps={steps} />
 
-      <div className="flex flex-col gap-4 rounded-xl border border-second/30 p-4">
-        <div className="flex items-center justify-between gap-4">
-          <h3 className="text-sm font-semibold text-second">Bukti transfer</h3>
-          {report.transferred && !proof && <Tag tone="failure">Belum ada</Tag>}
+      {/* Isian / ringkasan setoran */}
+      {locked || !canRemit ? (
+        <div
+          className={`flex flex-col gap-4 rounded-2xl border p-4 sm:p-6 ${
+            locked
+              ? "border-second3/40 bg-second3/5"
+              : "border-second/30 bg-second/[0.02]"
+          }`}
+        >
+          <div className="flex items-start gap-4">
+            <IconChip
+              icon={locked ? FiCheckCircle : FiClock}
+              className={
+                locked
+                  ? "bg-second3 text-primary"
+                  : "bg-second/10 text-second/60"
+              }
+            />
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-second">
+                {locked ? "Setoran sudah dicatat" : "Menunggu setoran admin"}
+              </p>
+              <p className="mt-1 text-sm text-second/60">
+                {locked
+                  ? `Disetor ${formatDateTime(report.remitted_at)}. Laporan terkunci dan sisa saldo menjadi saldo awal laporan berikutnya.`
+                  : "Setoran hanya diisi dan ditandai oleh admin. Owner hanya melihat status dan bukti transfer."}
+              </p>
+            </div>
+          </div>
+
+          <dl className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="rounded-xl bg-primary p-4 shadow-sm">
+              <dt className="flex items-center gap-2 text-xs text-second/60">
+                <FiDollarSign size={16} aria-hidden="true" />
+                Disetor tunai
+              </dt>
+              <dd className="mt-2 text-lg font-bold tabular-nums text-second">
+                {remitNumber(report.remit_cash)}
+              </dd>
+            </div>
+            <div className="rounded-xl bg-primary p-4 shadow-sm">
+              <dt className="flex items-center gap-2 text-xs text-second/60">
+                <FiCreditCard size={16} aria-hidden="true" />
+                Disetor transfer
+              </dt>
+              <dd className="mt-2 text-lg font-bold tabular-nums text-second">
+                {remitNumber(report.remit_transfer)}
+              </dd>
+            </div>
+            <div className="rounded-xl bg-primary p-4 shadow-sm">
+              <dt className="flex items-center gap-2 text-xs text-second/60">
+                <FiInbox size={16} aria-hidden="true" />
+                Sisa belum disetor
+              </dt>
+              <dd className="mt-2 text-lg font-bold tabular-nums text-second">
+                {formatMoney(report.remaining_balance)}
+              </dd>
+              <p className="mt-1 text-xs tabular-nums text-second/60">
+                Tunai {formatMoney(report.remaining_cash)} · Non tunai{" "}
+                {formatMoney(report.remaining_noncash)}
+              </p>
+            </div>
+          </dl>
+
+          {locked && !canRemit && (
+            <p className="text-sm text-second/60">
+              Minta admin membuka kunci kalau ada yang perlu diubah.
+            </p>
+          )}
+
+          {locked && canRemit && (
+            <button
+              type="button"
+              onClick={unlock}
+              disabled={busy}
+              className={`${BTN_OUTLINE} w-fit`}
+            >
+              {updateReport.isPending ? (
+                <Spinner />
+              ) : (
+                <FiUnlock size={16} aria-hidden="true" />
+              )}
+              Buka kunci
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <RemitField
+              id="remit-cash"
+              icon={FiDollarSign}
+              title="Setoran tunai"
+              source="Diambil dari saldo tunai"
+              closing={closingCash}
+              value={cash}
+              amount={cashNumber}
+              disabled={busy}
+              error={errors.cash}
+              onChange={(next) => {
+                setCash(next);
+                setErrors((previous) => ({ ...previous, cash: undefined }));
+              }}
+              onFillAll={() => {
+                setCash(String(Math.max(0, closingCash)));
+                setErrors((previous) => ({ ...previous, cash: undefined }));
+              }}
+            />
+            <RemitField
+              id="remit-transfer"
+              icon={FiCreditCard}
+              title="Setoran transfer"
+              source="Diambil dari saldo non tunai"
+              closing={closingNoncash}
+              value={transfer}
+              amount={transferNumber}
+              disabled={busy}
+              error={errors.transfer}
+              onChange={(next) => {
+                setTransfer(next);
+                setErrors((previous) => ({
+                  ...previous,
+                  transfer: undefined,
+                  proof: undefined,
+                }));
+              }}
+              onFillAll={() => {
+                setTransfer(String(Math.max(0, closingNoncash)));
+                setErrors((previous) => ({
+                  ...previous,
+                  transfer: undefined,
+                  proof: undefined,
+                }));
+              }}
+            />
+          </div>
+
+          {/* Ringkasan perkiraan + aksi */}
+          <div className="flex flex-col gap-4 rounded-2xl border border-second4/30 bg-second4/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <dl className="grid grid-cols-2 gap-6">
+              <div>
+                <dt className="text-xs text-second/60">Saldo akhir hari ini</dt>
+                <dd className="mt-1 text-lg font-bold tabular-nums text-second">
+                  {formatMoney(report.closing_balance)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-second/60">Sisa (perkiraan)</dt>
+                <dd className="mt-1 text-lg font-bold tabular-nums text-second4">
+                  {previewRemainingCash !== null &&
+                  previewRemainingNoncash !== null
+                    ? formatMoney(
+                        previewRemainingCash + previewRemainingNoncash,
+                      )
+                    : "—"}
+                </dd>
+              </div>
+            </dl>
+
+            <button
+              type="button"
+              onClick={() => save(true)}
+              disabled={busy}
+              className={`${BTN_PRIMARY} w-full sm:w-auto`}
+            >
+              {updateReport.isPending ? (
+                <Spinner />
+              ) : (
+                <FiSend size={16} aria-hidden="true" />
+              )}
+              Tandai sudah disetor
+            </button>
+          </div>
+
+          {errors.form && <ErrorText>{errors.form}</ErrorText>}
+
+          <p className="text-xs text-second/50">
+            Menandai sudah disetor akan mengunci laporan untuk semua orang.
+            Kedua jumlah wajib diisi (boleh 0), tidak boleh melebihi saldo akhir
+            masing-masing, dan setoran transfer lebih dari 0 wajib punya bukti.
+          </p>
+        </div>
+      )}
+
+      {/* Bukti transfer */}
+      <div className="flex flex-col gap-4 rounded-2xl border border-second/30 p-4 sm:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-3">
+            <IconChip icon={FiFileText} />
+            <h3 className="text-sm font-bold text-second">Bukti transfer</h3>
+          </div>
+          {proofRequired && !proof ? (
+            <Tag tone="failure">Wajib</Tag>
+          ) : !proofRequired ? (
+            <Tag tone="outline">Opsional</Tag>
+          ) : (
+            <Tag tone="success">Lengkap</Tag>
+          )}
         </div>
 
         {proof ? (
           <ProofPreview proof={proof} />
+        ) : canRemit ? (
+          <label
+            className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-8 text-center transition-colors focus-within:ring-2 focus-within:ring-second4/40 ${
+              errors.proof
+                ? "border-second2/60 bg-second2/5"
+                : "border-second/30 hover:border-second4 hover:bg-second4/5"
+            } ${busy ? "pointer-events-none opacity-60" : ""}`}
+          >
+            {uploadProof.isPending ? (
+              <>
+                <Spinner />
+                <span className="text-sm font-semibold text-second">
+                  Mengunggah…
+                </span>
+              </>
+            ) : (
+              <>
+                <FiUploadCloud
+                  size={32}
+                  className="text-second4"
+                  aria-hidden="true"
+                />
+                <span className="text-sm font-semibold text-second">
+                  Unggah bukti transfer
+                </span>
+                <span className="text-xs text-second/60">
+                  JPEG, PNG, WebP, HEIC, atau PDF · maks 10 MB
+                </span>
+              </>
+            )}
+            {fileInput}
+          </label>
         ) : (
-          !isAdmin && (
-            <p className="text-sm text-second/60">
-              Belum ada bukti transfer yang diunggah.
-            </p>
-          )
+          <p className="rounded-xl border border-dashed border-second/30 p-6 text-center text-sm text-second/60">
+            Belum ada bukti transfer yang diunggah.
+          </p>
         )}
 
-        {isAdmin && (
+        {errors.proof && <ErrorText>{errors.proof}</ErrorText>}
+
+        {canRemit && proof && (
           <div className="flex flex-wrap items-center gap-2">
             <label
               className={`${BTN_OUTLINE} cursor-pointer focus-within:ring-2 focus-within:ring-second4/40 ${
@@ -1121,19 +1843,13 @@ function TransferSection({ report, isAdmin }) {
               ) : (
                 <>
                   <FiUploadCloud size={16} aria-hidden="true" />
-                  {proof ? "Ganti bukti" : "Unggah bukti"}
+                  Ganti bukti
                 </>
               )}
-              <input
-                type="file"
-                accept={PROOF_TYPES.join(",")}
-                disabled={busy}
-                onChange={handleFile}
-                className="sr-only"
-              />
+              {fileInput}
             </label>
 
-            {proof &&
+            {!proofLocked &&
               (confirmingDelete ? (
                 <>
                   <span className="text-sm text-second/60">Hapus bukti?</span>
@@ -1168,20 +1884,217 @@ function TransferSection({ report, isAdmin }) {
           </div>
         )}
 
-        {isAdmin && (
-          <p className="text-xs text-second/50">
-            JPEG, PNG, WebP, HEIC, atau PDF. Maksimal 10 MB. Satu bukti untuk
-            satu hari; unggah ulang akan mengganti file lama.
+        {canRemit && proofLocked && proof && (
+          <p className="flex items-start gap-2 text-xs text-second/60">
+            <FiLock size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+            Bukti setoran transfer yang sudah disetor hanya bisa diganti. Buka
+            kunci laporan dulu kalau perlu menghapusnya.
           </p>
         )}
+
+        <p className="text-xs text-second/50">
+          {canRemit
+            ? "Wajib kalau ada setoran transfer, tidak diperlukan untuk setoran tunai saja. Unggah ulang akan mengganti file lama."
+            : "Hanya admin yang bisa mengunggah atau menghapus bukti transfer."}
+        </p>
       </div>
+    </FormSection>
+  );
+}
+
+/* --------------------------------- Riwayat -------------------------------- */
+
+const HISTORY_ICONS = {
+  REPORT_CREATED: { icon: FiPlus, tone: "bg-second3/10 text-second3" },
+  OPENING_UPDATED: { icon: FiLayers, tone: "bg-second4/10 text-second4" },
+  ENTRY_CREATED: { icon: FiPlus, tone: "bg-second3/10 text-second3" },
+  ENTRY_UPDATED: { icon: FiEdit2, tone: "bg-second4/10 text-second4" },
+  ENTRY_DELETED: { icon: FiTrash2, tone: "bg-second2/10 text-second2" },
+  REMIT_UPDATED: { icon: FiSend, tone: "bg-second4/10 text-second4" },
+  REMITTED: { icon: FiCheck, tone: "bg-second3 text-primary" },
+  REMIT_REOPENED: { icon: FiUnlock, tone: "bg-second2/10 text-second2" },
+  PROOF_SET: { icon: FiUploadCloud, tone: "bg-second4/10 text-second4" },
+  PROOF_DELETED: { icon: FiTrash2, tone: "bg-second2/10 text-second2" },
+};
+
+function initialOf(name) {
+  return (name || "?").trim().charAt(0).toUpperCase() || "?";
+}
+
+function HistorySection({ report }) {
+  const [page, setPage] = useState(1);
+
+  // Kunci berubah setiap data laporan berubah, jadi riwayat ikut dimuat ulang.
+  const signature = [
+    report.updated_at,
+    report.entry_count,
+    report.closing_balance,
+    report.opening_balance,
+    report.remitted,
+    report.remit_cash,
+    report.remit_transfer,
+    report.has_proof,
+  ].join("|");
+
+  const query = useGetReportHistory(report.id, page, signature);
+
+  const list = query.data?.data ?? [];
+  const paging = query.data?.paging;
+  const totalPages = Math.max(1, paging?.total_pages ?? 1);
+  const safePage = paging?.page ?? page;
+
+  return (
+    <FormSection
+      title="Riwayat perubahan"
+      description="Siapa mengubah apa dan kapan. Perubahan yang tidak mengubah nilai tidak dicatat."
+      aside={paging ? <Tag tone="soft">{paging.total} catatan</Tag> : null}
+    >
+      {query.isPending ? (
+        <div
+          role="status"
+          aria-label="Memuat riwayat"
+          className="flex flex-col gap-4"
+        >
+          {Array.from({ length: 3 }, (_, index) => (
+            <div key={index} className="flex gap-4">
+              <div className="size-8 shrink-0 animate-pulse rounded-full bg-second/10" />
+              <div className="h-20 flex-1 animate-pulse rounded-xl bg-second/10" />
+            </div>
+          ))}
+        </div>
+      ) : query.isError && !query.data ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <p role="alert" className="text-sm text-second2">
+            {describeError(query.error)}
+          </p>
+          <button
+            type="button"
+            onClick={() => query.refetch()}
+            className={BTN_OUTLINE}
+          >
+            Coba lagi
+          </button>
+        </div>
+      ) : list.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-second/30 px-4 py-10 text-center">
+          <FiClock size={32} className="text-second/30" aria-hidden="true" />
+          <p className="text-sm text-second/60">Belum ada riwayat.</p>
+        </div>
+      ) : (
+        <ol className={query.isFetching ? "opacity-60 transition-opacity" : ""}>
+          {list.map((item, index) => {
+            const lines = describeHistory(item);
+            const meta = HISTORY_ICONS[item.action] ?? {
+              icon: FiClock,
+              tone: "bg-second/10 text-second/60",
+            };
+            const Icon = meta.icon;
+            const isLast = index === list.length - 1;
+
+            return (
+              <li key={item.id} className="relative flex gap-4 pb-6 last:pb-0">
+                {!isLast && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute bottom-0 left-4 top-8 w-px -translate-x-1/2 bg-second/15"
+                  />
+                )}
+
+                <span
+                  aria-hidden="true"
+                  className={`relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full ring-4 ring-primary ${meta.tone}`}
+                >
+                  <Icon size={16} />
+                </span>
+
+                <div className="min-w-0 flex-1 rounded-xl border border-second/20 bg-second/[0.02] p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <p className="text-sm font-semibold text-second">
+                      {HISTORY_LABELS[item.action] ?? item.action}
+                    </p>
+                    <p className="flex items-center gap-2 text-xs tabular-nums text-second/60">
+                      <FiClock size={16} aria-hidden="true" />
+                      {formatDateTime(item.created_at)}
+                    </p>
+                  </div>
+
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-second/60">
+                    <span
+                      aria-hidden="true"
+                      className="flex size-6 items-center justify-center rounded-full bg-second/10 text-xs font-bold text-second"
+                    >
+                      {initialOf(item.user_name)}
+                    </span>
+                    <span className="font-medium text-second">
+                      {item.user_name}
+                    </span>
+                    {item.user_role && (
+                      <Tag
+                        tone={item.user_role === "OWNER" ? "strong" : "soft"}
+                      >
+                        {ROLE_LABELS[item.user_role] ?? item.user_role}
+                      </Tag>
+                    )}
+                  </div>
+
+                  {lines.length > 0 && (
+                    <ul className="mt-3 flex flex-col gap-1 border-l-2 border-second/15 pl-3">
+                      {lines.map((line, lineIndex) => (
+                        <li
+                          key={lineIndex}
+                          className="break-words text-xs tabular-nums text-second/70"
+                        >
+                          {line}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+
+      {paging && paging.total_pages > 1 && (
+        <nav
+          aria-label="Paginasi riwayat"
+          className="flex items-center justify-between gap-2"
+        >
+          <p className="text-sm tabular-nums text-second/60">
+            Halaman {safePage} dari {totalPages}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={safePage <= 1 || query.isFetching}
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              className={BTN_OUTLINE}
+            >
+              <FiChevronLeft size={16} aria-hidden="true" />
+              Sebelumnya
+            </button>
+            <button
+              type="button"
+              disabled={safePage >= totalPages || query.isFetching}
+              onClick={() =>
+                setPage((current) => Math.min(totalPages, current + 1))
+              }
+              className={BTN_OUTLINE}
+            >
+              Berikutnya
+              <FiChevronRight size={16} aria-hidden="true" />
+            </button>
+          </div>
+        </nav>
+      )}
     </FormSection>
   );
 }
 
 /* ------------------------------ Delete report ----------------------------- */
 
-function DeleteReportSection({ report, basePath }) {
+function DeleteReportSection({ report, basePath, canRemit }) {
   const router = useRouter();
   const deleteReport = useDeleteDailyReport();
   const [confirming, setConfirming] = useState(false);
@@ -1205,13 +2118,14 @@ function DeleteReportSection({ report, basePath }) {
   return (
     <FormSection
       title="Hapus laporan"
-      description="Menghapus laporan beserta semua baris dan bukti transfernya secara permanen. Salah tanggal? Hapus lalu buat ulang."
+      description="Menghapus laporan beserta semua baris, riwayat, dan bukti transfernya secara permanen. Salah tanggal? Hapus lalu buat ulang."
     >
-      {report.transferred ? (
+      {report.remitted ? (
         <p className="flex items-start gap-2 text-sm text-second/60">
           <FiLock size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
-          Laporan yang sudah ditransfer tidak bisa dihapus. Hilangkan centang
-          transfer terlebih dahulu.
+          {canRemit
+            ? "Laporan yang sudah disetor tidak bisa dihapus. Buka kuncinya di bagian Setoran terlebih dahulu."
+            : "Laporan yang sudah disetor tidak bisa dihapus. Minta admin membuka kuncinya terlebih dahulu."}
         </p>
       ) : confirming ? (
         <div className="flex flex-wrap items-center gap-2">
@@ -1252,8 +2166,9 @@ function DeleteReportSection({ report, basePath }) {
 /* ---------------------------------- Page --------------------------------- */
 
 export default function ReportDetailView({ id, role }) {
-  const isAdmin = role === "admin";
   const basePath = `/${role}/daily-reports`;
+  // Hanya admin yang bisa menyetor. Owner adalah penerima setoran.
+  const canRemit = role === "admin";
 
   const query = useGetDailyReport(id);
   const report = query.data;
@@ -1285,7 +2200,9 @@ export default function ReportDetailView({ id, role }) {
     );
   }
 
-  const net = (Number(report.total_in) || 0) - (Number(report.total_out) || 0);
+  const remainingTotal = report.remaining_balance ?? report.closing_balance;
+  const remainingCash = report.remaining_cash ?? report.closing_cash;
+  const remainingNoncash = report.remaining_noncash ?? report.closing_noncash;
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-screen-xl flex-col gap-8 bg-primary pb-16">
@@ -1306,7 +2223,7 @@ export default function ReportDetailView({ id, role }) {
                 Laporan <span className="text-grad">harian</span>
               </h1>
               <p className="mt-2 text-pretty text-sm text-second/60">
-                {formatDate(report.date)} · Kasir {report.cashier_name}
+                {formatDate(report.date)}
               </p>
             </div>
           </div>
@@ -1335,10 +2252,10 @@ export default function ReportDetailView({ id, role }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Tag tone={report.transferred ? "success" : "outline"}>
-            {report.transferred ? "Sudah transfer" : "Belum transfer"}
+          <Tag tone={report.remitted ? "success" : "outline"}>
+            {report.remitted ? "Sudah disetor" : "Belum disetor"}
           </Tag>
-          {report.transferred && (
+          {report.remitted && (
             <Tag tone="soft">
               <FiLock size={16} aria-hidden="true" />
               Terkunci
@@ -1347,11 +2264,13 @@ export default function ReportDetailView({ id, role }) {
           <Tag tone={report.proof ? "soft" : "outline"}>
             {report.proof ? "Ada bukti transfer" : "Belum ada bukti"}
           </Tag>
+          {!canRemit && <Tag tone="outline">Setoran: lihat saja</Tag>}
         </div>
 
         {report.updated_at && (
           <p className="text-xs tabular-nums text-second/60">
-            Diperbarui {formatDateTime(report.updated_at)}
+            Diperbarui {formatDateTime(report.updated_at)}. Lihat siapa yang
+            mengubah di Riwayat perubahan.
           </p>
         )}
       </header>
@@ -1363,82 +2282,43 @@ export default function ReportDetailView({ id, role }) {
           query.isFetching ? "opacity-60" : ""
         }`}
       >
-        <OpeningBalanceCard
-          report={report}
-          canEdit={isAdmin && !report.transferred}
-        />
+        <OpeningBalanceCard report={report} canEdit={!report.remitted} />
         <StatCard
           icon={FiTrendingUp}
           label="Total masuk"
           value={formatMoney(report.total_in)}
-          hint="Semua pemasukan hari ini"
+          hint={`Tunai ${formatMoney(report.cash_in)} · Non tunai ${formatMoney(report.noncash_in)}`}
           tone="success"
         />
         <StatCard
           icon={FiTrendingDown}
           label="Total keluar"
           value={formatMoney(report.total_out)}
-          hint="Semua pengeluaran hari ini"
+          hint={`Tunai ${formatMoney(report.cash_out)} · Non tunai ${formatMoney(report.noncash_out)}`}
           tone="failure"
         />
         <StatCard
-          icon={FiList}
-          label="Jumlah baris"
-          value={formatNumber(report.entry_count ?? report.entries?.length)}
-          hint={`Maksimal ${formatNumber(MAX_ENTRIES)} baris`}
+          icon={FiInbox}
+          label="Sisa belum disetor"
+          value={formatMoney(remainingTotal)}
+          hint={`Tunai ${formatMoney(remainingCash)} · Non tunai ${formatMoney(remainingNoncash)}`}
           tone="pending"
         />
       </section>
 
-      {/* Ringkasan kas */}
-      <section
-        aria-label="Saldo akhir"
-        className="flex min-w-0 flex-col gap-8 rounded-2xl border border-second/30 bg-primary p-4 shadow-xl shadow-second/5 sm:p-8"
-      >
-        <div>
-          <h2 className="text-lg font-bold text-second">Saldo akhir</h2>
-          <p className="mt-2 text-pretty text-sm text-second/60">
-            Saldo akhir = saldo awal + total masuk − total keluar, yaitu uang
-            yang ditransfer ke owner.
-          </p>
-        </div>
+      <BalanceSection report={report} />
 
-        <dl className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div className="rounded-xl bg-second/[0.03] p-4">
-            <dt className="text-xs text-second/60">Saldo awal</dt>
-            <dd className="mt-2 text-lg font-bold tabular-nums text-second">
-              {formatMoney(report.opening_balance)}
-            </dd>
-            <p className="mt-2 text-xs text-second/60">Kas saat toko buka</p>
-          </div>
-          <div className="rounded-xl bg-second/[0.03] p-4">
-            <dt className="text-xs text-second/60">Selisih hari ini</dt>
-            <dd
-              className={`mt-2 text-lg font-bold tabular-nums ${
-                net < 0 ? "text-second2" : "text-second3"
-              }`}
-            >
-              {formatMoney(net)}
-            </dd>
-            <p className="mt-2 text-xs text-second/60">
-              Total masuk dikurangi total keluar
-            </p>
-          </div>
-          <div className="rounded-xl bg-grad p-4 text-primary shadow-lg shadow-second4/25">
-            <dt className="text-xs text-primary/90">Saldo akhir</dt>
-            <dd className="mt-2 text-lg font-bold tabular-nums">
-              {formatMoney(report.closing_balance)}
-            </dd>
-            <p className="mt-2 text-xs text-primary/90">Ditransfer ke owner</p>
-          </div>
-        </dl>
-      </section>
+      <EntriesSection report={report} canRemit={canRemit} />
 
-      <EntriesSection report={report} isAdmin={isAdmin} />
+      <RemitSection report={report} canRemit={canRemit} />
 
-      <TransferSection report={report} isAdmin={isAdmin} />
+      <HistorySection report={report} />
 
-      {isAdmin && <DeleteReportSection report={report} basePath={basePath} />}
+      <DeleteReportSection
+        report={report}
+        basePath={basePath}
+        canRemit={canRemit}
+      />
     </div>
   );
 }

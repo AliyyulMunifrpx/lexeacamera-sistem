@@ -14,6 +14,7 @@ import {
 /* -------------------------------------------------------------------------- */
 import api from "../../../lib/api/client.js";
 import { supabase } from "../../../lib/supabase.js";
+import { getNextOpening, getReportHistory } from "./api.js";
 
 const BASE = "/admin/daily-reports";
 
@@ -157,5 +158,24 @@ export function useDeleteProof() {
       queryClient.invalidateQueries({ queryKey: detailKey(id) });
       queryClient.invalidateQueries({ queryKey: ["daily-reports", "list"] });
     },
+  });
+}
+/* Dihitung dari laporan sebelumnya, jadi selalu ambil ulang saat form dibuka. */
+export function useGetNextOpening(date) {
+  return useQuery({
+    queryKey: ["daily report next opening", date ?? "today"],
+    queryFn: () => getNextOpening(date),
+    retry: false,
+    staleTime: 0,
+    refetchOnMount: "always",
+  });
+}
+/* signature: ringkasan data laporan, supaya riwayat ikut dimuat ulang setelah ada perubahan. */
+export function useGetReportHistory(id, page = 1, signature = "") {
+  return useQuery({
+    queryKey: ["daily report history", id, page, signature],
+    queryFn: () => getReportHistory(id, { page }),
+    enabled: Boolean(id),
+    placeholderData: (previousData) => previousData,
   });
 }

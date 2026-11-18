@@ -19,6 +19,7 @@ const calendarDate = Joi.string()
 
 const uuid = Joi.string().uuid();
 const money = Joi.number().integer().min(0).max(MAX_INT);
+const method = Joi.string().valid("CASH", "NON_CASH");
 const optionalText = (max) =>
   Joi.string().trim().max(max).allow("", null).optional();
 
@@ -29,24 +30,43 @@ export const reportIdValidation = Joi.object({
 export const getAllReportValidation = Joi.object({
   date_from: calendarDate.optional(),
   date_to: calendarDate.optional(),
-  transferred: Joi.boolean().optional(),
-  cashier: Joi.string().trim().max(100).allow("").optional(),
+  remitted: Joi.boolean().optional(),
+  page: Joi.number().integer().min(1).default(1),
+});
+
+export const historyValidation = Joi.object({
+  id: uuid.required(),
   page: Joi.number().integer().min(1).default(1),
 });
 
 export const createReportValidation = Joi.object({
   date: calendarDate.optional(),
-  opening_balance: money.required(),
+  opening_cash: money.optional(),
+  opening_noncash: money.optional(),
+});
+
+export const nextOpeningValidation = Joi.object({
+  date: calendarDate.optional(),
 });
 
 export const updateReportValidation = Joi.object({
   id: uuid.required(),
-  opening_balance: money.optional(),
-  transferred: Joi.boolean().optional(),
-}).or("opening_balance", "transferred");
+  opening_cash: money.optional(),
+  opening_noncash: money.optional(),
+  remit_cash: money.allow(null).optional(),
+  remit_transfer: money.allow(null).optional(),
+  remitted: Joi.boolean().optional(),
+}).or(
+  "opening_cash",
+  "opening_noncash",
+  "remit_cash",
+  "remit_transfer",
+  "remitted",
+);
 
 export const createEntryValidation = Joi.object({
   id: uuid.required(),
+  method: method.required(),
   name: Joi.string().trim().min(1).max(100).required(),
   note: optionalText(255),
   income: money.default(0),
@@ -56,11 +76,12 @@ export const createEntryValidation = Joi.object({
 export const updateEntryValidation = Joi.object({
   id: uuid.required(),
   entry_id: uuid.required(),
+  method: method.optional(),
   name: Joi.string().trim().min(1).max(100).optional(),
   note: optionalText(255),
   income: money.optional(),
   expense: money.optional(),
-}).or("name", "note", "income", "expense");
+}).or("method", "name", "note", "income", "expense");
 
 export const entryIdValidation = Joi.object({
   id: uuid.required(),

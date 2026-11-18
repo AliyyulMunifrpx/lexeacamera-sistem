@@ -8,6 +8,8 @@ import {
   createReportValidation,
   entryIdValidation,
   getAllReportValidation,
+  historyValidation,
+  nextOpeningValidation,
   proofRegisterValidation,
   proofUploadUrlValidation,
   reportIdValidation,
@@ -17,6 +19,7 @@ import {
 import { validate } from "../../validation/validation.js";
 
 const PER_PAGE = 20;
+const MAX_INT = 2147483647;
 const MAX_ENTRIES = 500;
 const BUCKET = process.env.SUPABASE_DAILY_REPORT_BUCKET;
 const SIGNED_URL_SECONDS = 3600;
@@ -45,11 +48,12 @@ const EXT_TYPE = {
 const REPORT_SELECT = {
   id: true,
   date: true,
-  cashier_id: true,
-  cashier_name: true,
-  opening_balance: true,
-  transferred: true,
-  transferred_at: true,
+  opening_cash: true,
+  opening_noncash: true,
+  remit_cash: true,
+  remit_transfer: true,
+  remitted: true,
+  remitted_at: true,
   proof_path: true,
   proof_content_type: true,
   proof_size: true,
@@ -58,20 +62,20 @@ const REPORT_SELECT = {
   updated_at: true,
 };
 
+const ENTRY_SELECT = {
+  id: true,
+  method: true,
+  name: true,
+  note: true,
+  income: true,
+  expense: true,
+  created_at: true,
+  updated_at: true,
+};
+
 const DETAIL_SELECT = {
   ...REPORT_SELECT,
-  entries: {
-    orderBy: [{ seq: "asc" }],
-    select: {
-      id: true,
-      name: true,
-      note: true,
-      income: true,
-      expense: true,
-      created_at: true,
-      updated_at: true,
-    },
-  },
+  entries: { orderBy: [{ seq: "asc" }], select: ENTRY_SELECT },
 };
 
 const dateOut = (value) => value.toISOString().slice(0, 10);
@@ -92,13 +96,53 @@ const actorOf = (user) => {
   return user;
 };
 
-const adminOf = (user) => {
-  const actor = actorOf(user);
-  if (actor.role !== "ADMIN") throw new ResponseError(403, "FORBIDDEN");
-  return actor;
+const assertCanSettle = (actor) => {
+  if (isOwner(actor)) throw new ResponseError(403, "REMIT_ADMIN_ONLY");
 };
 
-const scope = (actor) => (isOwner(actor) ? {} : { cashier_id: actor.id });
+const paging = (page, total) => ({
+  page,
+  per_page: PER_PAGE,
+  total,
+  total_pages: Math.ceil(total / PER_PAGE),
+});
+
+const diffOf = (before, after, keys) => {
+  const from = {};
+  const to = {};
+
+  for (const key of keys) {
+    if (before[key] !== after[key]) {
+      from[key] = before[key];
+      to[key] = after[key];
+    }
+  }
+
+  return Object.keys(to).length ? { before: from, after: to } : null;
+};
+
+const entryView = (entry) => ({
+  id: entry.id,
+  method: entry.method,
+  name: entry.name,
+  note: entry.note,
+  income: entry.income,
+  expense: entry.expense,
+});
+
+const ENTRY_FIELDS = ["method", "name", "note", "income", "expense"];
+
+const writeLog = (tx, reportId, actor, action, detail) =>
+  tx.dailyReportLog.create({
+    data: {
+      report_id: reportId,
+      user_id: actor.id,
+      user_name: actor.name ?? "",
+      user_role: actor.role ?? "",
+      action,
+      detail: detail ?? undefined,
+    },
+  });
 
 const assertBucket = () => {
   if (!BUCKET) throw new ResponseError(500, "REPORT_BUCKET_NOT_CONFIGURED");
@@ -131,24 +175,69 @@ const signPath = async (path) => {
   }
 };
 
-const lockReport = async (tx, id, actor) => {
+const lockReport = async (tx, id) => {
   const rows = await tx.$queryRaw`
-    SELECT id, cashier_id, transferred, proof_path
+    SELECT id, opening_cash, opening_noncash, remit_cash, remit_transfer, remitted, proof_path
     FROM "DailyReport"
     WHERE id = ${id}
     FOR UPDATE
   `;
 
-  if (!rows.length || rows[0].cashier_id !== actor.id) {
-    throw new ResponseError(404, "REPORT_NOT_FOUND");
-  }
+  if (!rows[0]) throw new ResponseError(404, "REPORT_NOT_FOUND");
 
   return rows[0];
 };
 
 const assertUnlocked = (report) => {
-  if (report.transferred) throw new ResponseError(409, "REPORT_LOCKED");
+  if (report.remitted) throw new ResponseError(409, "REPORT_LOCKED");
 };
+
+const emptyStat = () => ({
+  cash_in: 0,
+  cash_out: 0,
+  noncash_in: 0,
+  noncash_out: 0,
+  count: 0,
+});
+
+const addAmount = (stat, method, income, expense) => {
+  if (method === "CASH") {
+    stat.cash_in += income;
+    stat.cash_out += expense;
+  } else {
+    stat.noncash_in += income;
+    stat.noncash_out += expense;
+  }
+};
+
+const sumEntries = async (db, reportId) => {
+  const rows = await db.dailyReportEntry.groupBy({
+    by: ["method"],
+    where: { report_id: reportId },
+    _sum: { income: true, expense: true },
+    _count: { _all: true },
+  });
+  const stat = emptyStat();
+
+  for (const row of rows) {
+    addAmount(stat, row.method, row._sum.income ?? 0, row._sum.expense ?? 0);
+    stat.count += row._count._all;
+  }
+
+  return stat;
+};
+
+const closings = (report, stat) => {
+  const cash = report.opening_cash + stat.cash_in - stat.cash_out;
+  const noncash = report.opening_noncash + stat.noncash_in - stat.noncash_out;
+
+  return { cash, noncash, total: cash + noncash };
+};
+
+const remainingOf = (report, closing) => ({
+  cash: closing.cash - (report.remitted ? report.remit_cash : 0),
+  noncash: closing.noncash - (report.remitted ? report.remit_transfer : 0),
+});
 
 const assertAmounts = (income, expense) => {
   if (income > 0 === expense > 0) {
@@ -156,20 +245,36 @@ const assertAmounts = (income, expense) => {
   }
 };
 
-const header = (report, stat) => ({
-  id: report.id,
-  date: dateOut(report.date),
-  cashier_id: report.cashier_id,
-  cashier_name: report.cashier_name,
-  opening_balance: report.opening_balance,
-  total_in: stat.income,
-  total_out: stat.expense,
-  closing_balance: report.opening_balance + stat.income - stat.expense,
-  entry_count: stat.count,
-  transferred: report.transferred,
-  transferred_at: report.transferred_at,
-  has_proof: Boolean(report.proof_path),
-});
+const header = (report, stat) => {
+  const closing = closings(report, stat);
+  const left = remainingOf(report, closing);
+
+  return {
+    id: report.id,
+    date: dateOut(report.date),
+    opening_cash: report.opening_cash,
+    opening_noncash: report.opening_noncash,
+    opening_balance: report.opening_cash + report.opening_noncash,
+    total_in: stat.cash_in + stat.noncash_in,
+    total_out: stat.cash_out + stat.noncash_out,
+    cash_in: stat.cash_in,
+    cash_out: stat.cash_out,
+    noncash_in: stat.noncash_in,
+    noncash_out: stat.noncash_out,
+    closing_cash: closing.cash,
+    closing_noncash: closing.noncash,
+    closing_balance: closing.total,
+    remit_cash: report.remit_cash,
+    remit_transfer: report.remit_transfer,
+    remaining_cash: left.cash,
+    remaining_noncash: left.noncash,
+    remaining_balance: left.cash + left.noncash,
+    entry_count: stat.count,
+    remitted: report.remitted,
+    remitted_at: report.remitted_at,
+    has_proof: Boolean(report.proof_path),
+  };
+};
 
 const serializeProof = async (report) =>
   report.proof_path
@@ -183,18 +288,18 @@ const serializeProof = async (report) =>
 
 const serializeDetail = async (report) => {
   const date = dateOut(report.date);
-  let balance = report.opening_balance;
-  let income = 0;
-  let expense = 0;
+  let balance = report.opening_cash + report.opening_noncash;
+  const stat = emptyStat();
 
   const entries = report.entries.map((entry) => {
     balance += entry.income - entry.expense;
-    income += entry.income;
-    expense += entry.expense;
+    addAmount(stat, entry.method, entry.income, entry.expense);
+    stat.count += 1;
 
     return {
       id: entry.id,
       date,
+      method: entry.method,
       name: entry.name,
       note: entry.note,
       income: entry.income,
@@ -206,7 +311,7 @@ const serializeDetail = async (report) => {
   });
 
   return {
-    ...header(report, { income, expense, count: entries.length }),
+    ...header(report, stat),
     proof: await serializeProof(report),
     entries,
     created_at: report.created_at,
@@ -214,9 +319,9 @@ const serializeDetail = async (report) => {
   };
 };
 
-const fetchDetail = async (id, actor) => {
-  const report = await prisma.dailyReport.findFirst({
-    where: { id, ...scope(actor) },
+const fetchDetail = async (id) => {
+  const report = await prisma.dailyReport.findUnique({
+    where: { id },
     select: DETAIL_SELECT,
   });
   if (!report) throw new ResponseError(404, "REPORT_NOT_FOUND");
@@ -225,18 +330,15 @@ const fetchDetail = async (id, actor) => {
 };
 
 const getAllReports = async (request, user) => {
-  const actor = actorOf(user);
+  actorOf(user);
   const req = validate(getAllReportValidation, request);
 
   if (req.date_from && req.date_to && req.date_from > req.date_to) {
     throw new ResponseError(400, "INVALID_DATE_RANGE");
   }
 
-  const where = { ...scope(actor) };
-  if (req.transferred !== undefined) where.transferred = req.transferred;
-  if (req.cashier) {
-    where.cashier_name = { contains: req.cashier, mode: "insensitive" };
-  }
+  const where = {};
+  if (req.remitted !== undefined) where.remitted = req.remitted;
   if (req.date_from || req.date_to) {
     where.date = {};
     if (req.date_from) where.date.gte = toDate(req.date_from);
@@ -247,7 +349,7 @@ const getAllReports = async (request, user) => {
     prisma.dailyReport.findMany({
       where,
       select: REPORT_SELECT,
-      orderBy: [{ date: "desc" }, { created_at: "desc" }, { id: "asc" }],
+      orderBy: [{ date: "desc" }],
       skip: (req.page - 1) * PER_PAGE,
       take: PER_PAGE,
     }),
@@ -256,66 +358,196 @@ const getAllReports = async (request, user) => {
 
   const groups = rows.length
     ? await prisma.dailyReportEntry.groupBy({
-        by: ["report_id"],
+        by: ["report_id", "method"],
         where: { report_id: { in: rows.map((row) => row.id) } },
         _sum: { income: true, expense: true },
         _count: { _all: true },
       })
     : [];
-  const stats = new Map(
-    groups.map((group) => [
-      group.report_id,
-      {
-        income: group._sum.income ?? 0,
-        expense: group._sum.expense ?? 0,
-        count: group._count._all,
-      },
-    ]),
-  );
+  const stats = new Map();
+  for (const group of groups) {
+    const stat = stats.get(group.report_id) ?? emptyStat();
+    addAmount(
+      stat,
+      group.method,
+      group._sum.income ?? 0,
+      group._sum.expense ?? 0,
+    );
+    stat.count += group._count._all;
+    stats.set(group.report_id, stat);
+  }
 
   return {
-    data: rows.map((row) =>
-      header(row, stats.get(row.id) ?? { income: 0, expense: 0, count: 0 }),
-    ),
-    paging: {
-      page: req.page,
-      per_page: PER_PAGE,
-      total,
-      total_pages: Math.ceil(total / PER_PAGE),
-    },
+    data: rows.map((row) => header(row, stats.get(row.id) ?? emptyStat())),
+    paging: paging(req.page, total),
   };
 };
 
 const getReport = async (request, user) => {
-  const actor = actorOf(user);
+  actorOf(user);
   const req = validate(reportIdValidation, request);
 
-  return fetchDetail(req.id, actor);
+  return fetchDetail(req.id);
+};
+
+const getHistory = async (request, user) => {
+  actorOf(user);
+  const req = validate(historyValidation, request);
+
+  const report = await prisma.dailyReport.findUnique({
+    where: { id: req.id },
+    select: { id: true },
+  });
+  if (!report) throw new ResponseError(404, "REPORT_NOT_FOUND");
+
+  const where = { report_id: req.id };
+  const [rows, total] = await prisma.$transaction([
+    prisma.dailyReportLog.findMany({
+      where,
+      select: {
+        id: true,
+        user_id: true,
+        user_name: true,
+        user_role: true,
+        action: true,
+        detail: true,
+        created_at: true,
+      },
+      orderBy: [{ seq: "desc" }],
+      skip: (req.page - 1) * PER_PAGE,
+      take: PER_PAGE,
+    }),
+    prisma.dailyReportLog.count({ where }),
+  ]);
+
+  return { data: rows, paging: paging(req.page, total) };
+};
+
+const resolveOpening = async (db, date) => {
+  const previous = await db.dailyReport.findFirst({
+    where: { date: { lt: toDate(date) } },
+    orderBy: [{ date: "desc" }],
+    select: {
+      id: true,
+      date: true,
+      opening_cash: true,
+      opening_noncash: true,
+      remit_cash: true,
+      remit_transfer: true,
+      remitted: true,
+    },
+  });
+
+  if (!previous) {
+    return { opening_cash: 0, opening_noncash: 0, source: null, pending: null };
+  }
+
+  if (!previous.remitted) {
+    return {
+      opening_cash: null,
+      opening_noncash: null,
+      source: null,
+      pending: { id: previous.id, date: dateOut(previous.date) },
+    };
+  }
+
+  const closing = closings(previous, await sumEntries(db, previous.id));
+  const left = remainingOf(previous, closing);
+  const cash = Math.max(left.cash, 0);
+  const noncash = Math.max(left.noncash, 0);
+  if (cash > MAX_INT || noncash > MAX_INT) {
+    throw new ResponseError(409, "OPENING_BALANCE_TOO_LARGE");
+  }
+
+  return {
+    opening_cash: cash,
+    opening_noncash: noncash,
+    source: {
+      id: previous.id,
+      date: dateOut(previous.date),
+      closing_balance: closing.total,
+      remit_cash: previous.remit_cash,
+      remit_transfer: previous.remit_transfer,
+    },
+    pending: null,
+  };
+};
+
+const getNextOpening = async (request, user) => {
+  actorOf(user);
+  const req = validate(nextOpeningValidation, request);
+
+  const date = req.date ?? todayWib();
+  if (date > todayWib()) throw new ResponseError(400, "DATE_IN_FUTURE");
+
+  const result = await resolveOpening(prisma, date);
+
+  return {
+    date,
+    opening_cash: result.opening_cash,
+    opening_noncash: result.opening_noncash,
+    opening_balance:
+      result.pending === null
+        ? result.opening_cash + result.opening_noncash
+        : null,
+    source: result.source,
+    pending: result.pending,
+  };
 };
 
 const createReport = async (request, user) => {
-  const actor = adminOf(user);
+  const actor = actorOf(user);
   const req = validate(createReportValidation, request);
 
   const date = req.date ?? todayWib();
   if (date > todayWib()) throw new ResponseError(400, "DATE_IN_FUTURE");
 
-  const exists = await prisma.dailyReport.findFirst({
-    where: { date: toDate(date), cashier_id: actor.id },
-    select: { id: true },
-  });
-  if (exists) throw new ResponseError(409, "REPORT_ALREADY_EXISTS");
+  const manual =
+    req.opening_cash !== undefined || req.opening_noncash !== undefined;
 
   let created;
   try {
-    created = await prisma.dailyReport.create({
-      data: {
-        date: toDate(date),
-        cashier_id: actor.id,
-        cashier_name: actor.name,
-        opening_balance: req.opening_balance,
-      },
-      select: { id: true },
+    created = await prisma.$transaction(async (tx) => {
+      const exists = await tx.dailyReport.findUnique({
+        where: { date: toDate(date) },
+        select: { id: true },
+      });
+      if (exists) {
+        throw new ResponseError(409, "REPORT_ALREADY_EXISTS", {
+          report_id: exists.id,
+        });
+      }
+
+      let cash = req.opening_cash ?? 0;
+      let noncash = req.opening_noncash ?? 0;
+
+      if (!manual) {
+        const resolved = await resolveOpening(tx, date);
+        if (resolved.pending) {
+          throw new ResponseError(409, "PREVIOUS_REPORT_NOT_REMITTED", {
+            report_id: resolved.pending.id,
+            date: resolved.pending.date,
+          });
+        }
+        cash = resolved.opening_cash;
+        noncash = resolved.opening_noncash;
+      }
+
+      const report = await tx.dailyReport.create({
+        data: {
+          date: toDate(date),
+          opening_cash: cash,
+          opening_noncash: noncash,
+        },
+        select: { id: true },
+      });
+      await writeLog(tx, report.id, actor, "REPORT_CREATED", {
+        opening_cash: cash,
+        opening_noncash: noncash,
+        carried: !manual,
+      });
+
+      return report;
     });
   } catch (error) {
     if (error.code === "P2002") {
@@ -324,44 +556,120 @@ const createReport = async (request, user) => {
     throw error;
   }
 
-  return fetchDetail(created.id, actor);
+  return fetchDetail(created.id);
+};
+
+const assertCanRemit = async (tx, id, next, proofPath) => {
+  const missing = ["remit_cash", "remit_transfer"].filter(
+    (key) => next[key] === null || next[key] === undefined,
+  );
+  if (missing.length) {
+    throw new ResponseError(400, "REMIT_AMOUNT_REQUIRED", { fields: missing });
+  }
+
+  const closing = closings(next, await sumEntries(tx, id));
+
+  if (closing.cash < 0 || closing.noncash < 0) {
+    throw new ResponseError(400, "NEGATIVE_BALANCE", {
+      closing_cash: closing.cash,
+      closing_noncash: closing.noncash,
+    });
+  }
+  if (next.remit_cash > closing.cash) {
+    throw new ResponseError(400, "REMIT_CASH_EXCEEDS_BALANCE", {
+      closing_cash: closing.cash,
+    });
+  }
+  if (next.remit_transfer > closing.noncash) {
+    throw new ResponseError(400, "REMIT_TRANSFER_EXCEEDS_BALANCE", {
+      closing_noncash: closing.noncash,
+    });
+  }
+  if (next.remit_transfer > 0 && !proofPath) {
+    throw new ResponseError(400, "PROOF_REQUIRED");
+  }
 };
 
 const updateReport = async (request, user) => {
-  const actor = adminOf(user);
+  const actor = actorOf(user);
   const req = validate(updateReportValidation, request);
 
-  await prisma.$transaction(async (tx) => {
-    const current = await lockReport(tx, req.id, actor);
-    const data = { updated_at: new Date() };
+  const touchesRemit = [req.remit_cash, req.remit_transfer, req.remitted].some(
+    (value) => value !== undefined,
+  );
+  if (touchesRemit) assertCanSettle(actor);
 
-    if (req.opening_balance !== undefined) {
-      if (current.transferred && req.transferred !== false) {
-        throw new ResponseError(409, "REPORT_LOCKED");
-      }
-      data.opening_balance = req.opening_balance;
+  await prisma.$transaction(async (tx) => {
+    const current = await lockReport(tx, req.id);
+    const nextRemitted = req.remitted ?? current.remitted;
+
+    const touchesSettlement = [
+      req.opening_cash,
+      req.opening_noncash,
+      req.remit_cash,
+      req.remit_transfer,
+    ].some((value) => value !== undefined);
+    if (current.remitted && nextRemitted && touchesSettlement) {
+      throw new ResponseError(409, "REPORT_LOCKED");
     }
 
-    if (
-      req.transferred !== undefined &&
-      req.transferred !== current.transferred
-    ) {
-      data.transferred = req.transferred;
-      data.transferred_at = req.transferred ? new Date() : null;
+    const next = {
+      opening_cash: req.opening_cash ?? current.opening_cash,
+      opening_noncash: req.opening_noncash ?? current.opening_noncash,
+      remit_cash:
+        req.remit_cash !== undefined ? req.remit_cash : current.remit_cash,
+      remit_transfer:
+        req.remit_transfer !== undefined
+          ? req.remit_transfer
+          : current.remit_transfer,
+    };
+
+    if (nextRemitted && !current.remitted) {
+      await assertCanRemit(tx, req.id, next, current.proof_path);
+    }
+
+    const data = { updated_at: new Date() };
+    if (req.opening_cash !== undefined) data.opening_cash = req.opening_cash;
+    if (req.opening_noncash !== undefined) {
+      data.opening_noncash = req.opening_noncash;
+    }
+    if (req.remit_cash !== undefined) data.remit_cash = req.remit_cash;
+    if (req.remit_transfer !== undefined) {
+      data.remit_transfer = req.remit_transfer;
+    }
+    if (nextRemitted !== current.remitted) {
+      data.remitted = nextRemitted;
+      data.remitted_at = nextRemitted ? new Date() : null;
     }
 
     await tx.dailyReport.update({ where: { id: req.id }, data });
+
+    const opening = diffOf(current, next, ["opening_cash", "opening_noncash"]);
+    if (opening) await writeLog(tx, req.id, actor, "OPENING_UPDATED", opening);
+
+    const remit = diffOf(current, next, ["remit_cash", "remit_transfer"]);
+    if (nextRemitted && !current.remitted) {
+      await writeLog(tx, req.id, actor, "REMITTED", {
+        remit_cash: next.remit_cash,
+        remit_transfer: next.remit_transfer,
+      });
+    } else {
+      if (!nextRemitted && current.remitted) {
+        await writeLog(tx, req.id, actor, "REMIT_REOPENED");
+      }
+      if (remit) await writeLog(tx, req.id, actor, "REMIT_UPDATED", remit);
+    }
   });
 
-  return fetchDetail(req.id, actor);
+  return fetchDetail(req.id);
 };
 
 const deleteReport = async (request, user) => {
-  const actor = adminOf(user);
+  actorOf(user);
   const req = validate(reportIdValidation, request);
 
   const proofPath = await prisma.$transaction(async (tx) => {
-    const current = await lockReport(tx, req.id, actor);
+    const current = await lockReport(tx, req.id);
     assertUnlocked(current);
 
     await tx.dailyReport.delete({ where: { id: req.id } });
@@ -373,12 +681,12 @@ const deleteReport = async (request, user) => {
 };
 
 const createEntry = async (request, user) => {
-  const actor = adminOf(user);
+  const actor = actorOf(user);
   const req = validate(createEntryValidation, request);
   assertAmounts(req.income, req.expense);
 
   await prisma.$transaction(async (tx) => {
-    const current = await lockReport(tx, req.id, actor);
+    const current = await lockReport(tx, req.id);
     assertUnlocked(current);
 
     const count = await tx.dailyReportEntry.count({
@@ -390,35 +698,40 @@ const createEntry = async (request, user) => {
       });
     }
 
-    await tx.dailyReportEntry.create({
+    const entry = await tx.dailyReportEntry.create({
       data: {
         report_id: req.id,
+        method: req.method,
         name: req.name,
         note: blankToNull(req.note) ?? null,
         income: req.income,
         expense: req.expense,
       },
+      select: ENTRY_SELECT,
     });
     await tx.dailyReport.update({
       where: { id: req.id },
       data: { updated_at: new Date() },
     });
+    await writeLog(tx, req.id, actor, "ENTRY_CREATED", {
+      entry: entryView(entry),
+    });
   });
 
-  return fetchDetail(req.id, actor);
+  return fetchDetail(req.id);
 };
 
 const updateEntry = async (request, user) => {
-  const actor = adminOf(user);
+  const actor = actorOf(user);
   const req = validate(updateEntryValidation, request);
 
   await prisma.$transaction(async (tx) => {
-    const current = await lockReport(tx, req.id, actor);
+    const current = await lockReport(tx, req.id);
     assertUnlocked(current);
 
     const entry = await tx.dailyReportEntry.findFirst({
       where: { id: req.entry_id, report_id: req.id },
-      select: { id: true, income: true, expense: true },
+      select: ENTRY_SELECT,
     });
     if (!entry) throw new ResponseError(404, "ENTRY_NOT_FOUND");
 
@@ -427,6 +740,7 @@ const updateEntry = async (request, user) => {
     assertAmounts(income, expense);
 
     const data = { income, expense, updated_at: new Date() };
+    if (req.method !== undefined) data.method = req.method;
     if (req.name !== undefined) data.name = req.name;
     if (req.note !== undefined) data.note = blankToNull(req.note);
 
@@ -435,36 +749,50 @@ const updateEntry = async (request, user) => {
       where: { id: req.id },
       data: { updated_at: new Date() },
     });
+
+    const changes = diffOf(entry, { ...entry, ...data }, ENTRY_FIELDS);
+    if (changes) {
+      await writeLog(tx, req.id, actor, "ENTRY_UPDATED", {
+        entry_id: entry.id,
+        ...changes,
+      });
+    }
   });
 
-  return fetchDetail(req.id, actor);
+  return fetchDetail(req.id);
 };
 
 const deleteEntry = async (request, user) => {
-  const actor = adminOf(user);
+  const actor = actorOf(user);
   const req = validate(entryIdValidation, request);
 
   await prisma.$transaction(async (tx) => {
-    const current = await lockReport(tx, req.id, actor);
+    const current = await lockReport(tx, req.id);
     assertUnlocked(current);
 
-    const { count } = await tx.dailyReportEntry.deleteMany({
+    const entry = await tx.dailyReportEntry.findFirst({
       where: { id: req.entry_id, report_id: req.id },
+      select: ENTRY_SELECT,
     });
-    if (!count) throw new ResponseError(404, "ENTRY_NOT_FOUND");
+    if (!entry) throw new ResponseError(404, "ENTRY_NOT_FOUND");
 
+    await tx.dailyReportEntry.delete({ where: { id: entry.id } });
     await tx.dailyReport.update({
       where: { id: req.id },
       data: { updated_at: new Date() },
     });
+    await writeLog(tx, req.id, actor, "ENTRY_DELETED", {
+      entry: entryView(entry),
+    });
   });
 
-  return fetchDetail(req.id, actor);
+  return fetchDetail(req.id);
 };
 
 const createProofUploadUrl = async (request, user) => {
-  const actor = adminOf(user);
+  const actor = actorOf(user);
   const req = validate(proofUploadUrlValidation, request);
+  assertCanSettle(actor);
   assertBucket();
 
   const ext = PROOF_RULE.types[req.content_type.toLowerCase()];
@@ -474,8 +802,8 @@ const createProofUploadUrl = async (request, user) => {
     });
   }
 
-  const report = await prisma.dailyReport.findFirst({
-    where: { id: req.id, cashier_id: actor.id },
+  const report = await prisma.dailyReport.findUnique({
+    where: { id: req.id },
     select: { id: true },
   });
   if (!report) throw new ResponseError(404, "REPORT_NOT_FOUND");
@@ -514,8 +842,9 @@ const findUploaded = async (id, path) => {
 };
 
 const setProof = async (request, user) => {
-  const actor = adminOf(user);
+  const actor = actorOf(user);
   const req = validate(proofRegisterValidation, request);
+  assertCanSettle(actor);
   assertBucket();
 
   const match = new RegExp(
@@ -523,8 +852,8 @@ const setProof = async (request, user) => {
   ).exec(req.path);
   if (!match) throw new ResponseError(400, "INVALID_PROOF_PATH");
 
-  const owned = await prisma.dailyReport.findFirst({
-    where: { id: req.id, cashier_id: actor.id },
+  const owned = await prisma.dailyReport.findUnique({
+    where: { id: req.id },
     select: { id: true },
   });
   if (!owned) throw new ResponseError(404, "REPORT_NOT_FOUND");
@@ -549,18 +878,24 @@ const setProof = async (request, user) => {
   let oldPath;
   try {
     oldPath = await prisma.$transaction(async (tx) => {
-      const current = await lockReport(tx, req.id, actor);
+      const current = await lockReport(tx, req.id);
       if (current.proof_path === req.path) return null;
 
+      const proofType = contentType ?? EXT_TYPE[match[1]];
       await tx.dailyReport.update({
         where: { id: req.id },
         data: {
           proof_path: req.path,
-          proof_content_type: contentType ?? EXT_TYPE[match[1]],
+          proof_content_type: proofType,
           proof_size: size,
           proof_uploaded_at: new Date(),
           updated_at: new Date(),
         },
+      });
+      await writeLog(tx, req.id, actor, "PROOF_SET", {
+        content_type: proofType,
+        size,
+        replaced: Boolean(current.proof_path),
       });
 
       return current.proof_path;
@@ -577,8 +912,8 @@ const setProof = async (request, user) => {
 
   if (oldPath) await removeFiles([oldPath]);
 
-  const report = await prisma.dailyReport.findFirst({
-    where: { id: req.id, cashier_id: actor.id },
+  const report = await prisma.dailyReport.findUnique({
+    where: { id: req.id },
     select: REPORT_SELECT,
   });
   if (!report) throw new ResponseError(404, "REPORT_NOT_FOUND");
@@ -587,12 +922,16 @@ const setProof = async (request, user) => {
 };
 
 const deleteProof = async (request, user) => {
-  const actor = adminOf(user);
+  const actor = actorOf(user);
   const req = validate(reportIdValidation, request);
+  assertCanSettle(actor);
 
   const oldPath = await prisma.$transaction(async (tx) => {
-    const current = await lockReport(tx, req.id, actor);
+    const current = await lockReport(tx, req.id);
     if (!current.proof_path) throw new ResponseError(404, "PROOF_NOT_FOUND");
+    if (current.remitted && current.remit_transfer > 0) {
+      throw new ResponseError(409, "PROOF_LOCKED");
+    }
 
     await tx.dailyReport.update({
       where: { id: req.id },
@@ -604,6 +943,7 @@ const deleteProof = async (request, user) => {
         updated_at: new Date(),
       },
     });
+    await writeLog(tx, req.id, actor, "PROOF_DELETED");
 
     return current.proof_path;
   });
@@ -615,6 +955,8 @@ const deleteProof = async (request, user) => {
 export default {
   getAllReports,
   getReport,
+  getNextOpening,
+  getHistory,
   createReport,
   updateReport,
   deleteReport,

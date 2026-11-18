@@ -24,6 +24,21 @@ export const PROOF_TYPES = [
 // Hanya format ini yang bisa ditampilkan sebagai gambar di browser.
 export const PREVIEWABLE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
+/* Metode uang pada baris: tunai hanya bisa disetor tunai, non tunai lewat transfer. */
+export const METHODS = [
+  { id: "CASH", label: "Tunai" },
+  { id: "NON_CASH", label: "Non tunai" },
+];
+
+export function methodLabel(method) {
+  return METHODS.find((item) => item.id === method)?.label ?? "—";
+}
+
+// Setoran transfer lebih dari 0 wajib punya bukti transfer.
+export function needsProof(report) {
+  return Number(report?.remit_transfer) > 0;
+}
+
 export const FOCUS_RING =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-second4/40";
 
@@ -113,20 +128,26 @@ export function todayWib() {
 /* --------------------------------- Errors --------------------------------- */
 
 const ERROR_MESSAGES = {
-  FORBIDDEN: "Anda tidak memiliki akses untuk tindakan ini.",
+  REMIT_ADMIN_ONLY:
+    "Setoran dan bukti transfer hanya bisa diurus oleh admin. Owner hanya melihat.",
   REPORT_NOT_FOUND: "Laporan tidak ditemukan.",
   ENTRY_NOT_FOUND: "Baris tidak ditemukan. Muat ulang halaman lalu coba lagi.",
   PROOF_NOT_FOUND: "Bukti transfer tidak ditemukan.",
-  REPORT_ALREADY_EXISTS:
-    "Laporan untuk tanggal tersebut sudah ada. Buka laporan yang sudah ada.",
+  REPORT_ALREADY_EXISTS: "Laporan untuk tanggal tersebut sudah ada.",
   REPORT_LOCKED:
-    "Laporan sudah ditransfer dan terkunci. Hilangkan centang transfer untuk membukanya.",
+    "Laporan sudah disetor dan terkunci. Minta admin membuka kuncinya untuk mengubah.",
   ENTRY_LIMIT_REACHED: "Jumlah baris sudah mencapai batas maksimal (500).",
   INVALID_ENTRY_AMOUNT:
     "Isi salah satu saja: pemasukan atau pengeluaran, dan nilainya harus lebih dari 0.",
   DATE_IN_FUTURE: "Tanggal laporan tidak boleh di masa depan.",
   INVALID_DATE_RANGE:
     "Tanggal awal tidak boleh lebih besar dari tanggal akhir.",
+  OPENING_BALANCE_TOO_LARGE:
+    "Sisa saldo laporan sebelumnya terlalu besar. Isi saldo awal secara manual.",
+  PROOF_REQUIRED:
+    "Setoran transfer wajib punya bukti transfer. Unggah buktinya dulu.",
+  PROOF_LOCKED:
+    "Bukti transfer pada laporan yang sudah disetor hanya bisa diganti, tidak bisa dihapus. Buka kunci laporan dulu.",
   UNSUPPORTED_MEDIA_TYPE:
     "Format file tidak didukung. Gunakan JPEG, PNG, WebP, HEIC, atau PDF.",
   INVALID_PROOF_PATH: "Data file tidak valid. Coba unggah ulang.",
@@ -139,14 +160,152 @@ const ERROR_MESSAGES = {
   REPORT_UPLOAD_CHECK_FAILED: "Gagal memeriksa file yang diunggah. Coba lagi.",
 };
 
+const REMIT_FIELD_LABELS = {
+  remit_cash: "setoran tunai",
+  remit_transfer: "setoran transfer",
+};
+
 export function describeError(error) {
-  const code = error?.response?.data?.errors;
+  const body = error?.response?.data;
+  const code = body?.errors;
+  const details = body?.details ?? {};
+
+  switch (code) {
+    case "REMIT_CASH_EXCEEDS_BALANCE":
+      return details.closing_cash != null
+        ? `Setoran tunai melebihi saldo akhir tunai (${formatMoney(details.closing_cash)}).`
+        : "Setoran tunai melebihi saldo akhir tunai.";
+    case "REMIT_TRANSFER_EXCEEDS_BALANCE":
+      return details.closing_noncash != null
+        ? `Setoran transfer melebihi saldo akhir non tunai (${formatMoney(details.closing_noncash)}).`
+        : "Setoran transfer melebihi saldo akhir non tunai.";
+    case "NEGATIVE_BALANCE":
+      return `Saldo akhir ${
+        details.closing_cash < 0 ? "tunai" : "non tunai"
+      } negatif. Perbaiki baris yang salah dulu, misalnya pengeluaran yang salah metode.`;
+    case "REMIT_AMOUNT_REQUIRED": {
+      const fields = Array.isArray(details.fields)
+        ? details.fields.map((field) => REMIT_FIELD_LABELS[field] ?? field)
+        : [];
+      return fields.length > 0
+        ? `Isi ${fields.join(" dan ")} (boleh 0).`
+        : "Isi setoran tunai dan setoran transfer (boleh 0).";
+    }
+    case "PREVIOUS_REPORT_NOT_REMITTED":
+      return details.date
+        ? `Laporan ${formatDate(details.date)} belum disetor. Selesaikan dulu, atau isi saldo awal secara manual.`
+        : "Laporan sebelumnya belum disetor. Selesaikan dulu, atau isi saldo awal secara manual.";
+    default:
+      break;
+  }
 
   if (typeof code === "string" && ERROR_MESSAGES[code]) {
     return ERROR_MESSAGES[code];
   }
 
   return normalizeApiError(error).message;
+}
+
+/* ------------------------------ Riwayat edit ------------------------------ */
+
+export const HISTORY_LABELS = {
+  REPORT_CREATED: "Membuat laporan",
+  OPENING_UPDATED: "Mengubah saldo awal",
+  ENTRY_CREATED: "Menambah baris",
+  ENTRY_UPDATED: "Mengubah baris",
+  ENTRY_DELETED: "Menghapus baris",
+  REMIT_UPDATED: "Mengubah isian setoran",
+  REMITTED: "Menandai sudah disetor",
+  REMIT_REOPENED: "Membuka kunci setoran",
+  PROOF_SET: "Mengunggah bukti transfer",
+  PROOF_DELETED: "Menghapus bukti transfer",
+};
+
+export const ROLE_LABELS = { ADMIN: "Admin", OWNER: "Owner" };
+
+const FIELD_LABELS = {
+  opening_cash: "Saldo awal tunai",
+  opening_noncash: "Saldo awal non tunai",
+  remit_cash: "Setoran tunai",
+  remit_transfer: "Setoran transfer",
+  income: "Pemasukan",
+  expense: "Pengeluaran",
+  name: "Atas nama",
+  note: "Keterangan",
+  method: "Metode",
+};
+
+const MONEY_FIELDS = new Set([
+  "opening_cash",
+  "opening_noncash",
+  "remit_cash",
+  "remit_transfer",
+  "income",
+  "expense",
+]);
+
+function fieldValue(key, value) {
+  if (value === null || value === undefined || value === "") return "—";
+  if (MONEY_FIELDS.has(key)) return formatMoney(value);
+  if (key === "method") return methodLabel(value);
+
+  return String(value);
+}
+
+function changeLines(before, after) {
+  const keys = [
+    ...new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})]),
+  ];
+
+  return keys.map(
+    (key) =>
+      `${FIELD_LABELS[key] ?? key}: ${fieldValue(key, before?.[key])} → ${fieldValue(key, after?.[key])}`,
+  );
+}
+
+function entryLine(entry) {
+  const income = Number(entry?.income) || 0;
+  const amount =
+    income > 0
+      ? `+ ${formatMoney(income)}`
+      : `− ${formatMoney(entry?.expense)}`;
+
+  return `“${entry?.name ?? "—"}” (${methodLabel(entry?.method)}) ${amount}${
+    entry?.note ? ` · ${entry.note}` : ""
+  }`;
+}
+
+/* Rincian perubahan dalam bentuk baris teks. */
+export function describeHistory(item) {
+  const detail = item?.detail ?? {};
+
+  switch (item?.action) {
+    case "REPORT_CREATED":
+      return [
+        `Saldo awal tunai ${formatMoney(detail.opening_cash)}, non tunai ${formatMoney(detail.opening_noncash)}${
+          detail.carried ? " (otomatis dari laporan sebelumnya)" : ""
+        }`,
+      ];
+    case "OPENING_UPDATED":
+    case "REMIT_UPDATED":
+    case "ENTRY_UPDATED":
+      return changeLines(detail.before, detail.after);
+    case "ENTRY_CREATED":
+    case "ENTRY_DELETED":
+      return [entryLine(detail.entry)];
+    case "REMITTED":
+      return [
+        `Setoran tunai ${formatMoney(detail.remit_cash)}, transfer ${formatMoney(detail.remit_transfer)}`,
+      ];
+    case "PROOF_SET":
+      return [
+        `${detail.replaced ? "Mengganti file lama · " : ""}${
+          detail.content_type ?? ""
+        }${detail.size ? ` · ${formatBytes(detail.size)}` : ""}`.trim(),
+      ].filter(Boolean);
+    default:
+      return [];
+  }
 }
 
 /* ------------------------------ Small pieces ------------------------------ */
@@ -170,6 +329,14 @@ export function Tag({ children, tone = "outline" }) {
   );
 }
 
+export function MethodTag({ method }) {
+  return (
+    <Tag tone={method === "NON_CASH" ? "strong" : "soft"}>
+      {methodLabel(method)}
+    </Tag>
+  );
+}
+
 export function ErrorText({ id, children }) {
   return (
     <p
@@ -180,6 +347,43 @@ export function ErrorText({ id, children }) {
       <FiAlertCircle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
       {children}
     </p>
+  );
+}
+
+/* Input rupiah: hanya angka, titik ribuan otomatis. */
+export function AmountInput({
+  id,
+  value,
+  onChange,
+  disabled,
+  hasError,
+  describedBy,
+  placeholder = "10.000",
+  ...rest
+}) {
+  return (
+    <div className="flex">
+      <span
+        aria-hidden="true"
+        className="inline-flex shrink-0 items-center rounded-l-xl border border-r-0 border-second/30 bg-second/5 px-4 text-sm font-medium text-second/60"
+      >
+        Rp
+      </span>
+      <input
+        id={id}
+        type="text"
+        inputMode="numeric"
+        autoComplete="off"
+        value={formatThousands(value)}
+        onChange={(event) => onChange(digitsOnly(event.target.value))}
+        placeholder={placeholder}
+        disabled={disabled}
+        className={`${inputClass(hasError)} rounded-l-none tabular-nums`}
+        aria-invalid={hasError ? true : undefined}
+        aria-describedby={describedBy}
+        {...rest}
+      />
+    </div>
   );
 }
 

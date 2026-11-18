@@ -30,6 +30,11 @@ generator client {
   provider = "prisma-client-js"
 }
 
+enum EntryMethod {
+  CASH
+  NON_CASH
+}
+
 datasource db {
   provider = "postgresql"
 }
@@ -37,6 +42,11 @@ datasource db {
 enum Condition {
   NEW
   SECOND
+}
+
+enum RemitType {
+  CASH
+  TRANSFER
 }
 
 enum Role {
@@ -469,16 +479,15 @@ model QualityControlMedia {
 
 // Tambahkan ke model User:
 //   daily_reports DailyReport[]
-
 model DailyReport {
   id                 String             @id @default(uuid())
-  date               DateTime           @db.Date
-  cashier_id         String
-  cashier            User               @relation(fields: [cashier_id], references: [id], onDelete: Restrict)
-  cashier_name       String
-  opening_balance    Int
-  transferred        Boolean            @default(false)
-  transferred_at     DateTime?
+  date               DateTime           @unique @db.Date
+  opening_cash       Int
+  opening_noncash    Int
+  remit_cash         Int?
+  remit_transfer     Int?
+  remitted           Boolean            @default(false)
+  remitted_at        DateTime?
   proof_path         String?            @unique
   proof_content_type String?
   proof_size         Int?
@@ -486,9 +495,9 @@ model DailyReport {
   created_at         DateTime           @default(now())
   updated_at         DateTime           @updatedAt
   entries            DailyReportEntry[]
-
-  @@unique([date, cashier_id])
-  @@index([cashier_id, date])
+  logs               DailyReportLog[]
+  user               User?              @relation(fields: [userId], references: [id])
+  userId             String?
 }
 
 model DailyReportEntry {
@@ -496,12 +505,28 @@ model DailyReportEntry {
   seq        Int         @default(autoincrement())
   report_id  String
   report     DailyReport @relation(fields: [report_id], references: [id], onDelete: Cascade)
+  method     EntryMethod
   name       String
   note       String?
   income     Int         @default(0)
   expense    Int         @default(0)
   created_at DateTime    @default(now())
   updated_at DateTime    @updatedAt
+
+  @@index([report_id, seq])
+}
+
+model DailyReportLog {
+  id         String      @id @default(uuid())
+  seq        Int         @default(autoincrement())
+  report_id  String
+  report     DailyReport @relation(fields: [report_id], references: [id], onDelete: Cascade)
+  user_id    String
+  user_name  String
+  user_role  String
+  action     String
+  detail     Json?
+  created_at DateTime    @default(now())
 
   @@index([report_id, seq])
 }

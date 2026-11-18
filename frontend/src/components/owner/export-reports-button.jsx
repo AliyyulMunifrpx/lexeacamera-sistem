@@ -10,6 +10,9 @@ import {
   describeError,
   formatDate,
   formatDateTime,
+  formatMoney,
+  methodLabel,
+  needsProof,
   todayWib,
 } from "./daily-reports-shared.jsx";
 import api from "../../lib/api/client.js";
@@ -45,38 +48,49 @@ const XLSX_RUPIAH_DASH = '"Rp" #,##0;[Red]-"Rp" #,##0;"-"';
 const XLSX_NUMBER = "#,##0";
 const XLSX_DATE = "dd/mm/yyyy";
 
+/* Kolom ringkasan (A..T). Rumus mengacu ke huruf kolom di bawah ini. */
 const SUMMARY_HEADERS = [
-  { label: "No", width: 6, align: "center" },
-  { label: "Tanggal", width: 14, align: "center" },
-  { label: "Kasir", width: 22, align: "left" },
-  { label: "Saldo awal", width: 16, align: "right" },
-  { label: "Total masuk", width: 16, align: "right" },
-  { label: "Total keluar", width: 16, align: "right" },
-  { label: "Saldo akhir", width: 18, align: "right" },
-  { label: "Jumlah baris", width: 12, align: "right" },
-  { label: "Status transfer", width: 18, align: "center" },
-  { label: "Waktu transfer", width: 22, align: "center" },
-  { label: "Bukti transfer", width: 14, align: "center" },
+  { label: "No", width: 6, align: "center" }, // A
+  { label: "Tanggal", width: 14, align: "center" }, // B
+  { label: "Saldo awal tunai", width: 16, align: "right" }, // C
+  { label: "Saldo awal non tunai", width: 16, align: "right" }, // D
+  { label: "Masuk tunai", width: 16, align: "right" }, // E
+  { label: "Keluar tunai", width: 16, align: "right" }, // F
+  { label: "Masuk non tunai", width: 16, align: "right" }, // G
+  { label: "Keluar non tunai", width: 16, align: "right" }, // H
+  { label: "Saldo akhir tunai", width: 17, align: "right" }, // I
+  { label: "Saldo akhir non tunai", width: 17, align: "right" }, // J
+  { label: "Saldo akhir total", width: 18, align: "right" }, // K
+  { label: "Setor tunai", width: 16, align: "right" }, // L
+  { label: "Setor transfer", width: 16, align: "right" }, // M
+  { label: "Sisa tunai", width: 16, align: "right" }, // N
+  { label: "Sisa non tunai", width: 16, align: "right" }, // O
+  { label: "Sisa total", width: 17, align: "right" }, // P
+  { label: "Jumlah baris", width: 12, align: "right" }, // Q
+  { label: "Status setoran", width: 16, align: "center" }, // R
+  { label: "Waktu setor", width: 22, align: "center" }, // S
+  { label: "Bukti", width: 12, align: "center" }, // T
 ];
 
 const ENTRY_HEADERS = [
   { label: "No", width: 6, align: "center" },
   { label: "Tanggal", width: 14, align: "center" },
-  { label: "Kasir", width: 22, align: "left" },
+  { label: "Metode", width: 12, align: "center" },
   { label: "Atas nama", width: 26, align: "left" },
   { label: "Keterangan", width: 38, align: "left" },
   { label: "Masuk", width: 16, align: "right" },
   { label: "Keluar", width: 16, align: "right" },
-  { label: "Saldo", width: 18, align: "right" },
+  { label: "Saldo (tunai + non tunai)", width: 20, align: "right" },
 ];
 
 const DETAIL_HEADERS = [
-  { label: "No", width: 6, align: "center" },
-  { label: "Atas nama", width: 28, align: "left" },
-  { label: "Keterangan", width: 42, align: "left" },
-  { label: "Masuk", width: 16, align: "right" },
-  { label: "Keluar", width: 16, align: "right" },
-  { label: "Saldo", width: 18, align: "right" },
+  { label: "No", width: 6, align: "center" }, // A
+  { label: "Metode", width: 12, align: "center" }, // B
+  { label: "Atas nama", width: 26, align: "left" }, // C
+  { label: "Keterangan", width: 34, align: "left" }, // D
+  { label: "Masuk", width: 16, align: "right" }, // E
+  { label: "Keluar", width: 16, align: "right" }, // F
+  { label: "Saldo", width: 18, align: "right" }, // G
 ];
 
 const THIN_BORDER = {
@@ -102,6 +116,8 @@ function text(value) {
     ? "-"
     : result;
 }
+
+const num = (value) => Number(value) || 0;
 
 // "2026-11-17" -> Date UTC tengah malam, supaya tanggal di Excel tidak bergeser.
 function dateCell(value) {
@@ -137,11 +153,45 @@ function describeFilters(filters = {}) {
     );
   }
 
-  if (filters.transferred === "true") parts.push("Sudah transfer");
-  if (filters.transferred === "false") parts.push("Belum transfer");
-  if (filters.cashier) parts.push(`Kasir: ${filters.cashier}`);
+  if (filters.remitted === "true") parts.push("Sudah disetor");
+  if (filters.remitted === "false") parts.push("Belum disetor");
 
   return parts.length > 0 ? parts.join(", ") : "Semua laporan";
+}
+
+/* Angka satu laporan. Setoran hanya dihitung kalau sudah dicentang disetor. */
+function figures(report) {
+  const openingCash = num(report.opening_cash);
+  const openingNoncash = num(report.opening_noncash);
+  const cashIn = num(report.cash_in);
+  const cashOut = num(report.cash_out);
+  const noncashIn = num(report.noncash_in);
+  const noncashOut = num(report.noncash_out);
+
+  const closingCash = Number.isFinite(Number(report.closing_cash))
+    ? Number(report.closing_cash)
+    : openingCash + cashIn - cashOut;
+  const closingNoncash = Number.isFinite(Number(report.closing_noncash))
+    ? Number(report.closing_noncash)
+    : openingNoncash + noncashIn - noncashOut;
+
+  const remitCash = report.remitted ? num(report.remit_cash) : 0;
+  const remitTransfer = report.remitted ? num(report.remit_transfer) : 0;
+
+  return {
+    openingCash,
+    openingNoncash,
+    cashIn,
+    cashOut,
+    noncashIn,
+    noncashOut,
+    closingCash,
+    closingNoncash,
+    remitCash,
+    remitTransfer,
+    remainingCash: closingCash - remitCash,
+    remainingNoncash: closingNoncash - remitTransfer,
+  };
 }
 
 /* ------------------------------ Data fetching ----------------------------- */
@@ -270,8 +320,8 @@ function writeTitle(sheet, lastColumn, title, subtitle) {
 function writeMeta(sheet, startRow, lastColumn, meta) {
   meta.forEach(([label, value], index) => {
     const rowNumber = startRow + index;
-    sheet.mergeCells(rowNumber, 1, rowNumber, 2);
-    sheet.mergeCells(rowNumber, 3, rowNumber, lastColumn);
+    sheet.mergeCells(rowNumber, 1, rowNumber, 3);
+    sheet.mergeCells(rowNumber, 4, rowNumber, lastColumn);
 
     const labelCell = sheet.getCell(rowNumber, 1);
     labelCell.value = label;
@@ -282,7 +332,7 @@ function writeMeta(sheet, startRow, lastColumn, meta) {
     };
     labelCell.alignment = { vertical: "middle", horizontal: "left" };
 
-    const valueCell = sheet.getCell(rowNumber, 3);
+    const valueCell = sheet.getCell(rowNumber, 4);
     valueCell.value = value;
     valueCell.font = { size: 10 };
     valueCell.alignment = {
@@ -295,7 +345,7 @@ function writeMeta(sheet, startRow, lastColumn, meta) {
 
 function writeHeaderRow(sheet, rowNumber, headers) {
   const row = sheet.getRow(rowNumber);
-  row.height = 26;
+  row.height = 32;
   headers.forEach((column, index) => {
     const cell = row.getCell(index + 1);
     cell.value = column.label;
@@ -380,7 +430,7 @@ async function downloadWorkbook(workbook, filename) {
 async function createWorkbook() {
   const ExcelJS = (await import("exceljs")).default;
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "Laporan Harian Kasir";
+  workbook.creator = "Laporan Harian";
   workbook.created = new Date();
   return workbook;
 }
@@ -398,22 +448,35 @@ async function exportReportsExcel(filters) {
   const includeEntries = reports.length <= MAX_DETAIL_REPORTS;
   const details = includeEntries ? await fetchDetails(reports) : [];
 
+  // Saldo awal, saldo akhir, dan sisa tidak dijumlahkan: sisa satu hari menjadi
+  // saldo awal hari berikutnya, jadi penjumlahannya menghitung dobel.
   const sums = reports.reduce(
-    (total, report) => ({
-      opening: total.opening + (Number(report.opening_balance) || 0),
-      income: total.income + (Number(report.total_in) || 0),
-      expense: total.expense + (Number(report.total_out) || 0),
-      closing: total.closing + (Number(report.closing_balance) || 0),
-      entries: total.entries + (Number(report.entry_count) || 0),
-    }),
-    { opening: 0, income: 0, expense: 0, closing: 0, entries: 0 },
+    (total, report) => {
+      const f = figures(report);
+      return {
+        cashIn: total.cashIn + f.cashIn,
+        cashOut: total.cashOut + f.cashOut,
+        noncashIn: total.noncashIn + f.noncashIn,
+        noncashOut: total.noncashOut + f.noncashOut,
+        remitCash: total.remitCash + f.remitCash,
+        remitTransfer: total.remitTransfer + f.remitTransfer,
+        entries: total.entries + num(report.entry_count),
+      };
+    },
+    {
+      cashIn: 0,
+      cashOut: 0,
+      noncashIn: 0,
+      noncashOut: 0,
+      remitCash: 0,
+      remitTransfer: 0,
+      entries: 0,
+    },
   );
 
-  const transferredCount = reports.filter(
-    (report) => report.transferred,
-  ).length;
+  const remittedCount = reports.filter((report) => report.remitted).length;
   const missingProof = reports.filter(
-    (report) => report.transferred && !report.has_proof,
+    (report) => report.remitted && needsProof(report) && !report.has_proof,
   ).length;
 
   const workbook = await createWorkbook();
@@ -430,10 +493,10 @@ async function exportReportsExcel(filters) {
         : `${formatNumber(reports.length)} laporan`,
     ],
     [
-      "Status transfer",
-      `${formatNumber(transferredCount)} sudah transfer, ${formatNumber(
-        reports.length - transferredCount,
-      )} belum transfer`,
+      "Status setoran",
+      `${formatNumber(remittedCount)} sudah disetor, ${formatNumber(
+        reports.length - remittedCount,
+      )} belum disetor`,
     ],
   ];
 
@@ -444,7 +507,7 @@ async function exportReportsExcel(filters) {
   const sheet = createSheet(
     workbook,
     "Ringkasan Laporan",
-    "Laporan Harian Kasir",
+    "Laporan Harian",
     SUMMARY_HEADERS,
     headerRow,
   );
@@ -452,8 +515,8 @@ async function exportReportsExcel(filters) {
   writeTitle(
     sheet,
     lastColumn,
-    "LAPORAN HARIAN KASIR",
-    "Ringkasan kas harian: saldo awal, pemasukan, pengeluaran, dan saldo akhir yang ditransfer ke owner.",
+    "LAPORAN HARIAN",
+    "Kas harian dipisah tunai dan non tunai: saldo awal, pemasukan, pengeluaran, setoran ke owner, dan sisa yang belum disetor.",
   );
   writeMeta(sheet, metaStart, lastColumn, meta);
   writeHeaderRow(sheet, headerRow, SUMMARY_HEADERS);
@@ -461,63 +524,86 @@ async function exportReportsExcel(filters) {
   const firstRow = headerRow + 1;
 
   reports.forEach((report, index) => {
-    const rowNumber = firstRow + index;
-    const opening = Number(report.opening_balance) || 0;
-    const income = Number(report.total_in) || 0;
-    const expense = Number(report.total_out) || 0;
+    const r = firstRow + index;
+    const f = figures(report);
 
-    const row = sheet.getRow(rowNumber);
+    const row = sheet.getRow(r);
     row.values = [
       index + 1,
       dateCell(report.date),
-      text(report.cashier_name),
-      opening,
-      income,
-      expense,
+      f.openingCash,
+      f.openingNoncash,
+      f.cashIn,
+      f.cashOut,
+      f.noncashIn,
+      f.noncashOut,
+      { formula: `C${r}+E${r}-F${r}`, result: f.closingCash },
+      { formula: `D${r}+G${r}-H${r}`, result: f.closingNoncash },
+      { formula: `I${r}+J${r}`, result: f.closingCash + f.closingNoncash },
+      f.remitCash,
+      f.remitTransfer,
+      { formula: `I${r}-L${r}`, result: f.remainingCash },
+      { formula: `J${r}-M${r}`, result: f.remainingNoncash },
       {
-        formula: `D${rowNumber}+E${rowNumber}-F${rowNumber}`,
-        result: Number(report.closing_balance) || opening + income - expense,
+        formula: `N${r}+O${r}`,
+        result: f.remainingCash + f.remainingNoncash,
       },
-      Number(report.entry_count) || 0,
-      report.transferred ? "Sudah transfer" : "Belum transfer",
-      report.transferred ? formatDateTime(report.transferred_at) : "-",
+      num(report.entry_count),
+      report.remitted ? "Sudah disetor" : "Belum disetor",
+      report.remitted ? formatDateTime(report.remitted_at) : "-",
       report.has_proof ? "Ada" : "Belum ada",
     ];
 
     styleDataRow(row, SUMMARY_HEADERS, index);
 
     row.getCell(2).numFmt = XLSX_DATE;
-    row.getCell(3).font = { bold: true, color: { argb: XLSX_COLORS.title } };
-    [4, 5, 6, 7].forEach((col) => (row.getCell(col).numFmt = XLSX_RUPIAH));
-    row.getCell(8).numFmt = XLSX_NUMBER;
+    for (let col = 3; col <= 16; col += 1) {
+      row.getCell(col).numFmt = XLSX_RUPIAH;
+    }
+    row.getCell(17).numFmt = XLSX_NUMBER;
 
-    row.getCell(5).font = { color: { argb: XLSX_COLORS.income } };
-    row.getCell(6).font = { color: { argb: XLSX_COLORS.danger } };
-    row.getCell(7).font = { bold: true, color: { argb: XLSX_COLORS.title } };
+    [5, 7].forEach(
+      (col) =>
+        (row.getCell(col).font = { color: { argb: XLSX_COLORS.income } }),
+    );
+    [6, 8].forEach(
+      (col) =>
+        (row.getCell(col).font = { color: { argb: XLSX_COLORS.danger } }),
+    );
+    [9, 10, 11, 16].forEach(
+      (col) =>
+        (row.getCell(col).font = {
+          bold: true,
+          color: { argb: XLSX_COLORS.title },
+        }),
+    );
 
-    row.getCell(9).font = report.transferred
+    row.getCell(18).font = report.remitted
       ? { bold: true, color: { argb: XLSX_COLORS.income } }
       : { color: { argb: XLSX_COLORS.muted } };
 
     if (!report.has_proof) {
-      row.getCell(11).font = report.transferred
-        ? { bold: true, color: { argb: XLSX_COLORS.danger } }
-        : { color: { argb: XLSX_COLORS.muted } };
+      row.getCell(20).font =
+        report.remitted && needsProof(report)
+          ? { bold: true, color: { argb: XLSX_COLORS.danger } }
+          : { color: { argb: XLSX_COLORS.muted } };
     }
   });
 
   const lastRow = firstRow + reports.length - 1;
   const totalRowNumber = lastRow + 1;
-  sheet.mergeCells(totalRowNumber, 1, totalRowNumber, 3);
+  sheet.mergeCells(totalRowNumber, 1, totalRowNumber, 2);
   const totalRow = sheet.getRow(totalRowNumber);
   totalRow.getCell(1).value = `Total (${formatNumber(reports.length)} laporan)`;
 
   [
-    [4, "D", sums.opening, XLSX_RUPIAH],
-    [5, "E", sums.income, XLSX_RUPIAH],
-    [6, "F", sums.expense, XLSX_RUPIAH],
-    [7, "G", sums.closing, XLSX_RUPIAH],
-    [8, "H", sums.entries, XLSX_NUMBER],
+    [5, "E", sums.cashIn, XLSX_RUPIAH],
+    [6, "F", sums.cashOut, XLSX_RUPIAH],
+    [7, "G", sums.noncashIn, XLSX_RUPIAH],
+    [8, "H", sums.noncashOut, XLSX_RUPIAH],
+    [12, "L", sums.remitCash, XLSX_RUPIAH],
+    [13, "M", sums.remitTransfer, XLSX_RUPIAH],
+    [17, "Q", sums.entries, XLSX_NUMBER],
   ].forEach(([col, letter, result, numFmt]) => {
     const cell = totalRow.getCell(col);
     cell.value = {
@@ -530,16 +616,19 @@ async function exportReportsExcel(filters) {
 
   const notes = [
     "Catatan:",
-    "• Saldo akhir = saldo awal + total masuk − total keluar, yaitu uang yang ditransfer ke owner.",
+    "• Saldo akhir tunai = saldo awal tunai + masuk tunai − keluar tunai. Saldo akhir non tunai dihitung dengan cara yang sama.",
+    "• Tunai hanya disetor tunai, non tunai hanya disetor lewat transfer. Sisa = saldo akhir − setoran, dan menjadi saldo awal laporan berikutnya.",
+    "• Saldo awal, saldo akhir, dan sisa tidak dijumlahkan karena sisa satu hari menjadi saldo awal hari berikutnya.",
+    "• Laporan yang belum disetor dihitung belum menyetor apa pun, sehingga sisanya sama dengan saldo akhir.",
     includeEntries
       ? "• Rincian setiap baris pemasukan dan pengeluaran ada di sheet “Rincian Kas”."
       : "• Rincian baris tidak disertakan karena jumlah laporan terlalu banyak. Persempit filter atau ekspor per laporan.",
   ];
-  const warningIndexes = includeEntries ? [] : [2];
+  const warningIndexes = includeEntries ? [] : [5];
 
   if (missingProof > 0) {
     notes.push(
-      `• ${formatNumber(missingProof)} laporan sudah ditandai transfer tetapi belum ada bukti transfer.`,
+      `• ${formatNumber(missingProof)} laporan sudah disetor dengan transfer tetapi belum ada bukti transfer.`,
     );
     warningIndexes.push(notes.length - 1);
   }
@@ -577,7 +666,7 @@ async function exportReportsExcel(filters) {
       entrySheet,
       entryLastColumn,
       "RINCIAN KAS",
-      `${formatNumber(flat.length)} baris dari ${formatNumber(reports.length)} laporan. Saldo adalah saldo berjalan pada laporan masing-masing.`,
+      `${formatNumber(flat.length)} baris dari ${formatNumber(reports.length)} laporan. Saldo adalah saldo berjalan gabungan tunai dan non tunai pada laporan masing-masing.`,
     );
     writeHeaderRow(entrySheet, entryHeaderRow, ENTRY_HEADERS);
 
@@ -586,8 +675,8 @@ async function exportReportsExcel(filters) {
     let expenseSum = 0;
 
     flat.forEach(({ report, entry }, index) => {
-      const income = Number(entry.income) || 0;
-      const expense = Number(entry.expense) || 0;
+      const income = num(entry.income);
+      const expense = num(entry.expense);
 
       incomeSum += income;
       expenseSum += expense;
@@ -596,12 +685,12 @@ async function exportReportsExcel(filters) {
       row.values = [
         index + 1,
         dateCell(entry.date ?? report.date),
-        text(report.cashier_name),
+        methodLabel(entry.method),
         text(entry.name),
         text(entry.note),
         income,
         expense,
-        Number(entry.balance) || 0,
+        num(entry.balance),
       ];
 
       styleDataRow(row, ENTRY_HEADERS, index, [4, 5]);
@@ -674,20 +763,32 @@ async function exportReportsExcel(filters) {
 
 async function exportReportExcel(report) {
   const entries = report.entries ?? [];
-  const opening = Number(report.opening_balance) || 0;
+  const f = figures(report);
+  const openingTotal = f.openingCash + f.openingNoncash;
 
   const workbook = await createWorkbook();
 
+  const proofLabel = report.proof
+    ? "Ada"
+    : needsProof(report)
+      ? "Belum ada (wajib untuk setoran transfer)"
+      : "Belum ada";
+
   const meta = [
     ["Tanggal laporan", formatDate(report.date)],
-    ["Kasir", text(report.cashier_name)],
     [
-      "Status transfer",
-      report.transferred
-        ? `Sudah transfer (${formatDateTime(report.transferred_at)})`
-        : "Belum transfer",
+      "Status setoran",
+      report.remitted
+        ? `Sudah disetor (${formatDateTime(report.remitted_at)})`
+        : "Belum disetor",
     ],
-    ["Bukti transfer", report.proof ? "Ada" : "Belum ada"],
+    [
+      "Setoran",
+      report.remitted
+        ? `Tunai ${formatMoney(f.remitCash)} · Transfer ${formatMoney(f.remitTransfer)}`
+        : "Belum disetor",
+    ],
+    ["Bukti transfer", proofLabel],
     ["Diekspor pada", formatExportTimestamp()],
   ];
 
@@ -698,32 +799,35 @@ async function exportReportExcel(report) {
   const sheet = createSheet(
     workbook,
     "Laporan Harian",
-    "Laporan Harian Kasir",
+    "Laporan Harian",
     DETAIL_HEADERS,
     headerRow,
     "portrait",
   );
 
-  writeTitle(
-    sheet,
-    lastColumn,
-    "LAPORAN HARIAN KASIR",
-    `${formatDate(report.date)} · Kasir ${text(report.cashier_name)}`,
-  );
+  writeTitle(sheet, lastColumn, "LAPORAN HARIAN", formatDate(report.date));
   writeMeta(sheet, metaStart, lastColumn, meta);
   writeHeaderRow(sheet, headerRow, DETAIL_HEADERS);
 
-  /* Baris saldo awal */
+  /* Baris saldo awal (gabungan) */
   const openingRowNumber = headerRow + 1;
   const openingRow = sheet.getRow(openingRowNumber);
-  openingRow.values = ["", "Saldo awal", "", "", "", opening];
-  styleDataRow(openingRow, DETAIL_HEADERS, 0);
+  openingRow.values = [
+    "",
+    "",
+    "Saldo awal",
+    `Tunai ${formatMoney(f.openingCash)} · Non tunai ${formatMoney(f.openingNoncash)}`,
+    "",
+    "",
+    openingTotal,
+  ];
+  styleDataRow(openingRow, DETAIL_HEADERS, 0, [4]);
   openingRow.eachCell({ includeEmpty: true }, (cell, col) => {
     if (col > lastColumn) return;
     cell.fill = solidFill(XLSX_COLORS.tint);
     cell.font = { bold: true, color: { argb: XLSX_COLORS.title } };
   });
-  openingRow.getCell(6).numFmt = XLSX_RUPIAH;
+  openingRow.getCell(7).numFmt = XLSX_RUPIAH;
 
   /* Baris catatan kas: saldo berjalan sebagai rumus */
   let incomeSum = 0;
@@ -731,8 +835,8 @@ async function exportReportExcel(report) {
 
   entries.forEach((entry, index) => {
     const rowNumber = openingRowNumber + 1 + index;
-    const income = Number(entry.income) || 0;
-    const expense = Number(entry.expense) || 0;
+    const income = num(entry.income);
+    const expense = num(entry.expense);
 
     incomeSum += income;
     expenseSum += expense;
@@ -740,63 +844,95 @@ async function exportReportExcel(report) {
     const row = sheet.getRow(rowNumber);
     row.values = [
       index + 1,
+      methodLabel(entry.method),
       text(entry.name),
       text(entry.note),
       income,
       expense,
       {
-        formula: `F${rowNumber - 1}+D${rowNumber}-E${rowNumber}`,
-        result: Number(entry.balance) || 0,
+        formula: `G${rowNumber - 1}+E${rowNumber}-F${rowNumber}`,
+        result: num(entry.balance),
       },
     ];
 
-    styleDataRow(row, DETAIL_HEADERS, index, [2, 3]);
+    styleDataRow(row, DETAIL_HEADERS, index, [3, 4]);
 
-    row.getCell(2).font = { bold: true, color: { argb: XLSX_COLORS.title } };
-    row.getCell(4).numFmt = XLSX_RUPIAH_DASH;
+    row.getCell(3).font = { bold: true, color: { argb: XLSX_COLORS.title } };
     row.getCell(5).numFmt = XLSX_RUPIAH_DASH;
-    row.getCell(6).numFmt = XLSX_RUPIAH;
+    row.getCell(6).numFmt = XLSX_RUPIAH_DASH;
+    row.getCell(7).numFmt = XLSX_RUPIAH;
 
     if (income > 0) {
-      row.getCell(4).font = { bold: true, color: { argb: XLSX_COLORS.income } };
+      row.getCell(5).font = { bold: true, color: { argb: XLSX_COLORS.income } };
     }
     if (expense > 0) {
-      row.getCell(5).font = { bold: true, color: { argb: XLSX_COLORS.danger } };
+      row.getCell(6).font = { bold: true, color: { argb: XLSX_COLORS.danger } };
     }
-    row.getCell(6).font = { bold: true, color: { argb: XLSX_COLORS.title } };
+    row.getCell(7).font = { bold: true, color: { argb: XLSX_COLORS.title } };
   });
 
-  /* Total */
+  /* Saldo akhir gabungan */
   const lastRow = openingRowNumber + entries.length;
   const totalRowNumber = lastRow + 1;
 
-  sheet.mergeCells(totalRowNumber, 1, totalRowNumber, 3);
+  sheet.mergeCells(totalRowNumber, 1, totalRowNumber, 4);
   const totalRow = sheet.getRow(totalRowNumber);
-  totalRow.getCell(1).value = "Saldo akhir (ditransfer ke owner)";
+  totalRow.getCell(1).value = "Saldo akhir (tunai + non tunai)";
 
   [
-    [4, "D", incomeSum],
-    [5, "E", expenseSum],
+    [5, "E", incomeSum],
+    [6, "F", expenseSum],
   ].forEach(([col, letter, result]) => {
     const cell = totalRow.getCell(col);
     cell.value = {
-      formula: `SUM(${letter}${openingRowNumber}:${letter}${lastRow})`,
+      formula: `SUM(${letter}${openingRowNumber + 1}:${letter}${lastRow})`,
       result,
     };
     cell.numFmt = XLSX_RUPIAH;
   });
 
-  totalRow.getCell(6).value = {
-    formula: `F${openingRowNumber}+D${totalRowNumber}-E${totalRowNumber}`,
-    result: Number(report.closing_balance) || opening + incomeSum - expenseSum,
+  totalRow.getCell(7).value = {
+    formula: `G${openingRowNumber}+E${totalRowNumber}-F${totalRowNumber}`,
+    result: f.closingCash + f.closingNoncash,
   };
-  totalRow.getCell(6).numFmt = XLSX_RUPIAH;
+  totalRow.getCell(7).numFmt = XLSX_RUPIAH;
   styleTotalRow(totalRow, lastColumn);
 
+  /* Rincian per metode, setoran, dan sisa */
+  const breakdown = [
+    ["Saldo akhir tunai", f.closingCash],
+    ["Saldo akhir non tunai", f.closingNoncash],
+    [
+      report.remitted ? "Disetor tunai" : "Disetor tunai (belum disetor)",
+      f.remitCash,
+    ],
+    [
+      report.remitted ? "Disetor transfer" : "Disetor transfer (belum disetor)",
+      f.remitTransfer,
+    ],
+    ["Sisa belum disetor (tunai)", f.remainingCash],
+    ["Sisa belum disetor (non tunai)", f.remainingNoncash],
+    ["Sisa belum disetor (total)", f.remainingCash + f.remainingNoncash],
+  ];
+
+  breakdown.forEach(([label, value], index) => {
+    const rowNumber = totalRowNumber + 1 + index;
+    sheet.mergeCells(rowNumber, 1, rowNumber, 6);
+    const row = sheet.getRow(rowNumber);
+    row.getCell(1).value = label;
+    row.getCell(7).value = value;
+    row.getCell(7).numFmt = XLSX_RUPIAH;
+    styleTotalRow(row, lastColumn);
+  });
+
+  const notesStart = totalRowNumber + breakdown.length + 2;
   const notes = [
     "Catatan:",
-    "• Saldo dihitung berjalan dari saldo awal mengikuti urutan pencatatan.",
-    "• Saldo akhir = saldo awal + total masuk − total keluar.",
+    "• Saldo dihitung berjalan dari saldo awal (tunai + non tunai) mengikuti urutan pencatatan.",
+    "• Tunai hanya disetor tunai, non tunai hanya disetor lewat transfer. Sisa belum disetor menjadi saldo awal laporan berikutnya.",
+    report.remitted
+      ? "• Laporan sudah disetor dan terkunci."
+      : "• Laporan belum disetor, sehingga sisanya sama dengan saldo akhir.",
   ];
   const warningIndexes = [];
 
@@ -805,23 +941,15 @@ async function exportReportExcel(report) {
       "• Belum ada baris pemasukan atau pengeluaran pada laporan ini.",
     );
   }
-  if (report.transferred && !report.proof) {
+  if (report.remitted && needsProof(report) && !report.proof) {
     notes.push(
-      "• Laporan sudah ditandai transfer tetapi belum ada bukti transfer.",
+      "• Setoran transfer sudah disetor tetapi belum ada bukti transfer.",
     );
     warningIndexes.push(notes.length - 1);
   }
-  writeNotes(sheet, totalRowNumber + 2, lastColumn, notes, warningIndexes);
+  writeNotes(sheet, notesStart, lastColumn, notes, warningIndexes);
 
-  const cashierSlug = String(report.cashier_name || "kasir")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-
-  await downloadWorkbook(
-    workbook,
-    `laporan-harian_${report.date}_${cashierSlug || "kasir"}.xlsx`,
-  );
+  await downloadWorkbook(workbook, `laporan-harian_${report.date}.xlsx`);
 }
 
 /* -------------------------------- Components ------------------------------ */
