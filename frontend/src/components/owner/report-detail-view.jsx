@@ -2428,8 +2428,8 @@ export default function ReportDetailView({ id, role }) {
           <Tag tone={remitStatus.tone}>{remitStatus.label}</Tag>
           {report.remitted ? (
             <Tag tone="soft">
-              <FiLock size={16} aria-hidden="true" />
-              Terkunci
+              <FiCheck size={16} aria-hidden="true" />
+              Setor
             </Tag>
           ) : (
             <Tag tone="soft">
