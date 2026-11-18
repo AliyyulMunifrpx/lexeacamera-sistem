@@ -38,7 +38,26 @@ export function methodLabel(method) {
 export function needsProof(report) {
   return Number(report?.remit_transfer) > 0;
 }
+// ADMIN sudah mengisi setoran tunai dan transfer (boleh 0).
+export function hasRemitAmounts(report) {
+  return (
+    report?.remit_cash !== null &&
+    report?.remit_cash !== undefined &&
+    report?.remit_transfer !== null &&
+    report?.remit_transfer !== undefined
+  );
+}
 
+// belum disetor → sudah setor (ADMIN sudah isi) → approve owner
+export function getRemitStatus(report) {
+  if (report?.remitted) {
+    return { key: "approved", label: "Approve owner", tone: "success" };
+  }
+  if (hasRemitAmounts(report)) {
+    return { key: "paid", label: "Sudah setor", tone: "soft" };
+  }
+  return { key: "unpaid", label: "Belum disetor", tone: "outline" };
+}
 export const FOCUS_RING =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-second4/40";
 
@@ -129,13 +148,13 @@ export function todayWib() {
 
 const ERROR_MESSAGES = {
   REMIT_ADMIN_ONLY:
-    "Setoran dan bukti transfer hanya bisa diurus oleh admin. Owner hanya melihat.",
+    "Jumlah setoran dan bukti transfer hanya bisa diurus oleh admin.",
   REPORT_NOT_FOUND: "Laporan tidak ditemukan.",
   ENTRY_NOT_FOUND: "Baris tidak ditemukan. Muat ulang halaman lalu coba lagi.",
   PROOF_NOT_FOUND: "Bukti transfer tidak ditemukan.",
   REPORT_ALREADY_EXISTS: "Laporan untuk tanggal tersebut sudah ada.",
   REPORT_LOCKED:
-    "Laporan sudah disetor dan terkunci. Minta admin membuka kuncinya untuk mengubah.",
+    "Laporan sudah di-approve owner. Minta owner membatalkan approve untuk mengubah.",
   ENTRY_LIMIT_REACHED: "Jumlah baris sudah mencapai batas maksimal (500).",
   INVALID_ENTRY_AMOUNT:
     "Isi salah satu saja: pemasukan atau pengeluaran, dan nilainya harus lebih dari 0.",
@@ -147,7 +166,7 @@ const ERROR_MESSAGES = {
   PROOF_REQUIRED:
     "Setoran transfer wajib punya bukti transfer. Unggah buktinya dulu.",
   PROOF_LOCKED:
-    "Bukti transfer pada laporan yang sudah disetor hanya bisa diganti, tidak bisa dihapus. Buka kunci laporan dulu.",
+    "Bukti transfer pada laporan yang sudah di-approve hanya bisa diganti, tidak bisa dihapus. Batalkan approve laporan dulu.",
   UNSUPPORTED_MEDIA_TYPE:
     "Format file tidak didukung. Gunakan JPEG, PNG, WebP, HEIC, atau PDF.",
   INVALID_PROOF_PATH: "Data file tidak valid. Coba unggah ulang.",
@@ -215,8 +234,8 @@ export const HISTORY_LABELS = {
   ENTRY_UPDATED: "Mengubah baris",
   ENTRY_DELETED: "Menghapus baris",
   REMIT_UPDATED: "Mengubah isian setoran",
-  REMITTED: "Menandai sudah disetor",
-  REMIT_REOPENED: "Membuka kunci setoran",
+  REMITTED: "Meng-approve setoran",
+  REMIT_REOPENED: "Membatalkan approve setoran",
   PROOF_SET: "Mengunggah bukti transfer",
   PROOF_DELETED: "Menghapus bukti transfer",
 };

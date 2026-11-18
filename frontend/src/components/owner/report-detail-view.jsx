@@ -72,6 +72,7 @@ import {
   MAX_ENTRIES,
   MAX_PROOF_SIZE,
   needsProof,
+  getRemitStatus,
 } from "./daily-reports-shared.jsx";
 import notify from "../../lib/notify.js";
 import { MdCancel } from "react-icons/md";
@@ -136,17 +137,7 @@ function Spinner() {
   );
 }
 // Status setoran: belum disetor → sudah setor (ADMIN sudah isi) → approve owner.
-function getRemitStatus(report) {
-  const adminFilled =
-    report.remit_cash !== null &&
-    report.remit_cash !== undefined &&
-    report.remit_transfer !== null &&
-    report.remit_transfer !== undefined;
 
-  if (report.remitted) return { label: "Approve owner", tone: "success" };
-  if (adminFilled) return { label: "Sudah setor", tone: "soft" };
-  return { label: "Belum disetor", tone: "outline" };
-}
 function IconButton({ label, onClick, disabled, tone = "default", children }) {
   const tones = {
     default: "text-second/60 hover:bg-second4 hover:text-primary",

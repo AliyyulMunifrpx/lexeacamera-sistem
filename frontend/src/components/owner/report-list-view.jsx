@@ -37,6 +37,7 @@ import {
   MAX_AMOUNT,
   needsProof,
   todayWib,
+  getRemitStatus,
 } from "./daily-reports-shared.jsx";
 import notify from "../../lib/notify.js";
 // ASUMSI: komponen yang sama dengan halaman QC (src/components). Sesuaikan path jika beda.
@@ -62,20 +63,30 @@ const remainingTotal = (report) =>
 const remainingCash = (report) => report.remaining_cash ?? report.closing_cash;
 const remainingNoncash = (report) =>
   report.remaining_noncash ?? report.closing_noncash;
+function hasRemitAmounts(report) {
+  return (
+    report.remit_cash !== null &&
+    report.remit_cash !== undefined &&
+    report.remit_transfer !== null &&
+    report.remit_transfer !== undefined
+  );
+}
+
+// belum disetor → sudah setor (ADMIN sudah isi) → approve owner
 
 function RemitStatusTags({ report }) {
+  const status = getRemitStatus(report);
+
   return (
     <>
-      <Tag tone={report.remitted ? "success" : "outline"}>
-        {report.remitted ? "Sudah disetor" : "Belum disetor"}
-      </Tag>
+      <Tag tone={status.tone}>{status.label}</Tag>
       {report.has_proof ? (
         <Tag tone="soft">
           <FiPaperclip size={16} aria-hidden="true" />
           Ada bukti
         </Tag>
       ) : (
-        report.remitted &&
+        hasRemitAmounts(report) &&
         needsProof(report) && <Tag tone="failure">Tanpa bukti</Tag>
       )}
     </>
@@ -401,7 +412,7 @@ export default function ReportListView({ role }) {
             <p className="mt-2 text-pretty text-sm text-second/60">
               Kas harian toko, dipisah tunai dan non tunai. Satu laporan untuk
               satu hari, bisa diisi dan diubah oleh admin maupun owner. Setoran
-              hanya diurus admin.
+              diisi admin, lalu di-approve owner.
             </p>
           </div>
         </div>
@@ -443,7 +454,7 @@ export default function ReportListView({ role }) {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div>
             <label htmlFor="report-status" className={labelClass}>
-              Status setoran
+              Status approve
             </label>
             <select
               id="report-status"
@@ -455,8 +466,8 @@ export default function ReportListView({ role }) {
               className={inputClass(false)}
             >
               <option value="">Semua</option>
-              <option value="true">Sudah disetor</option>
-              <option value="false">Belum disetor</option>
+              <option value="true">Approve owner</option>
+              <option value="false">Belum approve</option>
             </select>
           </div>
 
@@ -637,7 +648,7 @@ export default function ReportListView({ role }) {
                       {formatMoney(report.closing_balance)}
                     </td>
                     <td className="whitespace-nowrap px-4 py-4 text-xs tabular-nums text-second/70">
-                      {report.remitted ? (
+                      {hasRemitAmounts(report) ? (
                         <>
                           <p>Tunai {formatMoney(report.remit_cash)}</p>
                           <p className="mt-2">
@@ -702,7 +713,7 @@ export default function ReportListView({ role }) {
                         </span>{" "}
                         keluar
                       </p>
-                      {report.remitted && (
+                      {hasRemitAmounts(report) && (
                         <p className="mt-2 text-xs tabular-nums text-second/60">
                           Disetor tunai {formatMoney(report.remit_cash)} ·
                           transfer {formatMoney(report.remit_transfer)}

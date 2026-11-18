@@ -9,6 +9,8 @@ import {
   describeError,
   formatDate,
   formatDateTime,
+  getRemitStatus,
+  hasRemitAmounts,
   methodLabel,
   needsProof,
   todayWib,
@@ -44,7 +46,12 @@ const COLORS = {
   danger: [185, 28, 28],
   warning: [180, 83, 9],
 };
-
+// Warna teks status di tabel PDF.
+const STATUS_STYLES = {
+  approved: { textColor: COLORS.income, fontStyle: "bold" },
+  paid: { textColor: COLORS.warning, fontStyle: "bold" },
+  unpaid: { textColor: COLORS.muted },
+};
 /*
  * Tabel ringkasan (landscape A4, lebar pakai 277 mm). Kolom angka tanpa "Rp"
  * supaya muat; satuan rupiah dijelaskan di subjudul.
@@ -216,9 +223,8 @@ function describeFilters(filters = {}) {
     );
   }
 
-  if (filters.remitted === "true") parts.push("Sudah disetor");
-  if (filters.remitted === "false") parts.push("Belum disetor");
-
+  if (filters.remitted === "true") parts.push("Approve owner");
+  if (filters.remitted === "false") parts.push("Belum approve");
   return parts.length > 0 ? parts.join(", ") : "Semua laporan";
 }
 
@@ -237,9 +243,9 @@ function figures(report) {
   const closingNoncash = Number.isFinite(Number(report.closing_noncash))
     ? Number(report.closing_noncash)
     : openingNoncash + noncashIn - noncashOut;
-
-  const remitCash = report.remitted ? num(report.remit_cash) : 0;
-  const remitTransfer = report.remitted ? num(report.remit_transfer) : 0;
+  const filled = hasRemitAmounts(report);
+  const remitCash = filled ? num(report.remit_cash) : 0;
+  const remitTransfer = filled ? num(report.remit_transfer) : 0;
 
   return {
     openingCash,
@@ -527,11 +533,18 @@ async function exportReportsPdf(filters) {
     },
   );
 
-  const remittedCount = reports.filter((report) => report.remitted).length;
-  const missingProof = reports.filter(
-    (report) => report.remitted && needsProof(report) && !report.has_proof,
-  ).length;
+  const statusCounts = reports.reduce(
+    (total, report) => {
+      total[getRemitStatus(report).key] += 1;
+      return total;
+    },
+    { unpaid: 0, paid: 0, approved: 0 },
+  );
 
+  const missingProof = reports.filter(
+    (report) =>
+      hasRemitAmounts(report) && needsProof(report) && !report.has_proof,
+  ).length;
   const { doc, autoTable } = await createPdf("landscape");
   const options = baseTableOptions(doc, 6.5);
 
@@ -548,8 +561,10 @@ async function exportReportsPdf(filters) {
     ],
     [
       "Status setoran",
-      `${formatNumber(remittedCount)} sudah disetor, ${formatNumber(
-        reports.length - remittedCount,
+      `${formatNumber(statusCounts.approved)} approve owner, ${formatNumber(
+        statusCounts.paid,
+      )} sudah setor (belum approve), ${formatNumber(
+        statusCounts.unpaid,
       )} belum disetor`,
     ],
   ];
@@ -570,9 +585,9 @@ async function exportReportsPdf(filters) {
     const f = figures(report);
     const closingTotal = f.closingCash + f.closingNoncash;
     const remainingTotal = f.remainingCash + f.remainingNoncash;
+    const status = getRemitStatus(report);
     const proofRequired =
-      report.remitted && needsProof(report) && !report.has_proof;
-
+      hasRemitAmounts(report) && needsProof(report) && !report.has_proof;
     return [
       String(index + 1),
       shortDate(report.date),
@@ -593,11 +608,9 @@ async function exportReportsPdf(filters) {
       formatNumber(num(report.entry_count)),
       {
         content: report.remitted
-          ? `Sudah disetor\n${pdfText(formatDateTime(report.remitted_at))}`
-          : "Belum disetor",
-        styles: report.remitted
-          ? { textColor: COLORS.income, fontStyle: "bold" }
-          : { textColor: COLORS.muted },
+          ? `${status.label}\n${pdfText(formatDateTime(report.remitted_at))}`
+          : status.label,
+        styles: STATUS_STYLES[status.key],
       },
       {
         content: report.has_proof ? "Ada" : "Belum ada",
@@ -645,22 +658,22 @@ async function exportReportsPdf(filters) {
     foot,
     columnStyles: SUMMARY_COLUMN_STYLES,
   });
-
   const notes = [
     "Catatan:",
     "- Saldo akhir tunai = saldo awal tunai + masuk tunai - keluar tunai. Saldo akhir non tunai dihitung dengan cara yang sama.",
     "- Tunai hanya disetor tunai, non tunai hanya disetor lewat transfer. Sisa = saldo akhir - setoran, dan menjadi saldo awal laporan berikutnya.",
     "- Saldo awal, saldo akhir, dan sisa tidak dijumlahkan karena sisa satu hari menjadi saldo awal hari berikutnya.",
-    "- Laporan yang belum disetor dihitung belum menyetor apa pun, sehingga sisanya sama dengan saldo akhir.",
+    "- Status: Belum disetor (admin belum mengisi setoran), Sudah setor (admin sudah mengisi, menunggu owner), Approve owner (sudah diapprove dan terkunci).",
+    "- Laporan yang belum disetor dihitung belum menyetor apa pun, sehingga sisanya sama dengan saldo akhir. Sisa pada laporan Sudah setor adalah perkiraan sampai owner meng-approve.",
     includeEntries
       ? "- Rincian setiap baris pemasukan dan pengeluaran ada di bagian Rincian Kas pada halaman berikutnya."
       : "- Rincian baris tidak disertakan karena jumlah laporan terlalu banyak. Persempit filter atau ekspor per laporan.",
   ];
-  const warningIndexes = includeEntries ? [] : [5];
+  const warningIndexes = includeEntries ? [] : [6];
 
   if (missingProof > 0) {
     notes.push(
-      `- ${formatNumber(missingProof)} laporan sudah disetor dengan transfer tetapi belum ada bukti transfer.`,
+      `- ${formatNumber(missingProof)} laporan sudah setor dengan transfer tetapi belum ada bukti transfer.`,
     );
     warningIndexes.push(notes.length - 1);
   }
@@ -790,17 +803,20 @@ async function exportReportPdf(report) {
       ? "Belum ada (wajib untuk setoran transfer)"
       : "Belum ada";
 
+  const status = getRemitStatus(report);
+  const filled = hasRemitAmounts(report);
+
   const meta = [
     ["Tanggal laporan", formatDate(report.date)],
     [
       "Status setoran",
       report.remitted
-        ? `Sudah disetor (${formatDateTime(report.remitted_at)})`
-        : "Belum disetor",
+        ? `${status.label} (${formatDateTime(report.remitted_at)})`
+        : status.label,
     ],
     [
       "Setoran",
-      report.remitted
+      filled
         ? `Tunai ${rupiah(f.remitCash)} | Transfer ${rupiah(f.remitTransfer)}`
         : "Belum disetor",
     ],
@@ -889,12 +905,9 @@ async function exportReportPdf(report) {
   const breakdown = [
     ["Saldo akhir tunai", f.closingCash],
     ["Saldo akhir non tunai", f.closingNoncash],
+    [filled ? "Disetor tunai" : "Disetor tunai (belum disetor)", f.remitCash],
     [
-      report.remitted ? "Disetor tunai" : "Disetor tunai (belum disetor)",
-      f.remitCash,
-    ],
-    [
-      report.remitted ? "Disetor transfer" : "Disetor transfer (belum disetor)",
+      filled ? "Disetor transfer" : "Disetor transfer (belum disetor)",
       f.remitTransfer,
     ],
     ["Sisa belum disetor (tunai)", f.remainingCash],
@@ -935,8 +948,10 @@ async function exportReportPdf(report) {
     "- Saldo dihitung berjalan dari saldo awal (tunai + non tunai) mengikuti urutan pencatatan.",
     "- Tunai hanya disetor tunai, non tunai hanya disetor lewat transfer. Sisa belum disetor menjadi saldo awal laporan berikutnya.",
     report.remitted
-      ? "- Laporan sudah disetor dan terkunci."
-      : "- Laporan belum disetor, sehingga sisanya sama dengan saldo akhir.",
+      ? "- Laporan sudah di-approve owner dan terkunci."
+      : filled
+        ? "- Admin sudah mengisi setoran, menunggu approve owner. Sisa adalah perkiraan sampai laporan di-approve."
+        : "- Laporan belum disetor, sehingga sisanya sama dengan saldo akhir.",
   ];
   const warningIndexes = [];
 
@@ -945,9 +960,9 @@ async function exportReportPdf(report) {
       "- Belum ada baris pemasukan atau pengeluaran pada laporan ini.",
     );
   }
-  if (report.remitted && needsProof(report) && !report.proof) {
+  if (filled && needsProof(report) && !report.proof) {
     notes.push(
-      "- Setoran transfer sudah disetor tetapi belum ada bukti transfer.",
+      "- Setoran transfer sudah diisi tetapi belum ada bukti transfer.",
     );
     warningIndexes.push(notes.length - 1);
   }
