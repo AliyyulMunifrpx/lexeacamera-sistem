@@ -238,11 +238,20 @@ const closings = (report, stat) => {
   return { cash, noncash, total: cash + noncash };
 };
 
-const remainingOf = (report, closing) => ({
-  cash: closing.cash - (report.remitted ? report.remit_cash : 0),
-  noncash: closing.noncash - (report.remitted ? report.remit_transfer : 0),
-});
+const hasRemitAmounts = (report) =>
+  report.remit_cash !== null &&
+  report.remit_cash !== undefined &&
+  report.remit_transfer !== null &&
+  report.remit_transfer !== undefined;
 
+const remainingOf = (report, closing) => {
+  const filled = hasRemitAmounts(report);
+
+  return {
+    cash: closing.cash - (filled ? report.remit_cash : 0),
+    noncash: closing.noncash - (filled ? report.remit_transfer : 0),
+  };
+};
 const assertAmounts = (income, expense) => {
   if (income > 0 === expense > 0) {
     throw new ResponseError(400, "INVALID_ENTRY_AMOUNT");
