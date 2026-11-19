@@ -482,6 +482,9 @@ model QualityControlMedia {
 model DailyReport {
   id                 String             @id @default(uuid())
   date               DateTime           @unique @db.Date
+  pic                String
+  pic_employee_id    String?
+  pic_display_id     String?
   opening_cash       Int
   opening_noncash    Int
   remit_cash         Int?

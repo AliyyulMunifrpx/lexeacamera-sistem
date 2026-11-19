@@ -20,6 +20,8 @@ const calendarDate = Joi.string()
 const uuid = Joi.string().uuid();
 const money = Joi.number().integer().min(0).max(MAX_INT);
 const method = Joi.string().valid("CASH", "NON_CASH");
+const pic = Joi.string().trim().min(1).max(100);
+const picId = Joi.string().trim().min(1).max(100);
 const optionalText = (max) =>
   Joi.string().trim().max(max).allow("", null).optional();
 
@@ -41,9 +43,12 @@ export const historyValidation = Joi.object({
 
 export const createReportValidation = Joi.object({
   date: calendarDate.optional(),
+  pic: pic.optional(),
+  pic_employee_id: picId.optional(),
+  pic_display_id: picId.optional(),
   opening_cash: money.optional(),
   opening_noncash: money.optional(),
-});
+}).and("pic", "pic_employee_id", "pic_display_id");
 
 export const nextOpeningValidation = Joi.object({
   date: calendarDate.optional(),
@@ -51,18 +56,24 @@ export const nextOpeningValidation = Joi.object({
 
 export const updateReportValidation = Joi.object({
   id: uuid.required(),
+  pic: pic.optional(),
+  pic_employee_id: picId.optional(),
+  pic_display_id: picId.optional(),
   opening_cash: money.optional(),
   opening_noncash: money.optional(),
   remit_cash: money.allow(null).optional(),
   remit_transfer: money.allow(null).optional(),
   remitted: Joi.boolean().optional(),
-}).or(
-  "opening_cash",
-  "opening_noncash",
-  "remit_cash",
-  "remit_transfer",
-  "remitted",
-);
+})
+  .and("pic", "pic_employee_id", "pic_display_id")
+  .or(
+    "pic",
+    "opening_cash",
+    "opening_noncash",
+    "remit_cash",
+    "remit_transfer",
+    "remitted",
+  );
 
 export const createEntryValidation = Joi.object({
   id: uuid.required(),

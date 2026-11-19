@@ -89,7 +89,6 @@ ownerRouter.patch(
   orderController.updatePaymentStatus,
 );
 ownerRouter.post("/owner/employees", employeeController.create);
-ownerRouter.get("/owner/employees", employeeController.getAll);
 ownerRouter.get("/owner/employees/:id", employeeController.get);
 ownerRouter.put("/owner/employees/:id", employeeController.update);
 ownerRouter.post(

@@ -14,7 +14,7 @@ export async function getEmployees({ search, status, page = 1 } = {}) {
     page,
   };
 
-  const response = await api.get("/owner/employees", { params });
+  const response = await api.get("/admin/employees", { params });
 
   return response.data;
 }

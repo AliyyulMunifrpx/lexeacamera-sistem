@@ -48,6 +48,9 @@ const EXT_TYPE = {
 const REPORT_SELECT = {
   id: true,
   date: true,
+  pic: true,
+  pic_employee_id: true,
+  pic_display_id: true,
   opening_cash: true,
   opening_noncash: true,
   remit_cash: true,
@@ -98,6 +101,10 @@ const actorOf = (user) => {
 
 const assertCanSettle = (actor) => {
   if (isOwner(actor)) throw new ResponseError(403, "REMIT_ADMIN_ONLY");
+};
+
+const assertCanEditPic = (actor) => {
+  if (isOwner(actor)) throw new ResponseError(403, "PIC_ADMIN_ONLY");
 };
 
 const assertCanLock = (actor) => {
@@ -181,7 +188,7 @@ const signPath = async (path) => {
 
 const lockReport = async (tx, id) => {
   const rows = await tx.$queryRaw`
-    SELECT id, opening_cash, opening_noncash, remit_cash, remit_transfer, remitted, proof_path
+    SELECT id, pic, pic_employee_id, pic_display_id, opening_cash, opening_noncash, remit_cash, remit_transfer, remitted, proof_path
     FROM "DailyReport"
     WHERE id = ${id}
     FOR UPDATE
@@ -252,6 +259,7 @@ const remainingOf = (report, closing) => {
     noncash: closing.noncash - (filled ? report.remit_transfer : 0),
   };
 };
+
 const assertAmounts = (income, expense) => {
   if (income > 0 === expense > 0) {
     throw new ResponseError(400, "INVALID_ENTRY_AMOUNT");
@@ -265,6 +273,9 @@ const header = (report, stat) => {
   return {
     id: report.id,
     date: dateOut(report.date),
+    pic: report.pic,
+    pic_employee_id: report.pic_employee_id,
+    pic_display_id: report.pic_display_id,
     opening_cash: report.opening_cash,
     opening_noncash: report.opening_noncash,
     opening_balance: report.opening_cash + report.opening_noncash,
@@ -515,6 +526,15 @@ const createReport = async (request, user) => {
   const date = req.date ?? todayWib();
   if (date > todayWib()) throw new ResponseError(400, "DATE_IN_FUTURE");
 
+  if (isOwner(actor)) {
+    if (req.pic !== undefined) assertCanEditPic(actor);
+  } else if (req.pic === undefined) {
+    throw new ResponseError(400, "PIC_REQUIRED");
+  }
+  const pic = isOwner(actor) ? actor.name : req.pic;
+  const picEmployeeId = isOwner(actor) ? null : req.pic_employee_id;
+  const picDisplayId = isOwner(actor) ? null : req.pic_display_id;
+
   const manual =
     req.opening_cash !== undefined || req.opening_noncash !== undefined;
 
@@ -549,12 +569,18 @@ const createReport = async (request, user) => {
       const report = await tx.dailyReport.create({
         data: {
           date: toDate(date),
+          pic,
+          pic_employee_id: picEmployeeId,
+          pic_display_id: picDisplayId,
           opening_cash: cash,
           opening_noncash: noncash,
         },
         select: { id: true },
       });
       await writeLog(tx, report.id, actor, "REPORT_CREATED", {
+        pic,
+        pic_employee_id: picEmployeeId,
+        pic_display_id: picDisplayId,
         opening_cash: cash,
         opening_noncash: noncash,
         carried: !manual,
@@ -608,6 +634,7 @@ const updateReport = async (request, user) => {
   const req = validate(updateReportValidation, request);
 
   if (req.remitted !== undefined) assertCanLock(actor);
+  if (req.pic !== undefined) assertCanEditPic(actor);
   if ([req.remit_cash, req.remit_transfer].some((v) => v !== undefined)) {
     assertCanSettle(actor);
   }
@@ -617,6 +644,7 @@ const updateReport = async (request, user) => {
     const nextRemitted = req.remitted ?? current.remitted;
 
     const touchesSettlement = [
+      req.pic,
       req.opening_cash,
       req.opening_noncash,
       req.remit_cash,
@@ -627,6 +655,9 @@ const updateReport = async (request, user) => {
     }
 
     const next = {
+      pic: req.pic ?? current.pic,
+      pic_employee_id: req.pic_employee_id ?? current.pic_employee_id,
+      pic_display_id: req.pic_display_id ?? current.pic_display_id,
       opening_cash: req.opening_cash ?? current.opening_cash,
       opening_noncash: req.opening_noncash ?? current.opening_noncash,
       remit_cash:
@@ -642,6 +673,11 @@ const updateReport = async (request, user) => {
     }
 
     const data = { updated_at: new Date() };
+    if (req.pic !== undefined) {
+      data.pic = req.pic;
+      data.pic_employee_id = req.pic_employee_id;
+      data.pic_display_id = req.pic_display_id;
+    }
     if (req.opening_cash !== undefined) data.opening_cash = req.opening_cash;
     if (req.opening_noncash !== undefined) {
       data.opening_noncash = req.opening_noncash;
@@ -656,6 +692,13 @@ const updateReport = async (request, user) => {
     }
 
     await tx.dailyReport.update({ where: { id: req.id }, data });
+
+    const pic = diffOf(current, next, [
+      "pic",
+      "pic_employee_id",
+      "pic_display_id",
+    ]);
+    if (pic) await writeLog(tx, req.id, actor, "PIC_UPDATED", pic);
 
     const opening = diffOf(current, next, ["opening_cash", "opening_noncash"]);
     if (opening) await writeLog(tx, req.id, actor, "OPENING_UPDATED", opening);

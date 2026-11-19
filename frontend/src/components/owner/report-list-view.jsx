@@ -35,9 +35,12 @@ import {
   inputClass,
   labelClass,
   MAX_AMOUNT,
+  MAX_PIC,
   needsProof,
   todayWib,
   getRemitStatus,
+  EmployeePicker,
+  picPayload,
 } from "./daily-reports-shared.jsx";
 import notify from "../../lib/notify.js";
 // ASUMSI: komponen yang sama dengan halaman QC (src/components). Sesuaikan path jika beda.
@@ -97,10 +100,13 @@ function RemitStatusTags({ report }) {
 
 /* --------------------------------- Create --------------------------------- */
 
-function CreateReportPanel({ onCancel, basePath }) {
+function CreateReportPanel({ onCancel, basePath, role }) {
   const router = useRouter();
   const createReport = useCreateDailyReport();
+  // Hanya ADMIN yang mengisi PIC. OWNER otomatis atas nama akunnya.
+  const isAdmin = role === "admin";
 
+  const [pic, setPic] = useState(null);
   const [date, setDate] = useState(todayWib());
   const [openingCash, setOpeningCash] = useState("");
   const [openingNoncash, setOpeningNoncash] = useState("");
@@ -127,6 +133,10 @@ function CreateReportPanel({ onCancel, basePath }) {
 
     const found = {};
 
+    if (isAdmin && !pic) {
+      found.pic = "Pilih karyawan sebagai PIC.";
+    }
+
     if (openingCash !== "" && Number(openingCash) > MAX_AMOUNT) {
       found.opening_cash = "Nominal terlalu besar.";
     }
@@ -149,6 +159,7 @@ function CreateReportPanel({ onCancel, basePath }) {
     // Kalau salah satu dikirim, server menganggap yang lain 0.
     const payload = {
       ...(date && { date }),
+      ...(isAdmin && pic && picPayload(pic)),
       ...(openingCash !== "" && { opening_cash: Number(openingCash) }),
       ...(openingNoncash !== "" && { opening_noncash: Number(openingNoncash) }),
     };
@@ -202,7 +213,40 @@ function CreateReportPanel({ onCancel, basePath }) {
       description="Satu laporan untuk satu hari dan dipakai bersama. Saldo awal otomatis dari saldo setelah disetor laporan terakhir sebelum tanggal itu, dipisah tunai dan non tunai, dan tetap bisa diisi manual."
     >
       <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {isAdmin ? (
+          <div className="min-w-0 sm:max-w-sm">
+            <label htmlFor="report-pic" className={labelClass}>
+              PIC (penanggung jawab)
+              <span className="ml-2 text-second2" aria-hidden="true">
+                *
+              </span>
+            </label>
+            <EmployeePicker
+              id="report-pic"
+              value={pic}
+              onChange={(employee) => {
+                setPic(employee);
+                clearError("pic");
+              }}
+              disabled={disabled}
+              hasError={Boolean(errors.pic)}
+              describedBy={errors.pic ? "report-pic-desc" : undefined}
+            />
+            {errors.pic ? (
+              <ErrorText id="report-pic-desc">{errors.pic}</ErrorText>
+            ) : (
+              <p className="mt-2 text-sm text-second/60">
+                Pilih karyawan yang bertanggung jawab hari itu.
+              </p>
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-second/60">
+            PIC otomatis atas nama akun owner Anda.
+          </p>
+        )}
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="min-w-0">
             <label htmlFor="report-date" className={labelClass}>
               Tanggal
@@ -226,7 +270,9 @@ function CreateReportPanel({ onCancel, basePath }) {
               </p>
             )}
           </div>
+        </div>
 
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="min-w-0">
             <label htmlFor="opening-cash" className={labelClass}>
               Saldo awal tunai
@@ -444,6 +490,7 @@ export default function ReportListView({ role }) {
       {showCreate && (
         <CreateReportPanel
           basePath={basePath}
+          role={role}
           onCancel={() => setShowCreate(false)}
         />
       )}
@@ -636,6 +683,14 @@ export default function ReportListView({ role }) {
                       <p className="mt-2 text-xs tabular-nums text-second/60">
                         {formatNumber(report.entry_count)} baris
                       </p>
+                      {report.pic && (
+                        <p className="mt-2 max-w-40 break-words text-xs text-second/60">
+                          PIC{" "}
+                          <span className="font-semibold text-second">
+                            {report.pic}
+                          </span>
+                        </p>
+                      )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-4 text-sm tabular-nums text-second/70">
                       {formatMoney(report.opening_balance)}
@@ -702,6 +757,14 @@ export default function ReportListView({ role }) {
                       <p className="break-words text-sm font-semibold text-second group-hover:text-second4">
                         {formatDate(report.date)}
                       </p>
+                      {report.pic && (
+                        <p className="mt-2 break-words text-xs text-second/60">
+                          PIC{" "}
+                          <span className="font-semibold text-second">
+                            {report.pic}
+                          </span>
+                        </p>
+                      )}
                       <p className="mt-2 text-sm font-semibold tabular-nums text-second">
                         {formatMoney(report.closing_balance)}
                       </p>

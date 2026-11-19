@@ -6,9 +6,11 @@ import { useRouter } from "next/navigation";
 import {
   FiAlertTriangle,
   FiArrowLeft,
+  FiArrowRight,
   FiBookOpen,
   FiCheck,
   FiCheckCircle,
+  FiChevronDown,
   FiChevronLeft,
   FiChevronRight,
   FiClock,
@@ -29,6 +31,7 @@ import {
   FiTrendingUp,
   FiUnlock,
   FiUploadCloud,
+  FiUser,
   FiX,
 } from "react-icons/fi";
 
@@ -70,12 +73,17 @@ import {
   labelClass,
   MAX_AMOUNT,
   MAX_ENTRIES,
+  MAX_PIC,
   MAX_PROOF_SIZE,
   needsProof,
   getRemitStatus,
+  picFromReport,
+  EmployeePicker,
+  picPayload,
 } from "./daily-reports-shared.jsx";
 import notify from "../../lib/notify.js";
 import { MdCancel } from "react-icons/md";
+import { useGetEmployees } from "../../app/features/employees/hooks.js";
 
 /* ------------------------------ Error mapping ----------------------------- */
 function hasRemitAmounts(report) {
@@ -351,6 +359,118 @@ function ErrorState({ error, onRetry, isFetching }) {
   );
 }
 
+/* ------------------------- PIC (penanggung jawab) ------------------------- */
+
+// ADMIN boleh mengubah PIC selama laporan belum di-approve OWNER. OWNER hanya
+// melihat: server menolak OWNER yang mengirim pic (PIC_ADMIN_ONLY).
+function PicLine({ report, canEdit }) {
+  const updateReport = useUpdateDailyReport();
+  const [editing, setEditing] = useState(false);
+  const [pic, setPic] = useState(null);
+  const [error, setError] = useState("");
+
+  function startEdit() {
+    setPic(picFromReport(report));
+    setError("");
+    setEditing(true);
+  }
+
+  function save(event) {
+    event.preventDefault();
+
+    if (updateReport.isPending) return;
+
+    if (!pic) {
+      setError("Pilih karyawan sebagai PIC.");
+      return;
+    }
+
+    const current = picFromReport(report);
+
+    if (
+      current &&
+      current.id === pic.id &&
+      current.name === pic.name &&
+      current.display_id === pic.display_id
+    ) {
+      setEditing(false);
+      return;
+    }
+
+    updateReport.mutate(
+      { id: report.id, data: picPayload(pic) },
+      {
+        onSuccess: () => {
+          setEditing(false);
+          notify.success("PIC diperbarui.");
+        },
+        onError: (err) => notify.error(describeError(err)),
+      },
+    );
+  }
+
+  if (editing) {
+    const disabled = updateReport.isPending;
+
+    return (
+      <form onSubmit={save} noValidate className="flex flex-col gap-2">
+        <label htmlFor="report-pic-edit" className="text-xs text-second/60">
+          PIC (penanggung jawab)
+        </label>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+          <div className="min-w-0 sm:w-80">
+            <EmployeePicker
+              id="report-pic-edit"
+              value={pic}
+              onChange={(next) => {
+                setPic(next);
+                setError("");
+              }}
+              disabled={disabled}
+              hasError={Boolean(error)}
+              describedBy={error ? "report-pic-edit-desc" : undefined}
+              autoFocus
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="submit" disabled={disabled} className={BTN_PRIMARY}>
+              {disabled ? <Spinner /> : "Simpan"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditing(false)}
+              disabled={disabled}
+              className={BTN_OUTLINE}
+            >
+              Batal
+            </button>
+          </div>
+        </div>
+        {error && <ErrorText id="report-pic-edit-desc">{error}</ErrorText>}
+      </form>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm text-second/60">
+      <FiUser size={16} className="shrink-0" aria-hidden="true" />
+      <span>PIC</span>
+      <span className="min-w-0 break-words font-semibold text-second">
+        {report.pic || "—"}
+      </span>
+      {report.pic_display_id ? (
+        <Tag tone="outline">{report.pic_display_id}</Tag>
+      ) : (
+        <Tag tone="strong">Owner</Tag>
+      )}
+      {canEdit && (
+        <IconButton label="Ubah PIC" onClick={startEdit}>
+          <FiEdit2 size={16} aria-hidden="true" />
+        </IconButton>
+      )}
+    </div>
+  );
+}
 /* --------------------------------- Summary -------------------------------- */
 
 function OpeningBalanceCard({ report, canEdit }) {
@@ -1160,11 +1280,11 @@ function EntryRow({ report, entry, index, canEdit }) {
 function CashSplit({ cash, noncash }) {
   return (
     <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-base font-bold tabular-nums text-second">
-      <span className="bg-second2 px-2 rounded-full text-primary">
+      <span className="bg-second2 px-2 rounded-full text-primary whitespace-nowrap">
         <span className="mr-2 text-sm text-primary">Tunai</span>
         {formatMoney(cash)}
       </span>
-      <span className="bg-second2 px-2 rounded-full text-primary">
+      <span className="bg-second2 px-2 rounded-full text-primary whitespace-nowrap">
         <span className="mr-2 text-sm text-primary">Non tunai</span>
         {formatMoney(noncash)}
       </span>
@@ -2161,6 +2281,7 @@ function RemitSection({ report, canRemit, canLock }) {
 
 const HISTORY_ICONS = {
   REPORT_CREATED: { icon: FiPlus, tone: "bg-second3/10 text-second3" },
+  PIC_UPDATED: { icon: FiUser, tone: "bg-second4/10 text-second4" },
   OPENING_UPDATED: { icon: FiLayers, tone: "bg-second4/10 text-second4" },
   ENTRY_CREATED: { icon: FiPlus, tone: "bg-second3/10 text-second3" },
   ENTRY_UPDATED: { icon: FiEdit2, tone: "bg-second4/10 text-second4" },
@@ -2175,13 +2296,194 @@ const HISTORY_ICONS = {
 function initialOf(name) {
   return (name || "?").trim().charAt(0).toUpperCase() || "?";
 }
+/*
+ * Ganti HistorySection lama di report-detail-view.jsx dengan isi file ini.
+ *
+ * Tambahkan dua icon ini ke import "react-icons/fi" (sisanya sudah ada):
+ *   FiArrowRight, FiChevronDown
+ *
+ * Tetap pakai HISTORY_ICONS dan initialOf yang sudah ada di file itu.
+ */
+
+// Aksi yang detailnya berbentuk "Label: sebelum → sesudah".
+const CHANGE_ACTIONS = new Set([
+  "PIC_UPDATED",
+  "OPENING_UPDATED",
+  "REMIT_UPDATED",
+  "ENTRY_UPDATED",
+]);
+
+// "Setoran tunai: Rp 0 → Rp 100.000" -> { label, before, after }
+function parseChange(line) {
+  const match = String(line).match(/^(.+?): (.*) → (.*)$/);
+
+  return match ? { label: match[1], before: match[2], after: match[3] } : null;
+}
+
+function ChangeRow({ change }) {
+  const hadValue = change.before !== "—";
+
+  return (
+    <li className="flex min-w-0 flex-col gap-2">
+      <p className="text-xs font-semibold text-second/60">{change.label}</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <span
+          className={`break-words rounded-xl bg-second2/10 px-2 py-2 text-xs font-semibold tabular-nums text-second2 ${
+            hadValue ? "line-through" : ""
+          }`}
+        >
+          {change.before}
+        </span>
+        <FiArrowRight
+          size={16}
+          className="shrink-0 text-second/40"
+          aria-hidden="true"
+        />
+        <span className="break-words rounded-xl bg-second3/10 px-2 py-2 text-xs font-semibold tabular-nums text-second3">
+          {change.after}
+        </span>
+      </div>
+    </li>
+  );
+}
+
+function PlainRow({ text }) {
+  return (
+    <li className="flex items-start gap-2 text-sm text-second/70">
+      <span
+        aria-hidden="true"
+        className="mt-2 size-2 shrink-0 rounded-full bg-second4"
+      />
+      <span className="min-w-0 break-words">{text}</span>
+    </li>
+  );
+}
+
+function HistoryItem({ item, isLast, open, onToggle }) {
+  const lines = describeHistory(item);
+  const isChange = CHANGE_ACTIONS.has(item.action);
+  const rows = lines.map((line) => ({
+    text: line,
+    change: isChange ? parseChange(line) : null,
+  }));
+
+  const meta = HISTORY_ICONS[item.action] ?? {
+    icon: FiClock,
+    tone: "bg-second/10 text-second/60",
+  };
+  const Icon = meta.icon;
+
+  const buttonId = `history-button-${item.id}`;
+  const panelId = `history-panel-${item.id}`;
+
+  return (
+    <li className="relative flex gap-4 pb-4 last:pb-0">
+      {!isLast && (
+        <span
+          aria-hidden="true"
+          className="absolute bottom-0 left-4 top-8 w-px -translate-x-1/2 bg-second/15"
+        />
+      )}
+
+      <span
+        aria-hidden="true"
+        className={`relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full ring-4 ring-primary ${meta.tone}`}
+      >
+        <Icon size={16} />
+      </span>
+
+      <div
+        className={`min-w-0 flex-1 rounded-xl border transition-colors motion-reduce:transition-none ${
+          open
+            ? "border-second4/30 bg-second4/5"
+            : "border-second/20 bg-second/[0.02]"
+        }`}
+      >
+        <button
+          type="button"
+          id={buttonId}
+          onClick={onToggle}
+          aria-expanded={open}
+          aria-controls={panelId}
+          className={`flex w-full items-center gap-4 rounded-xl p-4 text-left transition-colors hover:bg-second/5 motion-reduce:transition-none touch-manipulation ${FOCUS_RING}`}
+        >
+          <div className="min-w-0 flex-1">
+            <p className="break-words text-sm font-semibold text-second">
+              {HISTORY_LABELS[item.action] ?? item.action}
+            </p>
+            <p className="mt-2 flex items-center gap-2 text-xs tabular-nums text-second/60">
+              <FiClock size={16} className="shrink-0" aria-hidden="true" />
+              {formatDateTime(item.created_at)}
+            </p>
+          </div>
+
+          <FiChevronDown
+            size={16}
+            aria-hidden="true"
+            className={`shrink-0 text-second/60 transition-transform duration-200 motion-reduce:transition-none ${
+              open ? "rotate-180" : ""
+            }`}
+          />
+        </button>
+
+        {open && (
+          <div
+            id={panelId}
+            role="region"
+            aria-labelledby={buttonId}
+            className="flex flex-col gap-4 border-t border-second/10 p-4"
+          >
+            {/* Siapa yang mengubah */}
+            <div className="flex flex-wrap items-center gap-2 text-xs text-second/60">
+              <span>Oleh</span>
+              <span
+                aria-hidden="true"
+                className="flex size-6 items-center justify-center rounded-full bg-second/10 text-xs font-bold text-second"
+              >
+                {initialOf(item.user_name)}
+              </span>
+              <span className="font-semibold text-second">
+                {item.user_name}
+              </span>
+              {item.user_role && (
+                <Tag tone={item.user_role === "OWNER" ? "strong" : "soft"}>
+                  {ROLE_LABELS[item.user_role] ?? item.user_role}
+                </Tag>
+              )}
+            </div>
+
+            {/* Rincian perubahan */}
+            {rows.length > 0 ? (
+              <ul className="flex flex-col gap-4 rounded-xl bg-second/[0.03] p-4">
+                {rows.map((row, index) =>
+                  row.change ? (
+                    <ChangeRow key={index} change={row.change} />
+                  ) : (
+                    <PlainRow key={index} text={row.text} />
+                  ),
+                )}
+              </ul>
+            ) : (
+              <p className="text-xs text-second/50">
+                Tidak ada rincian tambahan untuk aksi ini.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    </li>
+  );
+}
 
 function HistorySection({ report }) {
   const [page, setPage] = useState(1);
+  // Semua item tertutup di awal; yang dibuka disimpan berdasarkan id.
+  const [openIds, setOpenIds] = useState(() => new Set());
 
   // Kunci berubah setiap data laporan berubah, jadi riwayat ikut dimuat ulang.
   const signature = [
     report.updated_at,
+    report.pic,
     report.entry_count,
     report.closing_balance,
     report.opening_balance,
@@ -2198,11 +2500,43 @@ function HistorySection({ report }) {
   const totalPages = Math.max(1, paging?.total_pages ?? 1);
   const safePage = paging?.page ?? page;
 
+  const allOpen = list.length > 0 && list.every((item) => openIds.has(item.id));
+
+  function toggle(id) {
+    setOpenIds((current) => {
+      const next = new Set(current);
+
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    setOpenIds(allOpen ? new Set() : new Set(list.map((item) => item.id)));
+  }
+
   return (
     <FormSection
       title="Riwayat perubahan"
-      description="Siapa mengubah apa dan kapan. Perubahan yang tidak mengubah nilai tidak dicatat."
-      aside={paging ? <Tag tone="soft">{paging.total} catatan</Tag> : null}
+      description="Siapa mengubah apa dan kapan. Klik salah satu untuk melihat rinciannya. Perubahan yang tidak mengubah nilai tidak dicatat."
+      aside={
+        paging ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <Tag tone="soft">{paging.total} catatan</Tag>
+            {list.length > 0 && (
+              <button
+                type="button"
+                onClick={toggleAll}
+                className={`rounded text-xs font-semibold text-second/60 transition-colors hover:text-second4 motion-reduce:transition-none ${FOCUS_RING}`}
+              >
+                {allOpen ? "Tutup semua" : "Buka semua"}
+              </button>
+            )}
+          </div>
+        ) : null
+      }
     >
       {query.isPending ? (
         <div
@@ -2213,7 +2547,7 @@ function HistorySection({ report }) {
           {Array.from({ length: 3 }, (_, index) => (
             <div key={index} className="flex gap-4">
               <div className="size-8 shrink-0 animate-pulse rounded-full bg-second/10" />
-              <div className="h-20 flex-1 animate-pulse rounded-xl bg-second/10" />
+              <div className="h-16 flex-1 animate-pulse rounded-xl bg-second/10" />
             </div>
           ))}
         </div>
@@ -2231,83 +2565,21 @@ function HistorySection({ report }) {
           </button>
         </div>
       ) : list.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-second/30 px-4 py-10 text-center">
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-second/30 px-4 py-8 text-center">
           <FiClock size={32} className="text-second/30" aria-hidden="true" />
           <p className="text-sm text-second/60">Belum ada riwayat.</p>
         </div>
       ) : (
         <ol className={query.isFetching ? "opacity-60 transition-opacity" : ""}>
-          {list.map((item, index) => {
-            const lines = describeHistory(item);
-            const meta = HISTORY_ICONS[item.action] ?? {
-              icon: FiClock,
-              tone: "bg-second/10 text-second/60",
-            };
-            const Icon = meta.icon;
-            const isLast = index === list.length - 1;
-
-            return (
-              <li key={item.id} className="relative flex gap-4 pb-6 last:pb-0">
-                {!isLast && (
-                  <span
-                    aria-hidden="true"
-                    className="absolute bottom-0 left-4 top-8 w-px -translate-x-1/2 bg-second/15"
-                  />
-                )}
-
-                <span
-                  aria-hidden="true"
-                  className={`relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full ring-4 ring-primary ${meta.tone}`}
-                >
-                  <Icon size={16} />
-                </span>
-
-                <div className="min-w-0 flex-1 rounded-xl border border-second/20 bg-second/[0.02] p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <p className="text-sm font-semibold text-second">
-                      {HISTORY_LABELS[item.action] ?? item.action}
-                    </p>
-                    <p className="flex items-center gap-2 text-xs tabular-nums text-second/60">
-                      <FiClock size={16} aria-hidden="true" />
-                      {formatDateTime(item.created_at)}
-                    </p>
-                  </div>
-
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-second/60">
-                    <span
-                      aria-hidden="true"
-                      className="flex size-6 items-center justify-center rounded-full bg-second/10 text-xs font-bold text-second"
-                    >
-                      {initialOf(item.user_name)}
-                    </span>
-                    <span className="font-medium text-second">
-                      {item.user_name}
-                    </span>
-                    {item.user_role && (
-                      <Tag
-                        tone={item.user_role === "OWNER" ? "strong" : "soft"}
-                      >
-                        {ROLE_LABELS[item.user_role] ?? item.user_role}
-                      </Tag>
-                    )}
-                  </div>
-
-                  {lines.length > 0 && (
-                    <ul className="mt-3 flex flex-col gap-1 border-l-2 border-second/15 pl-3">
-                      {lines.map((line, lineIndex) => (
-                        <li
-                          key={lineIndex}
-                          className="break-words text-xs tabular-nums text-second/70"
-                        >
-                          {line}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              </li>
-            );
-          })}
+          {list.map((item, index) => (
+            <HistoryItem
+              key={item.id}
+              item={item}
+              isLast={index === list.length - 1}
+              open={openIds.has(item.id)}
+              onToggle={() => toggle(item.id)}
+            />
+          ))}
         </ol>
       )}
 
@@ -2346,7 +2618,6 @@ function HistorySection({ report }) {
     </FormSection>
   );
 }
-
 /* ------------------------------ Delete report ----------------------------- */
 
 function DeleteReportSection({ report, basePath, canLock }) {
@@ -2458,10 +2729,14 @@ export default function ReportDetailView({ id, role }) {
   }
   const remitStatus = getRemitStatus(report);
   const lockedBySetor = canRemit && hasRemitAmounts(report) && !report.remitted;
+  // PIC hanya bisa diubah ADMIN selama laporan belum di-approve OWNER.
+  const canEditPic = canRemit && !report.remitted;
   const remainingTotal = report.remaining_balance ?? report.closing_balance;
   const remainingCash = report.remaining_cash ?? report.closing_cash;
   const remainingNoncash = report.remaining_noncash ?? report.closing_noncash;
-
+  const remitFilled = hasRemitAmounts(report);
+  const remitCash = Number(report.remit_cash) || 0;
+  const remitTransfer = Number(report.remit_transfer) || 0;
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-screen-xl flex-col gap-8 bg-primary pb-16">
       {/* Header */}
@@ -2528,6 +2803,8 @@ export default function ReportDetailView({ id, role }) {
           {canLock && <Tag tone="outline">Setoran: Anda yang approve</Tag>}{" "}
         </div>
 
+        <PicLine report={report} canEdit={canEditPic} />
+
         {report.updated_at && (
           <p className="text-xs tabular-nums text-second/60">
             Diperbarui {formatDateTime(report.updated_at)}. Lihat siapa yang
@@ -2539,14 +2816,14 @@ export default function ReportDetailView({ id, role }) {
       {/* Ringkasan */}
       <section
         aria-label="Ringkasan laporan"
-        className={`grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 ${
+        className={`grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5 ${
           query.isFetching ? "opacity-60" : ""
         }`}
       >
         <OpeningBalanceCard
           report={report}
           canEdit={!report.remitted && !lockedBySetor}
-        />{" "}
+        />
         <StatCard
           icon={FiTrendingUp}
           label="Total masuk"
@@ -2562,8 +2839,18 @@ export default function ReportDetailView({ id, role }) {
           tone="failure"
         />
         <StatCard
+          icon={FiSend}
+          label="Setor"
+          value={remitFilled ? formatMoney(remitCash + remitTransfer) : "—"}
+          hint={
+            remitFilled
+              ? `Tunai ${formatMoney(remitCash)} · Non tunai ${formatMoney(remitTransfer)}`
+              : "Belum disetor"
+          }
+        />
+        <StatCard
           icon={FiInbox}
-          label="Saldo setelah disetor"
+          label="Saldo akhir"
           value={formatMoney(remainingTotal)}
           hint={`Tunai ${formatMoney(remainingCash)} · Non tunai ${formatMoney(remainingNoncash)}`}
           tone="pending"

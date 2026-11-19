@@ -16,6 +16,7 @@ import orderPaymentController from "../controller/admin/order-payment-controller
 import qcItemController from "../controller/admin/qc-item-controller.js";
 import qcController from "../controller/admin/qc-controller.js";
 import dailyReportController from "../controller/admin/daily-report-controller.js";
+import employeeController from "../controller/owner/employee-controller.js";
 const adminRouter = express.Router();
 adminRouter.put("/users/pin", userController.setPin);
 adminRouter.get("/users/current", userController.get);
@@ -100,6 +101,8 @@ adminRouter.post(
 
   dailyReportController.createEntry,
 );
+adminRouter.get("/admin/employees", employeeController.getAll);
+
 adminRouter.patch(
   "/admin/daily-reports/:id/entries/:entry_id",
 
