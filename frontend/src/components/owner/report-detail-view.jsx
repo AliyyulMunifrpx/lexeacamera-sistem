@@ -207,7 +207,6 @@ function IconChip({ icon: Icon, className = "bg-second4/10 text-second4" }) {
     </span>
   );
 }
-
 function StatCard({
   icon: Icon,
   label,
@@ -224,28 +223,37 @@ function StatCard({
   };
 
   return (
-    <article className="flex min-w-0 items-center gap-4 rounded-2xl border border-second/30 bg-primary p-4 shadow-xl shadow-second/5">
+    <article className="relative flex min-w-0 items-center gap-4 rounded-2xl border border-second/30 bg-primary p-4 shadow-xl shadow-second/5 sm:flex-col sm:items-stretch sm:gap-2">
+      {/* Mobile: di samping. sm ke atas: tengah atas, setengahnya keluar dari garis atas kotak. */}
       <div
-        className={`flex size-8 shrink-0 items-center justify-center rounded-xl ${iconTones[tone]}`}
+        aria-hidden="true"
+        className={`flex size-8 shrink-0 items-center justify-center rounded-xl sm:absolute sm:left-1/2 sm:top-0 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:ring-4 sm:ring-primary ${iconTones[tone]}`}
       >
-        <Icon size={16} aria-hidden="true" />
+        <Icon size={16} />
       </div>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-xs text-second/60">{label}</p>
-        <div className="mt-1 break-words text-lg font-bold tabular-nums text-second">
+
+      <div className="flex min-w-0 flex-1 flex-col gap-[0.4]">
+        <p
+          className={`truncate text-xs text-second/60 ${action ? "sm:pr-8" : ""}`}
+        >
+          {label}
+        </p>
+        <div className="break-words text-base font-bold tabular-nums text-second">
           {value}
         </div>
         {hint && (
-          <p className="mt-0.5 break-words text-xs tabular-nums text-second/60">
+          <p className="break-words text-xs tabular-nums text-second/60">
             {hint}
           </p>
         )}
       </div>
-      {action}
+
+      {action && (
+        <div className="shrink-0 sm:absolute sm:right-2 sm:top-2">{action}</div>
+      )}
     </article>
   );
 }
-
 // Dua pilihan bergaya tombol (jenis baris, metode).
 function Toggle({ label, options, value, onChange, disabled }) {
   return (
