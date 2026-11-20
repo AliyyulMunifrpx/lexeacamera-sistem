@@ -34,6 +34,16 @@ export const updateNetworkValidation = Joi.object({
   is_active: Joi.boolean().strict(),
 }).or("label", "cidr", "is_active");
 
+export const createDeviceValidation = Joi.object({
+  label: label.required(),
+});
+
+export const updateDeviceValidation = Joi.object({
+  id: Joi.string().uuid().required(),
+  label,
+  is_active: Joi.boolean().strict(),
+}).or("label", "is_active");
+
 export const updateSettingValidation = Joi.object({
   require_network: Joi.boolean().strict().required(),
 });

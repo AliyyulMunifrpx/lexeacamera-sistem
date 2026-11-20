@@ -138,3 +138,26 @@ export async function getAttendancesForExport(filters = {}) {
 
   return all;
 }
+/** GET /owner/attendance-devices */
+export async function getAttendanceDevices() {
+  const response = await api.get("/owner/attendance-devices");
+  return response.data.data;
+}
+
+/** POST /owner/attendance-devices. Respons memuat `token` yang hanya muncul sekali. */
+export async function createAttendanceDevice(data) {
+  const response = await api.post("/owner/attendance-devices", data);
+  return response.data.data;
+}
+
+/** PUT /owner/attendance-devices/:id (label dan/atau is_active) */
+export async function updateAttendanceDevice(id, data) {
+  const response = await api.put(`/owner/attendance-devices/${id}`, data);
+  return response.data.data;
+}
+
+/** DELETE /owner/attendance-devices/:id (mencabut token permanen) */
+export async function deleteAttendanceDevice(id) {
+  const response = await api.delete(`/owner/attendance-devices/${id}`);
+  return response.data.data;
+}

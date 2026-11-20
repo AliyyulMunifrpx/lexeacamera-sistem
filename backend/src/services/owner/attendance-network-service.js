@@ -97,27 +97,29 @@ const deleteNetwork = async (request) => {
 };
 
 const readSetting = async () => {
-  const [store, activeNetworks] = await prisma.$transaction([
+  const [store, activeNetworks, activeDevices] = await prisma.$transaction([
     prisma.store.findFirst({
       orderBy: { id: "asc" },
       select: { id: true, attendance_require_network: true },
     }),
     prisma.attendanceNetwork.count({ where: { is_active: true } }),
+    prisma.attendanceDevice.count({ where: { is_active: true } }),
   ]);
 
   if (!store) {
     throw new ResponseError(503, "STORE_NOT_READY");
   }
 
-  return { store, activeNetworks };
+  return { store, activeNetworks, activeDevices };
 };
 
 const getSetting = async () => {
-  const { store, activeNetworks } = await readSetting();
+  const { store, activeNetworks, activeDevices } = await readSetting();
 
   return {
     require_network: store.attendance_require_network,
     active_networks: activeNetworks,
+    active_devices: activeDevices,
   };
 };
 

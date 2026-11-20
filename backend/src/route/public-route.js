@@ -8,6 +8,7 @@ import publicController from "../controller/public/public-controller.js";
 import attendanceController from "../controller/public/attendance-controller.js";
 import publicEmployeeController from "../controller/public/employee-controller.js";
 import authController from "../controller/public/auth-controller.js";
+import attendanceDeviceController from "../controller/public/attendance-device-controller.js";
 
 const publicRouter = express.Router();
 
@@ -73,4 +74,10 @@ publicRouter.post(
   publicLimiter,
   attendanceController.getHistory,
 );
+publicRouter.post(
+  "/public/attendance-device/heartbeat",
+  publicLimiter,
+  attendanceDeviceController.heartbeat,
+);
+
 export default publicRouter;

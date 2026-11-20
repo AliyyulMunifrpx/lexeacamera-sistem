@@ -533,3 +533,19 @@ model DailyReportLog {
 
   @@index([report_id, seq])
 }
+
+// IP wifi toko yang dilaporkan sendiri oleh perangkat toko (PC) lewat heartbeat.
+// token_hash = sha256 dari token rahasia (token asli hanya tampil sekali saat dibuat).
+// ip_v4 = alamat IPv4 ("203.0.113.7"), ip_v6 = prefix /64 ("2001:db8:1:2::/64").
+// Tanpa relasi ke tabel lain.
+model AttendanceDevice {
+  id            String    @id @default(uuid())
+  label         String
+  token_hash    String    @unique
+  is_active     Boolean   @default(true)
+  ip_v4         String?
+  ip_v6         String?
+  last_seen_at  DateTime?
+  ip_changed_at DateTime?
+  created_at    DateTime  @default(now())
+}

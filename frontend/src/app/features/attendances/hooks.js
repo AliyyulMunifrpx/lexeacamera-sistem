@@ -1,13 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
+  createAttendanceDevice,
   createAttendanceNetwork,
+  deleteAttendanceDevice,
   deleteAttendanceNetwork,
+  getAttendanceDevices,
   getAttendanceNetworks,
   getAttendanceSettings,
   getAttendances,
   getMyIp,
   updateAttendance,
+  updateAttendanceDevice,
   updateAttendanceNetwork,
   updateAttendanceSettings,
 } from "./api.js";
@@ -103,5 +107,54 @@ export function useUpdateAttendance() {
     mutationFn: ({ id, data }) => updateAttendance(id, data),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["attendances"] }),
+  });
+}
+const DEVICES_KEY = ["attendance devices"];
+
+// Settings memuat active_devices, jadi ikut dimuat ulang setiap perangkat berubah.
+function invalidateDeviceRelated(queryClient) {
+  return queryClient.invalidateQueries({
+    predicate: (query) => {
+      const key = String(query.queryKey[0] ?? "").toLowerCase();
+      return (
+        key.includes("device") ||
+        key.includes("setting") ||
+        key.includes("network")
+      );
+    },
+  });
+}
+
+export function useGetAttendanceDevices() {
+  return useQuery({
+    queryKey: DEVICES_KEY,
+    queryFn: getAttendanceDevices,
+  });
+}
+
+export function useCreateAttendanceDevice() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data) => createAttendanceDevice(data),
+    onSuccess: () => invalidateDeviceRelated(queryClient),
+  });
+}
+
+export function useUpdateAttendanceDevice() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, data }) => updateAttendanceDevice(id, data),
+    onSuccess: () => invalidateDeviceRelated(queryClient),
+  });
+}
+
+export function useDeleteAttendanceDevice() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id) => deleteAttendanceDevice(id),
+    onSuccess: () => invalidateDeviceRelated(queryClient),
   });
 }

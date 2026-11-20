@@ -24,6 +24,7 @@ import cameraImportController from "../controller/owner/camera-import-controller
 import payrollController from "../controller/owner/payroll-controller.js";
 import contractController from "../controller/owner/contract-controller.js";
 import cameraBulkDeleteController from "../controller/owner/camera-bulk-delete-controller.js";
+import attendanceDeviceController from "../controller/owner/attendance-device-controller.js";
 
 const ownerRouter = express.Router();
 
@@ -153,4 +154,18 @@ ownerRouter.post(
   "/owner/cameras/bulk-delete",
   cameraBulkDeleteController.deleteMany,
 );
+ownerRouter.get("/owner/attendance-devices", attendanceDeviceController.getAll);
+ownerRouter.post(
+  "/owner/attendance-devices",
+  attendanceDeviceController.create,
+);
+ownerRouter.put(
+  "/owner/attendance-devices/:id",
+  attendanceDeviceController.update,
+);
+ownerRouter.delete(
+  "/owner/attendance-devices/:id",
+  attendanceDeviceController.remove,
+);
+
 export default ownerRouter;

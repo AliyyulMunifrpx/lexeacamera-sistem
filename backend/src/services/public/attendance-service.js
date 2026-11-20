@@ -2,10 +2,7 @@ import { ResponseError } from "../../error/response-error.js";
 import { prisma } from "../../lib/database.js";
 import { describeIp, matchesAnyCidr } from "../../utils/network.js";
 import { verifyPin } from "../../utils/secret.js";
-import {
-  attendValidation,
-  historyValidation,
-} from "../../validation/public/attendance-validation.js";
+import { attendValidation } from "../../validation/public/attendance-validation.js";
 import { validate } from "../../validation/validation.js";
 
 const MAX_FAILED_PINS = 5;
@@ -33,17 +30,25 @@ const assertNetworkAllowed = async (ip) => {
   }
   if (!store.attendance_require_network) return;
 
-  const networks = await prisma.attendanceNetwork.findMany({
-    where: { is_active: true },
-    select: { cidr: true },
-  });
+  const [networks, devices] = await Promise.all([
+    prisma.attendanceNetwork.findMany({
+      where: { is_active: true },
+      select: { cidr: true },
+    }),
+    prisma.attendanceDevice.findMany({
+      where: { is_active: true },
+      select: { ip_v4: true, ip_v6: true },
+    }),
+  ]);
 
-  if (
-    !matchesAnyCidr(
-      ip,
-      networks.map((network) => network.cidr),
-    )
-  ) {
+  const cidrs = [
+    ...networks.map((network) => network.cidr),
+    ...devices.flatMap((device) =>
+      [device.ip_v4 ? `${device.ip_v4}/32` : null, device.ip_v6].filter(Boolean),
+    ),
+  ];
+
+  if (!matchesAnyCidr(ip, cidrs)) {
     throw new ResponseError(403, "NETWORK_NOT_ALLOWED");
   }
 };
@@ -137,11 +142,7 @@ const withEmployeeLock = (employeeId, action) =>
 
 const findOpen = (tx, employeeId) =>
   tx.attendance.findFirst({
-    where: {
-      employee_id: employeeId,
-      check_out_at: null,
-      missed_checkout: false,
-    },
+    where: { employee_id: employeeId, check_out_at: null, missed_checkout: false },
     orderBy: { check_in_at: "desc" },
     select: { id: true, check_in_at: true },
   });
@@ -187,10 +188,7 @@ const checkIn = async (request) => {
     const attendedToday = await tx.attendance.findFirst({
       where: {
         employee_id: employee.id,
-        check_in_at: {
-          gte: dayStart,
-          lt: new Date(dayStart.getTime() + DAY_MS),
-        },
+        check_in_at: { gte: dayStart, lt: new Date(dayStart.getTime() + DAY_MS) },
       },
       select: { id: true },
     });
@@ -254,120 +252,6 @@ const checkOut = async (request) => {
   });
 };
 
-const readyEmployeeWhere = {
-  is_active: true,
-  pin_hash: { not: null },
-  OR: [{ email_verified_at: { not: null } }, { user_id: { not: null } }],
-};
-
-const getToday = async (request) => {
-  await assertNetworkAllowed(request.ip);
-
-  const today = wibDay(new Date());
-  const dayStart = new Date(`${today}T00:00:00+07:00`);
-  const dayEnd = new Date(dayStart.getTime() + DAY_MS);
-
-  const [employees, records] = await prisma.$transaction([
-    prisma.employee.findMany({
-      where: readyEmployeeWhere,
-      select: { id: true, name: true },
-      orderBy: [{ name: "asc" }, { id: "asc" }],
-    }),
-    prisma.attendance.findMany({
-      where: { check_in_at: { gte: dayStart, lt: dayEnd } },
-      select: { employee_id: true, check_in_at: true, check_out_at: true },
-    }),
-  ]);
-
-  const byEmployee = new Map(records.map((row) => [row.employee_id, row]));
-  const summary = { total: employees.length, working: 0, done: 0, not_yet: 0 };
-
-  const list = employees.map((employee) => {
-    const row = byEmployee.get(employee.id);
-    let status = "NOT_YET";
-
-    if (row) status = row.check_out_at ? "DONE" : "WORKING";
-    if (status === "WORKING") summary.working += 1;
-    else if (status === "DONE") summary.done += 1;
-    else summary.not_yet += 1;
-
-    return {
-      id: employee.id,
-      name: employee.name,
-      status,
-      check_in_at: row?.check_in_at ?? null,
-      check_out_at: row?.check_out_at ?? null,
-    };
-  });
-
-  return { date: today, summary, employees: list };
-};
-
-const getHistory = async (request) => {
-  const req = validate(historyValidation, request.body ?? {});
-
-  await assertNetworkAllowed(request.ip);
-  const employee = await authenticate(req.employee_id, req.pin);
-
-  const today = wibDay(new Date());
-  const month = req.month ?? today.slice(0, 7);
-  const [year, monthNumber] = month.split("-").map(Number);
-  const nextMonth =
-    monthNumber === 12
-      ? `${year + 1}-01`
-      : `${year}-${String(monthNumber + 1).padStart(2, "0")}`;
-
-  const rows = await prisma.attendance.findMany({
-    where: {
-      employee_id: employee.id,
-      check_in_at: {
-        gte: new Date(`${month}-01T00:00:00+07:00`),
-        lt: new Date(`${nextMonth}-01T00:00:00+07:00`),
-      },
-    },
-    orderBy: { check_in_at: "desc" },
-    select: { check_in_at: true, check_out_at: true, missed_checkout: true },
-  });
-
-  const summary = {
-    days: rows.length,
-    completed: 0,
-    missed: 0,
-    total_minutes: 0,
-  };
-
-  const records = rows.map((row) => {
-    const date = wibDay(row.check_in_at);
-    let status = "WORKING";
-    let duration = null;
-
-    if (row.check_out_at) {
-      status = "DONE";
-      duration = Math.floor((row.check_out_at - row.check_in_at) / 60000);
-      summary.completed += 1;
-      summary.total_minutes += duration;
-    } else if (row.missed_checkout || date < today) {
-      status = "MISSED";
-      summary.missed += 1;
-    }
-
-    return {
-      date,
-      status,
-      check_in_at: row.check_in_at,
-      check_out_at: row.check_out_at,
-      duration_minutes: duration,
-    };
-  });
-
-  return {
-    employee: { id: employee.id, name: employee.name },
-    month,
-    summary,
-    records,
-  };
-};
-
 const myIp = (request) => {
   const info = describeIp(request.ip);
 
@@ -378,11 +262,4 @@ const myIp = (request) => {
   return info;
 };
 
-export default {
-  getEmployees,
-  getToday,
-  getHistory,
-  checkIn,
-  checkOut,
-  myIp,
-};
+export default { getEmployees, checkIn, checkOut, myIp };
