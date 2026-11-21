@@ -11,6 +11,8 @@ const updatePaymentStatus = async (request) => {
       orderId: req.id,
       status: req.payment_status,
       paidAt: req.paid_at,
+      dpAmount: req.dp_amount,
+      dpPaid: req.dp_paid,
     }),
   );
 };

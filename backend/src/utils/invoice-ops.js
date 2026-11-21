@@ -15,6 +15,7 @@ import {
   createOrderWithInvoice,
   toMoney,
 } from "./order-invoice.js";
+import { assertTotalCoversDp, isDpPaid } from "./payment-status.js";
 
 const PER_PAGE = 20;
 const WIB = "+07:00";
@@ -59,6 +60,8 @@ export const createInvoiceOps = ({ toResponse, withCost }) => {
         customer_discount: req.customer_discount,
         terms_and_condition: req.terms_and_condition,
         is_final: req.is_final ?? false,
+        dp_amount: req.dp_amount,
+        dp_paid: req.dp_paid,
       },
     });
 
@@ -110,6 +113,8 @@ export const createInvoiceOps = ({ toResponse, withCost }) => {
             select: {
               type: true,
               payment_status: true,
+              dp_amount: true,
+              dp_paid_at: true,
               order_items: {
                 select: {
                   camera_price: true,
@@ -133,6 +138,8 @@ export const createInvoiceOps = ({ toResponse, withCost }) => {
           ...invoice,
           type: order.type,
           payment_status: order.payment_status,
+          dp_amount: order.dp_amount ?? null,
+          dp_paid: isDpPaid(order),
           subtotal: sum(order.order_items, (i) => i.camera_price * i.quantity),
           item_count: order.order_items.length,
         };
@@ -219,6 +226,8 @@ export const createInvoiceOps = ({ toResponse, withCost }) => {
           where: { id: invoice.order_id },
           select: {
             total_amount: true,
+            payment_status: true,
+            dp_amount: true,
             order_items: { select: { camera_price: true, quantity: true } },
           },
         });
@@ -242,6 +251,8 @@ export const createInvoiceOps = ({ toResponse, withCost }) => {
         const total = calculateTotal(subtotal, storeDiscount, customerDiscount);
 
         if (total !== order.total_amount) {
+          assertTotalCoversDp(order, total);
+
           const refunds = await tx.order.findMany({
             where: { refund_of_id: invoice.order_id },
             select: { total_amount: true },
@@ -274,7 +285,7 @@ export const createInvoiceOps = ({ toResponse, withCost }) => {
     return toResponse(updated);
   };
 
-  // Order yang sudah lunas tidak bisa dihapus: stoknya sudah terpotong dan
+  // Order yang sudah DP atau lunas tidak bisa dihapus: stoknya sudah ditahan dan
   // laporan memakainya. Ubah ke belum lunas dulu.
   const deleteInvoice = async (request) => {
     const req = validate(deleteInvoiceValidation, request);
@@ -303,6 +314,9 @@ export const createInvoiceOps = ({ toResponse, withCost }) => {
       }
       if (order.payment_status === "PAID") {
         throw new ResponseError(409, "ORDER_ALREADY_PAID");
+      }
+      if (order.payment_status === "DP") {
+        throw new ResponseError(409, "ORDER_HAS_DP");
       }
 
       try {

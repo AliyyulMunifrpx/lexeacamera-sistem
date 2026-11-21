@@ -35,9 +35,10 @@ export const createInvoiceValidation = Joi.object({
   ship: nullableText(100),
   store_discount: money.allow(null),
   customer_discount: money.allow(null),
-  // Tidak dikirim = salin terms pembayaran saat ini. "" atau null = tanpa terms.
+  dp_amount: Joi.number().integer().min(1).max(2147483647),
   terms_and_condition: nullableText(TERMS_MAX),
-  is_final: Joi.boolean(), // true = langsung final, kosong/false = masih bisa diedit sekali
+  is_final: Joi.boolean(),
+  dp_paid: Joi.boolean().optional(),
 });
 
 export const getAllInvoiceValidation = Joi.object({

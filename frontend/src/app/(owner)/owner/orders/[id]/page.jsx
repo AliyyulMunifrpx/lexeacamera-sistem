@@ -19,6 +19,7 @@ import {
   FiFileText,
   FiLoader,
   FiPackage,
+  FiPercent,
   FiRotateCcw,
   FiShoppingBag,
   FiTrash2,
@@ -57,6 +58,22 @@ const BTN_BASE =
 const labelClass = "mb-2 block text-sm font-semibold text-second";
 
 const TYPE_LABEL = { SALE: "Penjualan", REFUND: "Refund" };
+
+const STATUS_META = {
+  UNPAID: { label: "Belum lunas", tone: "violet", icon: FiClock },
+  DP: { label: "DP", tone: "strong", icon: FiPercent },
+  DP_UNPAID: { label: "DP belum dibayar", tone: "red", icon: FiClock },
+  PAID: { label: "Lunas", tone: "blue", icon: FiCheckCircle },
+};
+
+const STATUS_BY_MODE = {
+  pay: "PAID",
+  correct: "PAID",
+  dp: "DP",
+  dpcorrect: "DP",
+  dppay: "DP",
+  unpay: "UNPAID",
+};
 
 function inputClass(hasError) {
   return [
@@ -388,7 +405,13 @@ function LoadingState() {
 
 /* -------------------------------- Dialog --------------------------------- */
 
-function stockNote(orderType, mode) {
+function stockNote(orderType, mode, from, dpUnpaid = false) {
+  if (mode === "dppay") {
+    return "Hanya status bayar DP yang berubah. Stok kamera dan jatah edit invoice tidak ikut berubah.";
+  }
+  if (mode === "dpcorrect") {
+    return "Hanya nominal dan status bayar DP yang berubah. Stok kamera dan jatah edit invoice tidak ikut berubah.";
+  }
   if (mode === "correct") {
     return "Hanya tanggal lunas yang berubah. Stok kamera tidak ikut berubah.";
   }
@@ -397,9 +420,68 @@ function stockNote(orderType, mode) {
       ? "Stok kamera pada item refund yang ditandai “kembali ke stok” akan bertambah."
       : "Stok item refund yang tadi ditambahkan akan dikurangi lagi. Ditolak jika stoknya sudah tidak cukup.";
   }
-  return mode === "pay"
-    ? "Stok setiap kamera di order ini akan berkurang sesuai jumlahnya. Jika ada yang stoknya tidak cukup, seluruh proses dibatalkan."
-    : "Stok yang tadi dikurangi akan dikembalikan, dan tanggal lunas dihapus dari laporan penjualan.";
+  if (mode === "unpay") {
+    return from === "PAID"
+      ? "Stok yang tadi ditahan akan dikembalikan, dan tanggal lunas dihapus dari laporan penjualan."
+      : "Stok yang tadi ditahan sejak DP akan dikembalikan, dan nominal DP dihapus.";
+  }
+  if (mode === "dp") {
+    return from === "PAID"
+      ? "Stok tetap ditahan. Tanggal lunas dihapus, jadi order keluar dari laporan penjualan sampai dilunasi."
+      : "Stok setiap kamera di order ini ditahan (berkurang) sesuai jumlahnya, baik DP sudah maupun belum dibayar. Jika ada yang stoknya tidak cukup, seluruh proses dibatalkan. Order belum masuk laporan penjualan sampai lunas.";
+  }
+  if (from === "DP") {
+    return dpUnpaid
+      ? "Stok sudah ditahan sejak DP, jadi tidak berubah. DP belum pernah dibayar, jadi nominal DP dihapus dan order dilunasi sekaligus."
+      : "Stok sudah ditahan sejak DP, jadi tidak berubah. Order masuk laporan penjualan sesuai tanggal lunas.";
+  }
+  return "Stok setiap kamera di order ini akan berkurang sesuai jumlahnya. Jika ada yang stoknya tidak cukup, seluruh proses dibatalkan.";
+}
+
+function DpPaidChoice({ value, onChange, disabled }) {
+  const options = [
+    { value: true, label: "DP sudah dibayar" },
+    { value: false, label: "DP belum dibayar" },
+  ];
+
+  return (
+    <div className="mt-4">
+      <p id="dp-paid-label" className={labelClass}>
+        Status pembayaran DP
+      </p>
+      <div
+        role="radiogroup"
+        aria-labelledby="dp-paid-label"
+        className="grid grid-cols-2 gap-2"
+      >
+        {options.map((option) => {
+          const active = value === option.value;
+          return (
+            <button
+              key={String(option.value)}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              disabled={disabled}
+              onClick={() => onChange(option.value)}
+              className={`${BTN_BASE} w-full border ${
+                active
+                  ? "border-second4 bg-second4/10 text-second4"
+                  : "border-second/30 text-second/70 hover:border-second4 hover:text-second4"
+              } disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-2 text-xs text-second/60">
+        {value
+          ? "Uang DP sudah diterima. Sisa tagihan = total dikurangi DP."
+          : "Nominal DP sudah disepakati, tapi uangnya belum masuk. Sisa tagihan masih sebesar total."}
+      </p>
+    </div>
+  );
 }
 
 function PaymentDialog({ order, mode, isSaving, apiError, onClose, onSubmit }) {
@@ -407,6 +489,15 @@ function PaymentDialog({ order, mode, isSaving, apiError, onClose, onSubmit }) {
   const onCloseRef = useRef(onClose);
   const [paidAt, setPaidAt] = useState(
     mode === "correct" && order.paid_at ? toLocalInput(order.paid_at) : "",
+  );
+  const [dpDigits, setDpDigits] = useState(
+    (mode === "dp" || mode === "dpcorrect") && order.dp_amount
+      ? String(order.dp_amount)
+      : "",
+  );
+  // Order yang sudah DP mempertahankan status bayar DP-nya; selain itu default sudah dibayar.
+  const [dpPaid, setDpPaid] = useState(
+    mode === "dpcorrect" ? order.dp_paid !== false : true,
   );
   const [localError, setLocalError] = useState("");
 
@@ -432,16 +523,27 @@ function PaymentDialog({ order, mode, isSaving, apiError, onClose, onSubmit }) {
   }, []);
 
   const isUnpay = mode === "unpay";
+  const isDpPay = mode === "dppay";
   const needsDate = mode === "pay" || mode === "correct";
+  const needsDp = mode === "dp" || mode === "dpcorrect";
+  const dpValue = dpDigits === "" ? 0 : Number(dpDigits);
+  const orderTotal = Number(order.total_amount) || 0;
+  const dpUnpaid = order.payment_status === "DP" && order.dp_paid === false;
 
   const titles = {
     pay: "Tandai order lunas",
+    dp: "Tandai order DP",
+    dpcorrect: "Ubah DP",
+    dppay: "Tandai DP sudah dibayar",
     correct: "Koreksi tanggal lunas",
     unpay: "Tandai order belum lunas",
   };
 
   const submitLabels = {
     pay: "Tandai lunas",
+    dp: "Tandai DP",
+    dpcorrect: "Simpan DP",
+    dppay: "Tandai sudah dibayar",
     correct: "Simpan tanggal",
     unpay: "Tandai belum lunas",
   };
@@ -473,9 +575,24 @@ function PaymentDialog({ order, mode, isSaving, apiError, onClose, onSubmit }) {
       return;
     }
 
+    if (needsDp) {
+      if (!Number.isInteger(dpValue) || dpValue < 1) {
+        setLocalError("Nominal DP wajib diisi dan minimal Rp1.");
+        return;
+      }
+      if (dpValue >= orderTotal) {
+        setLocalError(
+          "Nominal DP harus lebih kecil dari total order. Jika sudah dibayar penuh, tandai lunas.",
+        );
+        return;
+      }
+    }
+
     onSubmit({
-      payment_status: isUnpay ? "UNPAID" : "PAID",
+      payment_status: STATUS_BY_MODE[mode],
       ...(paidAtIso && { paid_at: paidAtIso }),
+      ...(needsDp && { dp_amount: dpValue, dp_paid: dpPaid }),
+      ...(isDpPay && { dp_paid: true }),
     });
   }
 
@@ -504,6 +621,8 @@ function PaymentDialog({ order, mode, isSaving, apiError, onClose, onSubmit }) {
           >
             {isUnpay ? (
               <FiClock size={16} aria-hidden="true" />
+            ) : needsDp || isDpPay ? (
+              <FiPercent size={16} aria-hidden="true" />
             ) : (
               <FiCheckCircle size={16} aria-hidden="true" />
             )}
@@ -534,8 +653,95 @@ function PaymentDialog({ order, mode, isSaving, apiError, onClose, onSubmit }) {
 
         <p className="mt-4 flex items-start gap-2 rounded-xl bg-second/5 px-4 py-2 text-sm leading-relaxed text-second/70">
           <FiPackage size={16} className="mt-1 shrink-0" aria-hidden="true" />
-          {stockNote(order.type, mode)}
+          {stockNote(order.type, mode, order.payment_status, dpUnpaid)}
         </p>
+
+        {order.type === "SALE" &&
+          order.invoice &&
+          mode !== "correct" &&
+          mode !== "dpcorrect" &&
+          mode !== "dppay" && (
+            <p className="mt-2 flex items-start gap-2 rounded-xl bg-second/5 px-4 py-2 text-sm leading-relaxed text-second/70">
+              <FiFileText
+                size={16}
+                className="mt-1 shrink-0"
+                aria-hidden="true"
+              />
+              Invoice mendapat jatah edit baru (1 kali) untuk status ini.
+            </p>
+          )}
+
+        {isDpPay && (
+          <p className="mt-4 text-sm leading-relaxed text-second/70">
+            DP sebesar{" "}
+            <span className="font-semibold tabular-nums text-second">
+              {formatPrice(order.dp_amount)}
+            </span>{" "}
+            ditandai sudah diterima. Sisa tagihan menjadi{" "}
+            <span className="font-semibold tabular-nums text-second">
+              {formatPrice(orderTotal - (Number(order.dp_amount) || 0))}
+            </span>
+            .
+          </p>
+        )}
+
+        {needsDp && (
+          <div className="mt-4">
+            <label htmlFor="dp-amount" className={labelClass}>
+              Nominal DP
+              <span className="ml-2 text-second2" aria-hidden="true">
+                *
+              </span>
+            </label>
+
+            <div className="relative">
+              <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-base text-second/60">
+                Rp
+              </span>
+              <input
+                id="dp-amount"
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                value={dpDigits === "" ? "" : formatNumber(dpValue)}
+                disabled={isSaving}
+                maxLength={13}
+                placeholder="0"
+                onChange={(event) => {
+                  const digits = event.target.value
+                    .replace(/\D/g, "")
+                    .replace(/^0+(?=\d)/, "");
+                  if (digits.length > 12) return;
+                  setDpDigits(digits);
+                  setLocalError("");
+                }}
+                aria-invalid={localError ? "true" : undefined}
+                aria-required="true"
+                className={`${inputClass(Boolean(localError))} pl-11 tabular-nums`}
+              />
+            </div>
+
+            <p className="mt-2 text-xs tabular-nums text-second/60">
+              Total order {formatPrice(orderTotal)}
+              {dpValue > 0 && dpValue < orderTotal
+                ? dpPaid
+                  ? ` · Sisa tagihan ${formatPrice(orderTotal - dpValue)}`
+                  : ` · Sisa tagihan ${formatPrice(orderTotal)} (DP belum dibayar)`
+                : ""}
+            </p>
+          </div>
+        )}
+
+        {needsDp && (
+          <DpPaidChoice
+            value={dpPaid}
+            onChange={(next) => {
+              setDpPaid(next);
+              setLocalError("");
+            }}
+            disabled={isSaving}
+          />
+        )}
 
         {needsDate && (
           <div className="mt-4">
@@ -700,8 +906,8 @@ function DeleteDialog({ order, isDeleting, error, onClose, onConfirm }) {
             beserta item dan invoice-nya. Tindakan ini tidak bisa dibatalkan.
           </p>
           <p>
-            Stok kamera tidak berubah, karena order belum lunas dan stok belum
-            dipotong.
+            Stok kamera tidak berubah, karena order belum dibayar dan stok belum
+            ditahan.
           </p>
         </div>
 
@@ -845,9 +1051,17 @@ export default function OwnerOrderDetailPage() {
       notify.success(
         data.payment_status === "UNPAID"
           ? "Order ditandai belum lunas."
-          : dialogMode === "correct"
-            ? "Tanggal lunas diperbarui."
-            : "Order ditandai lunas.",
+          : data.payment_status === "DP"
+            ? dialogMode === "dppay"
+              ? "DP ditandai sudah dibayar."
+              : dialogMode === "dpcorrect"
+                ? "DP diperbarui."
+                : data.dp_paid === false
+                  ? "Order ditandai DP (belum dibayar)."
+                  : "Order ditandai DP."
+            : dialogMode === "correct"
+              ? "Tanggal lunas diperbarui."
+              : "Order ditandai lunas.",
       );
       setDialogMode(null);
     } catch (err) {
@@ -861,15 +1075,26 @@ export default function OwnerOrderDetailPage() {
       }
       if (code === "INSUFFICIENT_STOCK") {
         setDialogError({
-          message: "Stok tidak cukup, order tidak bisa dilunasi.",
+          message:
+            "Stok tidak cukup, order tidak bisa ditahan (DP atau lunas).",
           cameras: body?.cameras ?? [],
         });
+        return;
+      }
+      if (code === "DP_AMOUNT_OUT_OF_RANGE") {
+        setDialogError({
+          message: "Nominal DP harus lebih kecil dari total order.",
+        });
+        return;
+      }
+      if (code === "DP_AMOUNT_REQUIRED") {
+        setDialogError({ message: "Nominal DP wajib diisi." });
         return;
       }
       if (code === "ORDER_HAS_REFUNDS") {
         setDialogError({
           message:
-            "Order ini sudah punya refund, jadi tidak bisa dikembalikan ke belum lunas.",
+            "Order ini sudah punya refund, jadi statusnya tidak bisa diubah dari lunas.",
         });
         return;
       }
@@ -903,6 +1128,13 @@ export default function OwnerOrderDetailPage() {
       if (code === "ORDER_ALREADY_PAID") {
         setDeleteError(
           "Order ini sudah lunas. Tandai belum lunas dulu sebelum menghapus.",
+        );
+        refetch();
+        return;
+      }
+      if (code === "ORDER_HAS_DP") {
+        setDeleteError(
+          "Order ini sudah DP. Tandai belum lunas dulu sebelum menghapus.",
         );
         refetch();
         return;
@@ -980,17 +1212,27 @@ export default function OwnerOrderDetailPage() {
   const customer = order.customer;
 
   const isPaid = order.payment_status === "PAID";
+  const isDp = order.payment_status === "DP";
+  const isUnpaid = !isPaid && !isDp;
+  // DP belum dibayar: status DP dengan dp_paid === false (DP sudah dibayar kalau true).
+  const isDpUnpaid = isDp && order.dp_paid === false;
+  const isDpPaid = isDp && !isDpUnpaid;
+  const statusMeta =
+    STATUS_META[isDpUnpaid ? "DP_UNPAID" : order.payment_status] ??
+    STATUS_META.UNPAID;
   const isRefund = order.type === "REFUND";
   const hasRefunds = refunds.length > 0;
   const showCapital = !isRefund;
 
-  // Aturan hapus: hanya order SALE, belum lunas, dan belum punya refund.
-  const canDelete = !isRefund && !isPaid && !hasRefunds;
+  // Aturan hapus: hanya order SALE, belum dibayar (bukan DP/lunas), dan belum punya refund.
+  const canDelete = !isRefund && isUnpaid && !hasRefunds;
   const deleteBlockedReason = isPaid
     ? "Order sudah lunas. Tandai belum lunas dulu untuk menghapus."
-    : hasRefunds
-      ? "Order yang sudah punya refund tidak bisa dihapus."
-      : undefined;
+    : isDp
+      ? "Order sudah DP. Tandai belum lunas dulu untuk menghapus."
+      : hasRefunds
+        ? "Order yang sudah punya refund tidak bisa dihapus."
+        : undefined;
 
   const totalQuantity = items.reduce(
     (sum, item) => sum + (Number(item.quantity) || 0),
@@ -1052,11 +1294,8 @@ export default function OwnerOrderDetailPage() {
 
           {/* Badge group */}
           <div className="flex flex-wrap items-center gap-2">
-            <Tag
-              tone={isPaid ? "blue" : "violet"}
-              icon={isPaid ? FiCheckCircle : FiClock}
-            >
-              {isPaid ? "Lunas" : "Belum lunas"}
+            <Tag tone={statusMeta.tone} icon={statusMeta.icon}>
+              {statusMeta.label}
             </Tag>
             <Tag
               tone={isRefund ? "red" : "muted"}
@@ -1073,14 +1312,36 @@ export default function OwnerOrderDetailPage() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             {/* Aksi utama */}
             {!isPaid ? (
-              <button
-                type="button"
-                onClick={() => openDialog("pay")}
-                className={`${BTN_BASE} w-full justify-center bg-grad text-primary shadow-lg shadow-second4/20 hover:opacity-90 sm:w-auto ${FOCUS_RING}`}
-              >
-                <FiCheckCircle size={16} aria-hidden="true" />
-                Tandai lunas
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => openDialog("pay")}
+                  className={`${BTN_BASE} w-full justify-center bg-grad text-primary shadow-lg shadow-second4/20 hover:opacity-90 sm:w-auto ${FOCUS_RING}`}
+                >
+                  <FiCheckCircle size={16} aria-hidden="true" />
+                  Tandai lunas
+                </button>
+                {isUnpaid && !isRefund && (
+                  <button
+                    type="button"
+                    onClick={() => openDialog("dp")}
+                    className={`${BTN_BASE} w-full justify-center border border-second4 text-second4 hover:bg-second4/5 sm:w-auto ${FOCUS_RING}`}
+                  >
+                    <FiPercent size={16} aria-hidden="true" />
+                    Tandai DP
+                  </button>
+                )}
+                {isDpUnpaid && (
+                  <button
+                    type="button"
+                    onClick={() => openDialog("dppay")}
+                    className={`${BTN_BASE} w-full justify-center border border-second4 text-second4 hover:bg-second4/20 hover:border-second4/50 sm:w-auto ${FOCUS_RING}`}
+                  >
+                    <FiCheck size={16} aria-hidden="true" />
+                    Tandai DP sudah dibayar
+                  </button>
+                )}
+              </>
             ) : !isRefund ? (
               <Link
                 href={REFUND_PATH(order.id)}
@@ -1126,6 +1387,23 @@ export default function OwnerOrderDetailPage() {
                       Koreksi tanggal lunas
                     </button>
 
+                    {!isRefund && (
+                      <button
+                        type="button"
+                        onClick={() => openDialog("dp")}
+                        disabled={hasRefunds}
+                        title={
+                          hasRefunds
+                            ? "Order yang sudah punya refund tidak bisa diubah dari lunas."
+                            : undefined
+                        }
+                        className={`${BTN_BASE} justify-center border border-second/20 text-second hover:border-second4 hover:text-second4 disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS_RING}`}
+                      >
+                        <FiPercent size={16} aria-hidden="true" />
+                        Ubah ke DP
+                      </button>
+                    )}
+
                     <button
                       type="button"
                       onClick={() => openDialog("unpay")}
@@ -1143,12 +1421,34 @@ export default function OwnerOrderDetailPage() {
                   </>
                 )}
 
+                {isDp && (
+                  <button
+                    type="button"
+                    onClick={() => openDialog("dpcorrect")}
+                    className={`${BTN_BASE} justify-center border border-second/20 text-second hover:border-second4 hover:text-second4 ${FOCUS_RING}`}
+                  >
+                    <FiPercent size={16} aria-hidden="true" />
+                    Ubah DP
+                  </button>
+                )}
+
+                {isDp && (
+                  <button
+                    type="button"
+                    onClick={() => openDialog("unpay")}
+                    className={`${BTN_BASE} justify-center border border-second/20 text-second hover:border-second2 hover:text-second2 ${FOCUS_RING}`}
+                  >
+                    <FiRotateCcw size={16} aria-hidden="true" />
+                    Tandai belum lunas
+                  </button>
+                )}
+
                 {!isRefund &&
-                  (isPaid ? (
+                  (!isUnpaid ? (
                     <button
                       type="button"
                       disabled
-                      title="Order sudah lunas. Tandai belum lunas dulu untuk mengubah item."
+                      title="Order sudah DP atau lunas. Tandai belum lunas dulu untuk mengubah item."
                       className={`${BTN_BASE} justify-center border border-second/20 text-second opacity-40 ${FOCUS_RING}`}
                     >
                       <FiEdit2 size={16} aria-hidden="true" />
@@ -1210,8 +1510,11 @@ export default function OwnerOrderDetailPage() {
                 className="mt-0.5 shrink-0"
                 aria-hidden="true"
               />
-              Order belum lunas, jadi belum masuk laporan penjualan
-              {isRefund ? "." : " dan stok kamera belum berkurang."}
+              {isDpUnpaid
+                ? "DP belum dibayar: stok kamera sudah ditahan, tapi belum ada uang masuk dan belum masuk laporan penjualan. Tandai DP sudah dibayar setelah pelanggan membayar."
+                : isDpPaid
+                  ? "DP sudah dibayar: stok kamera sudah ditahan, tapi belum masuk laporan penjualan sampai lunas."
+                  : `Order belum lunas, jadi belum masuk laporan penjualan${isRefund ? "." : " dan stok kamera belum berkurang."}`}
             </p>
           )}
 
@@ -1241,13 +1544,15 @@ export default function OwnerOrderDetailPage() {
           hint={`${items.length} jenis · ${formatNumber(totalQuantity)} unit`}
         />
         <StatCard
-          icon={isPaid ? FiCheckCircle : FiClock}
+          icon={statusMeta.icon}
           label="Status pembayaran"
-          value={isPaid ? "Lunas" : "Belum lunas"}
+          value={statusMeta.label}
           hint={
             isPaid && order.paid_at
               ? formatDateTime(order.paid_at, false)
-              : "Belum ada pembayaran"
+              : isDp
+                ? `DP ${formatPrice(order.dp_amount)} ${isDpUnpaid ? "belum dibayar" : "sudah dibayar"}, sisa ${formatPrice(order.remaining_amount)}`
+                : "Belum ada pembayaran"
           }
         />
         <StatCard
@@ -1505,6 +1810,22 @@ export default function OwnerOrderDetailPage() {
                   {formatPrice(order.total_amount)}
                 </dd>
               </div>
+              {!isRefund && order.dp_amount ? (
+                <>
+                  <SummaryRow
+                    label={isDpUnpaid ? "DP (belum dibayar)" : "DP diterima"}
+                    value={
+                      isDpUnpaid
+                        ? formatPrice(order.dp_amount)
+                        : `− ${formatPrice(order.dp_amount)}`
+                    }
+                  />
+                  <SummaryRow
+                    label="Sisa tagihan"
+                    value={formatPrice(order.remaining_amount ?? 0)}
+                  />
+                </>
+              ) : null}
             </dl>
 
             {showCapital && (
@@ -1659,7 +1980,11 @@ export default function OwnerOrderDetailPage() {
                 <DetailField label="Pengiriman" value={invoice.ship} />
                 <DetailField
                   label="Status invoice"
-                  value={invoice.is_final ? "Final" : "Belum final"}
+                  value={
+                    invoice.is_final
+                      ? "Terkunci (jatah edit status ini habis)"
+                      : "Bisa diedit 1 kali"
+                  }
                 />
               </dl>
             ) : (

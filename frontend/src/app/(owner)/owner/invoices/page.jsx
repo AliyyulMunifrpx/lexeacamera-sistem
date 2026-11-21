@@ -390,6 +390,11 @@ export default function InvoicesPage() {
                       <Tag tone="success">Penjualan</Tag>
                     )}
 
+                    {/* Status DP */}
+                    {invoice.payment_status === "DP" && (
+                      <Tag tone="soft">DP</Tag>
+                    )}
+
                     {/* Status final */}
                     {invoice.is_final ? (
                       <Tag tone="grad">Final</Tag>

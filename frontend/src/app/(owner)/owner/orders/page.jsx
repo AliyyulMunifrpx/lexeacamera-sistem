@@ -57,16 +57,17 @@ const TYPE_OPTIONS = [
 const PAYMENT_OPTIONS = [
   { value: "", label: "Semua pembayaran" },
   { value: "PAID", label: "Lunas" },
-  { value: "UNPAID", label: "Belum lunas" },
+  { value: "DP", label: "DP" },
+  { value: "UNPAID", label: "Belum dibayar" },
 ];
 
+const PAYMENT_LABEL = { PAID: "Lunas", DP: "DP", UNPAID: "Belum dibayar" };
 const DATE_FIELD_OPTIONS = [
   { value: "created_at", label: "Tanggal order dibuat" },
   { value: "paid_at", label: "Tanggal lunas" },
 ];
 
 const TYPE_LABEL = { SALE: "Penjualan", REFUND: "Refund" };
-const PAYMENT_LABEL = { PAID: "Lunas", UNPAID: "Belum lunas" };
 
 /* -------------------------------- Formatters ------------------------------ */
 
@@ -98,7 +99,12 @@ function formatDate(value) {
 function money(value) {
   return value === null || value === undefined ? "—" : formatPrice(value);
 }
-
+function dpNote(order) {
+  if (order.payment_status !== "DP" || order.dp_amount == null) return null;
+  const remaining =
+    order.remaining_amount ?? order.total_amount - order.dp_amount;
+  return `DP ${formatPrice(order.dp_amount)} · sisa ${formatPrice(remaining)}`;
+}
 /* ------------------------------ Small pieces ------------------------------ */
 
 function Tag({ children, tone = "outline", icon: Icon }) {
@@ -124,8 +130,18 @@ function Tag({ children, tone = "outline", icon: Icon }) {
     </span>
   );
 }
+function PaymentTag({ status, dpPaid = false }) {
+  if (status === "DP") {
+    return (
+      <Tag
+        tone={dpPaid ? "violet" : "red"}
+        icon={dpPaid ? FiCreditCard : FiClock}
+      >
+        {dpPaid ? "DP dibayar" : "DP belum dibayar"}
+      </Tag>
+    );
+  }
 
-function PaymentTag({ status }) {
   const isPaid = status === "PAID";
   return (
     <Tag
@@ -748,7 +764,10 @@ export default function OwnerOrdersPage() {
 
                         <td className="px-4 py-4">
                           <div className="flex flex-wrap items-center gap-2">
-                            <PaymentTag status={order.payment_status} />
+                            <PaymentTag
+                              status={order.payment_status}
+                              dpPaid={order.dp_paid === true}
+                            />
                             {order.type === "REFUND" && (
                               <Tag tone="failure">Refund</Tag>
                             )}
@@ -756,6 +775,11 @@ export default function OwnerOrdersPage() {
                           {order.paid_at && (
                             <p className="mt-2 text-xs tabular-nums text-second/60">
                               Lunas {formatDate(order.paid_at)}
+                            </p>
+                          )}
+                          {dpNote(order) && (
+                            <p className="mt-2 text-xs tabular-nums text-second/60">
+                              {dpNote(order)}
                             </p>
                           )}
                         </td>
@@ -805,7 +829,10 @@ export default function OwnerOrdersPage() {
                         </p>
                       </div>
                       <div className="flex shrink-0 flex-wrap justify-end gap-2">
-                        <PaymentTag status={order.payment_status} />
+                        <PaymentTag
+                          status={order.payment_status}
+                          dpPaid={order.dp_paid === true}
+                        />{" "}
                         {order.type === "REFUND" && (
                           <Tag tone="failure">Refund</Tag>
                         )}
@@ -823,6 +850,11 @@ export default function OwnerOrdersPage() {
                       <p className="mt-4 text-lg font-bold tabular-nums text-second">
                         {formatPrice(order.total_amount)}
                       </p>
+                      {dpNote(order) && (
+                        <p className="mt-2 text-xs tabular-nums text-second/60">
+                          {dpNote(order)}
+                        </p>
+                      )}
                     </div>
 
                     <dl className="grid grid-cols-2 gap-4 border-t border-second/30 pt-4 text-sm">

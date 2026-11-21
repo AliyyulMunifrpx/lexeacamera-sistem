@@ -24,6 +24,11 @@ export function useGetOwnerOrder(id) {
   });
 }
 
+const isInvoiceOrDashboardKey = (query) => {
+  const root = query.queryKey?.[0];
+  return typeof root === "string" && /invoice|dashboard/i.test(root);
+};
+
 export function useUpdateOrderPaymentStatus() {
   const queryClient = useQueryClient();
 
@@ -31,18 +36,18 @@ export function useUpdateOrderPaymentStatus() {
     mutationKey: ["owner-orders", "update-payment-status"],
     mutationFn: ({ id, data }) => updateOrderPaymentStatus(id, data),
     onSuccess: async (_, variables) => {
-      // Status bayar mengubah stok kamera dan ringkasan daftar order.
+      // Status bayar mengubah stok, jatah edit invoice, sisa tagihan, dan dashboard.
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: ["owner-order", variables.id],
         }),
         queryClient.invalidateQueries({ queryKey: ["owner-orders"] }),
         queryClient.invalidateQueries({ queryKey: ["cameras"] }),
+        queryClient.invalidateQueries({ predicate: isInvoiceOrDashboardKey }),
       ]);
     },
   });
 }
-
 export function useUpdateOrderItems() {
   const queryClient = useQueryClient();
 

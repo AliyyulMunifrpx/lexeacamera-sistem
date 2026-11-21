@@ -46,6 +46,7 @@ const CUSTOMER_CHOICE = {
 
 const PAYMENT = {
   PAID: "PAID",
+  DP: "DP",
   UNPAID: "UNPAID",
 };
 
@@ -75,9 +76,29 @@ const PAYMENT_OPTIONS = [
     description: "Order sudah dibayar. Tanggal lunas dipakai oleh laporan.",
   },
   {
+    value: PAYMENT.DP,
+    title: "DP",
+    description:
+      "Order memakai DP, sudah atau belum dibayar. Stok ditahan, belum masuk laporan sampai lunas.",
+  },
+  {
     value: PAYMENT.UNPAID,
     title: "Belum lunas",
     description: "Order belum dibayar. Tanggal lunas dikosongkan.",
+  },
+];
+
+const DP_PAID_OPTIONS = [
+  {
+    value: "paid",
+    title: "DP sudah dibayar",
+    description: "Uang DP sudah diterima. Sisa tagihan = total dikurangi DP.",
+  },
+  {
+    value: "unpaid",
+    title: "DP belum dibayar",
+    description:
+      "Nominal DP sudah disepakati, tapi uangnya belum masuk. Sisa tagihan masih sebesar total.",
   },
 ];
 
@@ -135,7 +156,7 @@ function describeError(error) {
 
   switch (code) {
     case "INVOICE_ALREADY_FINAL":
-      return "Invoice sudah final dan tidak bisa diedit lagi.";
+      return "Jatah edit invoice untuk status pembayaran ini sudah habis. Ubah status pembayaran untuk membuka jatah baru.";
     case "INVOICE_NOT_FOUND":
       return "Invoice tidak ditemukan atau sudah dihapus.";
     case "DISCOUNT_EXCEEDS_TOTAL":
@@ -144,6 +165,12 @@ function describeError(error) {
       return `Total baru tidak boleh lebih kecil dari jumlah refund${
         Number.isFinite(Number(data?.refunded))
           ? ` (${formatCurrency(data.refunded)})`
+          : ""
+      }.`;
+    case "TOTAL_BELOW_DP":
+      return `Total baru harus lebih besar dari nominal DP${
+        Number.isFinite(Number(data?.dp_amount))
+          ? ` (${formatCurrency(data.dp_amount)})`
           : ""
       }.`;
     case "AMOUNT_TOO_LARGE":
@@ -173,7 +200,11 @@ function describePaymentError(error) {
         : "Stok tidak cukup. Tidak ada perubahan yang disimpan.";
     }
     case "ORDER_HAS_REFUNDS":
-      return "Tidak bisa kembali ke belum lunas karena order ini sudah punya refund.";
+      return "Status order ini tidak bisa diubah dari lunas karena sudah punya refund.";
+    case "DP_AMOUNT_OUT_OF_RANGE":
+      return "Nominal DP harus lebih kecil dari total order.";
+    case "DP_AMOUNT_REQUIRED":
+      return "Nominal DP wajib diisi.";
     case "PAID_AT_BEFORE_ORDER":
       return "Tanggal lunas tidak boleh sebelum order dibuat.";
     case "ORDER_NOT_FOUND":
@@ -189,11 +220,15 @@ function getOrderPayment(invoice) {
   const status = invoice?.payment_status ?? invoice?.order?.payment_status;
   const paidAt = invoice?.paid_at ?? invoice?.order?.paid_at ?? null;
 
-  if (!orderId || (status !== PAYMENT.PAID && status !== PAYMENT.UNPAID)) {
+  const dpAmount = invoice?.dp_amount ?? invoice?.order?.dp_amount ?? null;
+  // true = DP sudah dibayar, false = belum, null = tidak ada DP.
+  const dpPaid = invoice?.dp_paid ?? invoice?.order?.dp_paid ?? null;
+
+  if (!orderId || !Object.values(PAYMENT).includes(status)) {
     return null;
   }
 
-  return { orderId, status, paidAt };
+  return { orderId, status, paidAt, dpAmount, dpPaid };
 }
 
 function formatCurrency(value) {
@@ -449,33 +484,96 @@ const PAYMENT_KIND_INFO = {
     button: "Simpan tanggal lunas",
     success: "Tanggal lunas diperbarui.",
   },
+  dp: {
+    button: "Tandai DP",
+    success: "Order ditandai DP.",
+  },
+  dppay: {
+    button: "Tandai DP sudah dibayar",
+    success: "DP ditandai sudah dibayar.",
+  },
+  dpcorrect: {
+    button: "Simpan perubahan DP",
+    success: "DP diperbarui.",
+  },
 };
+
+function paymentNote(kind, from, dpUnpaid) {
+  switch (kind) {
+    case "pay":
+      if (from === PAYMENT.DP) {
+        return dpUnpaid
+          ? "Stok sudah ditahan sejak DP, jadi tidak berubah. DP belum pernah dibayar, jadi nominal DP dihapus dan order dilunasi sekaligus."
+          : "Stok sudah ditahan sejak DP, jadi tidak berubah. Order masuk laporan sesuai tanggal lunas.";
+      }
+      return "Stok kamera pada order ini akan berkurang. Jika ada yang tidak cukup, perubahan ditolak.";
+    case "dp":
+      return from === PAYMENT.PAID
+        ? "Stok tetap ditahan. Tanggal lunas dihapus, jadi order keluar dari laporan sampai dilunasi."
+        : "Stok kamera pada order ini ditahan (berkurang), baik DP sudah maupun belum dibayar. Jika ada yang tidak cukup, perubahan ditolak.";
+    case "unpay":
+      return "Stok yang tadi ditahan akan dikembalikan, dan nominal DP dihapus.";
+    case "dppay":
+      return "Hanya status bayar DP yang berubah. Stok dan jatah edit invoice tidak ikut berubah.";
+    case "dpcorrect":
+      return "Hanya nominal dan status bayar DP yang berubah. Stok dan jatah edit invoice tidak ikut berubah.";
+    default:
+      return "";
+  }
+}
 
 function PaymentStatusSection({
   orderId,
   currentStatus,
   currentPaidAt,
+  currentDpAmount,
+  currentDpPaid,
+  totalAmount,
   onUpdated,
 }) {
   const mutation = useUpdateOrderPaymentStatus();
   const isSaving = mutation.isPending;
 
   const savedPaidAt = toWibInput(currentPaidAt);
+  // Order yang sudah DP mempertahankan status bayar DP-nya; selain itu default sudah dibayar.
+  const savedDpPaid =
+    currentStatus === PAYMENT.DP ? currentDpPaid !== false : true;
 
   const [status, setStatus] = useState(currentStatus);
   const [paidAt, setPaidAt] = useState(savedPaidAt);
+  const [dpDigits, setDpDigits] = useState(
+    currentDpAmount ? String(currentDpAmount) : "",
+  );
+  const [dpPaid, setDpPaid] = useState(savedDpPaid);
 
   // Sinkronkan dengan data terbaru dari server (misalnya setelah disimpan).
   useEffect(() => {
     setStatus(currentStatus);
     setPaidAt(toWibInput(currentPaidAt));
-  }, [currentStatus, currentPaidAt]);
+    setDpDigits(currentDpAmount ? String(currentDpAmount) : "");
+    setDpPaid(currentStatus === PAYMENT.DP ? currentDpPaid !== false : true);
+  }, [currentStatus, currentPaidAt, currentDpAmount, currentDpPaid]);
+
+  const dpValue = dpDigits === "" ? 0 : Number(dpDigits);
+  const orderTotal = Number(totalAmount) || 0;
+  const dpUnpaid = currentStatus === PAYMENT.DP && currentDpPaid === false;
 
   let kind = null;
   if (status === PAYMENT.PAID && currentStatus !== PAYMENT.PAID) {
     kind = "pay";
   } else if (status === PAYMENT.UNPAID && currentStatus !== PAYMENT.UNPAID) {
     kind = "unpay";
+  } else if (status === PAYMENT.DP && currentStatus !== PAYMENT.DP) {
+    kind = "dp";
+  } else if (status === PAYMENT.DP && currentStatus === PAYMENT.DP) {
+    const amountChanged = dpValue !== Number(currentDpAmount ?? 0);
+    const paidChanged = dpPaid !== savedDpPaid;
+
+    if (paidChanged && !amountChanged && dpPaid) {
+      kind = "dppay";
+    } else if (amountChanged || paidChanged) {
+      kind = "dpcorrect";
+    }
   } else if (
     status === PAYMENT.PAID &&
     paidAt !== "" &&
@@ -485,6 +583,14 @@ function PaymentStatusSection({
   }
 
   const showDateField = status === PAYMENT.PAID;
+  const showDpField = status === PAYMENT.DP;
+  const dpError =
+    showDpField && dpDigits !== "" && (dpValue < 1 || dpValue >= orderTotal)
+      ? "Nominal DP harus lebih kecil dari total order. Jika sudah dibayar penuh, pilih Lunas."
+      : "";
+  const dpMissing =
+    (kind === "dp" || kind === "dpcorrect" || kind === "dppay") &&
+    (dpDigits === "" || dpValue < 1);
   const paidAtIso = paidAt ? wibInputToIso(paidAt) : "";
   const paidAtError =
     showDateField && paidAtIso && new Date(paidAtIso).getTime() > Date.now()
@@ -503,13 +609,24 @@ function PaymentStatusSection({
       return;
     }
 
+    if (dpError || dpMissing) {
+      notify.error(dpError || "Nominal DP wajib diisi dan minimal Rp1.");
+      return;
+    }
+
     const payload =
       status === PAYMENT.PAID
         ? {
             payment_status: PAYMENT.PAID,
             ...(paidAtIso ? { paid_at: paidAtIso } : {}),
           }
-        : { payment_status: PAYMENT.UNPAID };
+        : status === PAYMENT.DP
+          ? {
+              payment_status: PAYMENT.DP,
+              dp_amount: dpValue,
+              dp_paid: dpPaid,
+            }
+          : { payment_status: PAYMENT.UNPAID };
 
     try {
       await mutation.mutateAsync({ id: orderId, data: payload });
@@ -523,11 +640,13 @@ function PaymentStatusSection({
   return (
     <FormSection
       title="Status pembayaran"
-      description="Ubah status bayar order ini atau koreksi tanggal lunas. Ini terpisah dari edit invoice dan bisa dilakukan walau invoice sudah final."
+      description="Ubah status bayar order ini, koreksi tanggal lunas, atau nominal dan status bayar DP. Ini terpisah dari edit invoice dan bisa dilakukan walau jatah edit invoice habis. Pindah status membuka jatah edit invoice baru (1 kali) untuk status tujuan."
       aside={
         <div className="flex flex-col items-start gap-2 sm:items-end">
           {currentStatus === PAYMENT.PAID ? (
             <Tag tone="grad">Lunas</Tag>
+          ) : currentStatus === PAYMENT.DP ? (
+            <Tag tone="strong">{dpUnpaid ? "DP belum dibayar" : "DP"}</Tag>
           ) : (
             <Tag>Belum lunas</Tag>
           )}
@@ -536,6 +655,12 @@ function PaymentStatusSection({
               {formatDateTimeWib(currentPaidAt)}
             </p>
           )}
+          {currentStatus === PAYMENT.DP && currentDpAmount ? (
+            <p className="text-xs tabular-nums text-second/60">
+              DP {formatCurrency(currentDpAmount)}{" "}
+              {dpUnpaid ? "belum dibayar" : "sudah dibayar"}
+            </p>
+          ) : null}
         </div>
       }
     >
@@ -555,6 +680,62 @@ function PaymentStatusSection({
             />
           ))}
         </fieldset>
+
+        {showDpField && (
+          <FormField
+            label="Nominal DP"
+            htmlFor="dp_amount"
+            required
+            error={dpError}
+            description={
+              dpValue > 0 && dpValue < orderTotal
+                ? `Total order ${formatCurrency(orderTotal)} · Sisa tagihan ${formatCurrency(dpPaid ? orderTotal - dpValue : orderTotal)}${dpPaid ? "" : " (DP belum dibayar)"}`
+                : `Total order ${formatCurrency(orderTotal)}`
+            }
+          >
+            <PrefixedInput prefix="Rp">
+              <input
+                id="dp_amount"
+                name="dp_amount"
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                value={formatThousands(dpDigits)}
+                onChange={(event) => {
+                  const digits = event.target.value
+                    .replace(/\D/g, "")
+                    .replace(/^0+(?=\d)/, "");
+                  if (digits.length > 12) return;
+                  setDpDigits(digits);
+                }}
+                className={`${inputClass(Boolean(dpError))} rounded-l-none tabular-nums`}
+                placeholder="0"
+                maxLength={13}
+                disabled={isSaving}
+                aria-invalid={dpError ? true : undefined}
+                aria-describedby="dp_amount-desc"
+              />
+            </PrefixedInput>
+          </FormField>
+        )}
+
+        {showDpField && (
+          <fieldset className="flex flex-col gap-4">
+            <legend className={labelClass}>Status pembayaran DP</legend>
+            {DP_PAID_OPTIONS.map((option) => (
+              <RadioCard
+                key={option.value}
+                name="dp_paid_choice"
+                value={option.value}
+                checked={dpPaid === (option.value === "paid")}
+                onChange={() => setDpPaid(option.value === "paid")}
+                disabled={isSaving}
+                title={option.title}
+                description={option.description}
+              />
+            ))}
+          </fieldset>
+        )}
 
         {showDateField && (
           <FormField
@@ -581,10 +762,22 @@ function PaymentStatusSection({
           </FormField>
         )}
 
+        {kind && paymentNote(kind, currentStatus, dpUnpaid) && (
+          <p className="rounded-xl bg-second/5 px-4 py-2 text-sm leading-relaxed text-second/70">
+            {paymentNote(kind, currentStatus, dpUnpaid)}
+          </p>
+        )}
+
         <div className="flex flex-col gap-2 sm:flex-row">
           <PrimaryButton
             type="submit"
-            disabled={isSaving || !kind || Boolean(paidAtError)}
+            disabled={
+              isSaving ||
+              !kind ||
+              Boolean(paidAtError) ||
+              Boolean(dpError) ||
+              dpMissing
+            }
             aria-busy={isSaving}
             className={`${BTN_BASE} w-full bg-grad text-primary shadow-lg shadow-second4/25 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto ${FOCUS_RING}`}
           >
@@ -634,6 +827,9 @@ function InvoiceSummary({
   storeDiscount,
   customerDiscount,
   totalAmount,
+  isDp,
+  dpAmount,
+  dpPaid,
 }) {
   return (
     <section className="flex min-w-0 flex-col gap-4 rounded-2xl border border-second/30 bg-primary p-4 shadow-xl shadow-second/5 sm:p-8">
@@ -677,6 +873,9 @@ function InvoiceSummary({
 
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {isFinal ? <Tag tone="grad">Final</Tag> : <Tag>Draft</Tag>}
+            {isDp && (
+              <Tag tone="strong">{dpPaid ? "DP" : "DP belum dibayar"}</Tag>
+            )}
           </div>
         </div>
       </div>
@@ -705,6 +904,18 @@ function InvoiceSummary({
             {totalAmount < 0 && <Tag tone="failure">Melebihi subtotal</Tag>}
           </span>
         </SummaryRow>
+        {isDp && dpAmount > 0 && (
+          <>
+            <SummaryRow label={dpPaid ? "DP diterima" : "DP (belum dibayar)"}>
+              {dpPaid
+                ? `- ${formatCurrency(dpAmount)}`
+                : formatCurrency(dpAmount)}
+            </SummaryRow>
+            <SummaryRow label="Sisa tagihan">
+              {formatCurrency(dpPaid ? totalAmount - dpAmount : totalAmount)}
+            </SummaryRow>
+          </>
+        )}
       </dl>
 
       <p className="text-xs text-second/50">
@@ -993,6 +1204,19 @@ export default function EditInvoicePage() {
       notify.error("Total diskon tidak boleh melebihi subtotal.");
       return null;
     }
+
+    const currentPayment = getOrderPayment(invoice);
+    const dp = Number(currentPayment?.dpAmount) || 0;
+    const nextTotal = subtotal - storeDiscount - customerDiscount;
+    if (
+      dp > 0 &&
+      (currentPayment.status === PAYMENT.DP ? nextTotal <= dp : nextTotal < dp)
+    ) {
+      notify.error(
+        `Total baru harus lebih besar dari nominal DP (${formatCurrency(dp)}).`,
+      );
+      return null;
+    }
     return payload;
   }
 
@@ -1021,7 +1245,9 @@ export default function EditInvoicePage() {
   async function handleSubmit(event) {
     event.preventDefault();
     if (invoice?.is_final) {
-      notify.error("Invoice sudah final dan tidak bisa diedit lagi.");
+      notify.error(
+        "Jatah edit invoice untuk status ini sudah habis. Ubah status pembayaran untuk membuka jatah baru.",
+      );
       return;
     }
     if (!confirmedFinalization) {
@@ -1035,7 +1261,7 @@ export default function EditInvoicePage() {
     try {
       await updateMutation.mutateAsync({ id, data: payload });
       notify.success(
-        "Invoice berhasil diperbarui dan sekarang berstatus final.",
+        "Invoice berhasil diperbarui. Jatah edit untuk status ini sudah terpakai.",
       );
       router.replace(`/admin/invoices/${id}`);
     } catch (error) {
@@ -1127,6 +1353,9 @@ export default function EditInvoicePage() {
       orderId={payment.orderId}
       currentStatus={payment.status}
       currentPaidAt={payment.paidAt}
+      currentDpAmount={payment.dpAmount}
+      currentDpPaid={payment.dpPaid}
+      totalAmount={invoice.total_amount}
       onUpdated={() => refetch()}
     />
   ) : null;
@@ -1153,11 +1382,12 @@ export default function EditInvoicePage() {
             <FiLock size={24} />
           </div>
           <h1 className="text-balance text-2xl font-bold tracking-tight text-second">
-            Invoice sudah <span className="text-grad">final</span>
+            Jatah edit <span className="text-grad">habis</span>
           </h1>
           <p className="text-pretty text-sm text-second/60">
-            Invoice {invoice.no_invoice} sudah dikunci dan tidak dapat diedit
-            lagi.
+            Jatah edit invoice {invoice.no_invoice} untuk status pembayaran ini
+            sudah terpakai. Ubah status pembayaran di bawah untuk membuka jatah
+            edit baru.
           </p>
           <Link
             href={`/admin/invoices/${id}`}
@@ -1226,8 +1456,9 @@ export default function EditInvoicePage() {
               Edit <span className="text-grad">invoice</span>
             </h1>
             <p className="mt-2 text-pretty text-sm text-second/60">
-              Invoice {invoice.no_invoice} hanya dapat diedit satu kali. Setelah
-              disimpan, invoice otomatis final dan terkunci.
+              Invoice {invoice.no_invoice} dapat diedit satu kali untuk setiap
+              status pembayaran. Setelah disimpan, invoice terkunci sampai
+              status pembayaran berubah.
             </p>
           </div>
         </div>
@@ -1674,7 +1905,7 @@ export default function EditInvoicePage() {
           {/* Konfirmasi final */}
           <FormSection
             title="Konfirmasi finalisasi"
-            description="Invoice hanya dapat diedit satu kali. Setelah disimpan, invoice otomatis final dan terkunci."
+            description="Invoice dapat diedit satu kali untuk setiap status pembayaran. Setelah disimpan, invoice terkunci sampai status pembayaran berubah."
           >
             <ToggleCard
               name="confirmed_finalization"
@@ -1684,7 +1915,7 @@ export default function EditInvoicePage() {
               }
               disabled={isSaving}
               title="Saya memahami invoice akan langsung terkunci"
-              description="Setelah disimpan, jatah edit habis dan status invoice otomatis menjadi final. Pastikan seluruh data sudah benar."
+              description="Setelah disimpan, jatah edit untuk status ini habis. Pastikan seluruh data sudah benar."
             />
           </FormSection>
         </div>
@@ -1702,6 +1933,9 @@ export default function EditInvoicePage() {
             storeDiscount={storeDiscount}
             customerDiscount={customerDiscount}
             totalAmount={totalAmount}
+            isDp={payment?.status === PAYMENT.DP}
+            dpAmount={Number(payment?.dpAmount) || 0}
+            dpPaid={payment?.dpPaid !== false}
           />
 
           <div className="flex flex-col gap-2">

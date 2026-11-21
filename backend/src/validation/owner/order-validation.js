@@ -22,7 +22,7 @@ export const orderIdValidation = Joi.object({
 export const getAllOrderValidation = Joi.object({
   search: Joi.string().trim().max(100).allow("").optional(),
   type: Joi.string().valid("SALE", "REFUND").optional(),
-  payment_status: Joi.string().valid("PAID", "UNPAID").optional(),
+  payment_status: Joi.string().valid("PAID", "UNPAID", "DP").optional(),
   date_field: Joi.string().valid("created_at", "paid_at").default("created_at"),
   date_from: calendarDate.optional(),
   date_to: calendarDate.optional(),
@@ -31,13 +31,24 @@ export const getAllOrderValidation = Joi.object({
 
 export const setPaymentStatusValidation = Joi.object({
   id: Joi.string().uuid().required(),
-  payment_status: Joi.string().valid("PAID", "UNPAID").required(),
+  payment_status: Joi.string().valid("PAID", "UNPAID", "DP").required(),
   paid_at: Joi.when("payment_status", {
     is: "PAID",
     then: Joi.date().iso().max("now").optional(),
     otherwise: Joi.forbidden(),
   }),
+  dp_amount: Joi.when("payment_status", {
+    is: "DP",
+    then: Joi.number().integer().min(1).max(2147483647).optional(),
+    otherwise: Joi.forbidden(),
+  }),
+  dp_paid: Joi.when("payment_status", {
+    is: "DP",
+    then: Joi.boolean().optional(),
+    otherwise: Joi.forbidden(),
+  }),
 });
+
 export const updateOrderItemsValidation = Joi.object({
   id: Joi.string().uuid().required(),
   items: Joi.array()

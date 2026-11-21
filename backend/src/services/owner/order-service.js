@@ -1,7 +1,11 @@
+import { Prisma } from "@prisma/client";
 import { ResponseError } from "../../error/response-error.js";
 import { prisma } from "../../lib/database.js";
-import { calculateTotal } from "../../utils/order-invoice.js";
-import { setPaymentStatus } from "../../utils/payment-status.js";
+import {
+  isDpPaid,
+  remainingAmount,
+  setPaymentStatus,
+} from "../../utils/payment-status.js";
 import {
   getAllOrderValidation,
   orderIdValidation,
@@ -9,6 +13,7 @@ import {
   updateOrderItemsValidation,
 } from "../../validation/owner/order-validation.js";
 import { validate } from "../../validation/validation.js";
+import { calculateTotal } from "../../utils/order-invoice.js";
 
 const PER_PAGE = 20;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -18,6 +23,8 @@ const LIST_SELECT = {
   type: true,
   payment_status: true,
   paid_at: true,
+  dp_amount: true,
+  dp_paid_at: true,
   created_at: true,
   total_amount: true,
   customer_id: true,
@@ -33,6 +40,8 @@ const DETAIL_SELECT = {
   refund_of_id: true,
   payment_status: true,
   paid_at: true,
+  dp_amount: true,
+  dp_paid_at: true,
   created_at: true,
   total_amount: true,
   customer_name: true,
@@ -153,10 +162,13 @@ const getAllOrder = async (request) => {
 
   const summary = {
     paid: { count: 0, amount: 0 },
+    dp: { count: 0, amount: 0 },
     unpaid: { count: 0, amount: 0 },
   };
   for (const group of groups) {
-    const key = group.payment_status === "PAID" ? "paid" : "unpaid";
+    const key = { PAID: "paid", DP: "dp", UNPAID: "unpaid" }[
+      group.payment_status
+    ];
     summary[key] = {
       count: group._count._all,
       amount: group._sum.total_amount ?? 0,
@@ -171,6 +183,8 @@ const getAllOrder = async (request) => {
       return {
         ...order,
         no_invoice: invoice?.no_invoice ?? null,
+        dp_paid: isDpPaid(order),
+        remaining_amount: remainingAmount(order),
         item_count: order_items.reduce((sum, item) => sum + item.quantity, 0),
         capital_total: isSale ? capital : null,
         profit: isSale ? order.total_amount - capital : null,
@@ -212,6 +226,8 @@ const getOrder = async (request) => {
   return {
     ...rest,
     subtotal: items.reduce((sum, item) => sum + item.line_total, 0),
+    dp_paid: isDpPaid(order),
+    remaining_amount: remainingAmount(order),
     store_discount: invoice?.store_discount ?? 0,
     customer_discount: invoice?.customer_discount ?? 0,
     capital_total: isSale ? capital : null,
@@ -229,6 +245,8 @@ const updatePaymentStatus = async (request) => {
       orderId: req.id,
       status: req.payment_status,
       paidAt: req.paid_at,
+      dpAmount: req.dp_amount,
+      dpPaid: req.dp_paid,
     }),
   );
 };
@@ -403,7 +421,8 @@ const updateOrderItems = async (request) => {
   return getOrder({ id: req.id });
 };
 
-// menghapus order belum lunas tidak mengubah stok. Invoice dan item ikut terhapus.
+// Hanya order SALE berstatus UNPAID. Stok baru ditahan saat DP atau lunas, jadi
+// menghapus order UNPAID tidak mengubah stok. Invoice dan item ikut terhapus.
 const deleteOrder = async (request) => {
   const req = validate(orderIdValidation, request);
 
@@ -428,6 +447,9 @@ const deleteOrder = async (request) => {
     if (order.payment_status === "PAID") {
       throw new ResponseError(409, "ORDER_ALREADY_PAID");
     }
+    if (order.payment_status === "DP") {
+      throw new ResponseError(409, "ORDER_HAS_DP");
+    }
 
     const refunds = await tx.order.count({ where: { refund_of_id: req.id } });
     if (refunds > 0) {
@@ -439,11 +461,10 @@ const deleteOrder = async (request) => {
 
   return { message: "ORDER_DELETED" };
 };
-
 export default {
   getAllOrder,
   getOrder,
   updatePaymentStatus,
-  updateOrderItems,
   deleteOrder,
+  updateOrderItems,
 };

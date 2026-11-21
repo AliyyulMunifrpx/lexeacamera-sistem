@@ -9,6 +9,11 @@ import {
   generateCustomerId,
   normalizeWhatsapp,
 } from "./customer.js";
+import {
+  isDpPaid,
+  remainingAmount,
+  setPaymentStatus,
+} from "./payment-status.js";
 
 export { blankToNull };
 
@@ -25,6 +30,8 @@ export const INVOICE_INCLUDE = {
       customer_id: true,
       payment_status: true,
       paid_at: true,
+      dp_amount: true,
+      dp_paid_at: true,
       total_amount: true,
       order_items: {
         orderBy: [{ camera_name: "asc" }, { id: "asc" }],
@@ -174,6 +181,34 @@ const findOrCreateCustomerId = async (tx, customer) => {
   return created.id;
 };
 
+// Invoice yang dibuat langsung berstatus DP: order dibuat belum bayar, lalu naik ke DP
+// di transaksi yang sama lewat jalur yang sama dengan PATCH payment-status. Jadi stok
+// dicek dan ditahan, nominal divalidasi terhadap total, dan kegagalan apa pun
+// membatalkan pembuatan invoice. is_final dari request tetap berlaku untuk status DP.
+export const applyInitialDp = async (tx, invoice, extras) => {
+  if (extras.dp_amount === undefined || extras.dp_amount === null)
+    return invoice;
+
+  await setPaymentStatus(tx, {
+    orderId: invoice.order_id,
+    status: "DP",
+    dpAmount: extras.dp_amount,
+    dpPaid: extras.dp_paid,
+  });
+
+  if (extras.is_final) {
+    await tx.invoice.update({
+      where: { id: invoice.id },
+      data: { is_final: true },
+    });
+  }
+
+  return tx.invoice.findUnique({
+    where: { id: invoice.id },
+    include: INVOICE_INCLUDE,
+  });
+};
+
 export const createOrderWithInvoice = async ({
   customer: rawCustomer,
   items,
@@ -217,7 +252,7 @@ export const createOrderWithInvoice = async ({
           );
           const customerId = await findOrCreateCustomerId(tx, customer);
 
-          return await tx.invoice.create({
+          const created = await tx.invoice.create({
             data: {
               no_invoice: generateInvoiceNumber(),
               store_name: store.name,
@@ -257,6 +292,8 @@ export const createOrderWithInvoice = async ({
             },
             include: INVOICE_INCLUDE,
           });
+
+          return await applyInitialDp(tx, created, extras);
         },
         { timeout: 15000 },
       );
@@ -309,6 +346,13 @@ export const toInvoiceResponse = ({ order, ...invoice }) => {
     customer_id: order.customer_id,
     payment_status: order.payment_status,
     paid_at: order.paid_at,
+    dp_amount: order.dp_amount ?? null,
+    dp_paid: isDpPaid(order),
+    dp_paid_at: order.dp_paid_at ?? null,
+    remaining_amount: remainingAmount({
+      ...order,
+      total_amount: invoice.total_amount,
+    }),
     subtotal: items.reduce((sum, item) => sum + item.line_total, 0),
     items,
   };

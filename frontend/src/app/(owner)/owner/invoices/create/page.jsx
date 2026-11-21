@@ -59,6 +59,20 @@ const TERMS_OPTIONS = [
   },
 ];
 
+const DP_PAID_OPTIONS = [
+  {
+    value: "paid",
+    title: "DP sudah dibayar",
+    description: "Uang DP sudah diterima. Sisa tagihan = total dikurangi DP.",
+  },
+  {
+    value: "unpaid",
+    title: "DP belum dibayar",
+    description:
+      "Nominal DP sudah disepakati, tapi uangnya belum masuk. Sisa tagihan masih sebesar total.",
+  },
+];
+
 const INITIAL_FORM = {
   customer_name: "",
   customer_address: "",
@@ -68,6 +82,9 @@ const INITIAL_FORM = {
   ship: "",
   store_discount: "",
   customer_discount: "",
+  is_dp: false,
+  dp_amount: "",
+  dp_paid: true,
   is_final: false,
 };
 
@@ -77,6 +94,7 @@ const FIELD_ORDER = [
   "customer_address",
   "items",
   "discount",
+  "dp_amount",
   "custom_terms",
 ];
 const CUSTOMER_CHOICE = {
@@ -349,7 +367,12 @@ function InvoiceSummary({
   storeDiscount,
   customerDiscount,
   totalAmount,
+  isDp,
+  dpAmount,
+  dpPaid,
 }) {
+  const dpValid = dpAmount > 0 && dpAmount < totalAmount;
+
   return (
     <section className="flex min-w-0 flex-col gap-4 rounded-2xl border border-second/30 bg-primary p-4 shadow-xl shadow-second/5 sm:p-8">
       <h2 className="text-lg font-bold text-second">Ringkasan</h2>
@@ -390,6 +413,9 @@ function InvoiceSummary({
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <Tag>{itemCount} item</Tag>
             {isFinal ? <Tag tone="grad">Final</Tag> : <Tag>Draft</Tag>}
+            {isDp && (
+              <Tag tone="strong">{dpPaid ? "DP" : "DP belum dibayar"}</Tag>
+            )}
           </div>
         </div>
       </div>
@@ -418,6 +444,22 @@ function InvoiceSummary({
             {totalAmount < 0 && <Tag tone="failure">Melebihi subtotal</Tag>}
           </span>
         </SummaryRow>
+        {isDp && (
+          <>
+            <SummaryRow label={dpPaid ? "DP diterima" : "DP (belum dibayar)"}>
+              {dpAmount > 0
+                ? dpPaid
+                  ? `- ${formatCurrency(dpAmount)}`
+                  : formatCurrency(dpAmount)
+                : "—"}
+            </SummaryRow>
+            <SummaryRow label="Sisa tagihan">
+              {dpValid
+                ? formatCurrency(dpPaid ? totalAmount - dpAmount : totalAmount)
+                : "—"}
+            </SummaryRow>
+          </>
+        )}
       </dl>
 
       <p className="text-xs text-second/50">
@@ -441,6 +483,7 @@ export default function CreateInvoicePage() {
   const [cameraSearch, setCameraSearch] = useState("");
   const storeDiscountRef = useRef(null);
   const customerDiscountRef = useRef(null);
+  const dpAmountRef = useRef(null);
   const pendingDiscountCaret = useRef(null);
   const [termsMode, setTermsMode] = useState(TERMS_MODES.TEMPLATE);
   const [customTerms, setCustomTerms] = useState("");
@@ -582,6 +625,7 @@ export default function CreateInvoicePage() {
   const customerDiscount =
     form.customer_discount === "" ? 0 : Number(form.customer_discount);
   const totalAmount = subtotal - storeDiscount - customerDiscount;
+  const dpAmount = form.dp_amount === "" ? 0 : Number(form.dp_amount);
 
   const selectedIds = new Set(selectedItems.map((item) => item.camera.id));
   const isCustomTooLong = customTerms.length > TERMS_MAX_LENGTH;
@@ -655,7 +699,7 @@ export default function CreateInvoicePage() {
       digitCount: Math.min(digitsBeforeCursor, digits.length),
     };
     setForm((current) => ({ ...current, [name]: digits }));
-    clearError("discount");
+    clearError(name === "dp_amount" ? "dp_amount" : "discount");
   }
 
   function handleTermsModeChange(nextMode) {
@@ -746,6 +790,15 @@ export default function CreateInvoicePage() {
       found.discount = "Total diskon tidak boleh melebihi subtotal.";
     }
 
+    if (form.is_dp) {
+      if (!Number.isInteger(dpAmount) || dpAmount < 1) {
+        found.dp_amount = "Nominal DP wajib diisi dan minimal Rp1.";
+      } else if (totalAmount >= 0 && dpAmount >= totalAmount) {
+        found.dp_amount =
+          "Nominal DP harus lebih kecil dari total. Jika sudah dibayar penuh, tandai lunas dari halaman order.";
+      }
+    }
+
     if (termsMode === TERMS_MODES.CUSTOM) {
       if (!customTerms.trim()) {
         found.custom_terms =
@@ -806,6 +859,11 @@ export default function CreateInvoicePage() {
       payload.customer_discount = Number(form.customer_discount);
     }
 
+    if (form.is_dp) {
+      payload.dp_amount = dpAmount;
+      payload.dp_paid = form.dp_paid;
+    }
+
     if (termsMode === TERMS_MODES.NONE) {
       payload.terms_and_condition = null;
     } else if (termsMode === TERMS_MODES.CUSTOM) {
@@ -817,6 +875,30 @@ export default function CreateInvoicePage() {
       notify.success("Invoice berhasil dibuat.");
       router.push("/owner/invoices");
     } catch (error) {
+      const body = error?.response?.data;
+
+      if (body?.errors === "INSUFFICIENT_STOCK") {
+        const detail = (body.cameras ?? [])
+          .map(
+            (camera) =>
+              `${camera.name} (butuh ${camera.requested}, stok ${camera.stock})`,
+          )
+          .join(", ");
+        notify.error(
+          `Stok tidak cukup untuk DP, invoice tidak dibuat.${detail ? ` ${detail}.` : ""}`,
+        );
+        return;
+      }
+
+      if (body?.errors === "DP_AMOUNT_OUT_OF_RANGE") {
+        setErrors((previous) => ({
+          ...previous,
+          dp_amount: "Nominal DP harus lebih kecil dari total invoice.",
+        }));
+        formRef.current?.elements?.namedItem("dp_amount")?.focus();
+        return;
+      }
+
       const apiError = normalizeApiError(error);
       notify.error(apiError.message);
     }
@@ -830,7 +912,9 @@ export default function CreateInvoicePage() {
         ? storeDiscountRef.current
         : pending.name === "customer_discount"
           ? customerDiscountRef.current
-          : null;
+          : pending.name === "dp_amount"
+            ? dpAmountRef.current
+            : null;
     if (!input) return;
     const formattedValue = formatThousands(form[pending.name]);
     const targetDigitCount = pending.digitCount;
@@ -842,7 +926,7 @@ export default function CreateInvoicePage() {
     }
     input.setSelectionRange(position, position);
     pendingDiscountCaret.current = null;
-  }, [form.store_discount, form.customer_discount]);
+  }, [form.store_discount, form.customer_discount, form.dp_amount]);
 
   const discountError = errorOf("discount");
 
@@ -1220,8 +1304,8 @@ export default function CreateInvoicePage() {
 
             <p className="text-sm text-second/60">
               Maksimal {MAX_ITEMS} jenis kamera, masing-masing dengan kuantitas
-              1–{MAX_QUANTITY}. Stok tidak dicek dan tidak dikurangi untuk
-              invoice admin.
+              1–{MAX_QUANTITY}. Stok tidak dicek dan tidak dikurangi kecuali
+              invoice dibuat sebagai DP.
             </p>
 
             {selectedItems.length > 0 && (
@@ -1487,6 +1571,70 @@ export default function CreateInvoicePage() {
             )}
 
             <ToggleCard
+              name="is_dp"
+              checked={form.is_dp}
+              onChange={handleFormChange}
+              disabled={isSubmitting}
+              title="Buat sebagai DP"
+              description="Invoice langsung berstatus DP dan stok kamera ditahan sekarang, baik DP sudah maupun belum dibayar. Stok harus cukup, kalau tidak invoice tidak dibuat."
+            >
+              <div className="flex flex-col gap-4">
+                <FormField
+                  label="Nominal DP"
+                  htmlFor="dp_amount"
+                  required
+                  error={errorOf("dp_amount")}
+                  description={
+                    dpAmount > 0 && dpAmount < totalAmount
+                      ? form.dp_paid
+                        ? `Sisa tagihan ${formatCurrency(totalAmount - dpAmount)}`
+                        : `DP belum dibayar, sisa tagihan masih ${formatCurrency(totalAmount)}`
+                      : "Harus lebih kecil dari total invoice."
+                  }
+                >
+                  <PrefixedInput prefix="Rp">
+                    <input
+                      ref={dpAmountRef}
+                      id="dp_amount"
+                      name="dp_amount"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      value={formatThousands(form.dp_amount)}
+                      onChange={handleDiscountChange}
+                      className={`${inputClass(Boolean(errorOf("dp_amount")))} rounded-l-none tabular-nums`}
+                      placeholder="0"
+                      maxLength={13}
+                      disabled={isSubmitting}
+                      {...fieldProps("dp_amount", { hasDescription: true })}
+                    />
+                  </PrefixedInput>
+                </FormField>
+
+                <fieldset className="flex flex-col gap-4">
+                  <legend className={labelClass}>Status pembayaran DP</legend>
+                  {DP_PAID_OPTIONS.map((option) => (
+                    <RadioCard
+                      key={option.value}
+                      name="dp_paid_choice"
+                      value={option.value}
+                      checked={form.dp_paid === (option.value === "paid")}
+                      onChange={() =>
+                        setForm((current) => ({
+                          ...current,
+                          dp_paid: option.value === "paid",
+                        }))
+                      }
+                      disabled={isSubmitting}
+                      title={option.title}
+                      description={option.description}
+                    />
+                  ))}
+                </fieldset>
+              </div>
+            </ToggleCard>
+
+            <ToggleCard
               name="is_final"
               checked={form.is_final}
               onChange={handleFormChange}
@@ -1509,6 +1657,9 @@ export default function CreateInvoicePage() {
             storeDiscount={storeDiscount}
             customerDiscount={customerDiscount}
             totalAmount={totalAmount}
+            isDp={form.is_dp}
+            dpAmount={dpAmount}
+            dpPaid={form.dp_paid}
           />
           <div className="flex flex-col gap-2">
             <PrimaryButton

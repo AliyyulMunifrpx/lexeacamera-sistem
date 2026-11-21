@@ -47,18 +47,19 @@ export async function getOwnerOrder(id) {
  */
 export async function updateOrderPaymentStatus(
   id,
-  { payment_status, paid_at },
+  { payment_status, paid_at, dp_amount, dp_paid },
 ) {
   const body = {
     payment_status,
     ...(payment_status === "PAID" && hasValue(paid_at) && { paid_at }),
+    ...(payment_status === "DP" && hasValue(dp_amount) && { dp_amount }),
+    ...(payment_status === "DP" && typeof dp_paid === "boolean" && { dp_paid }),
   };
 
   const response = await api.patch(`/owner/orders/${id}/payment-status`, body);
 
   return response.data.data;
 }
-
 /**
  * PUT /owner/orders/:id/items (khusus OWNER).
  * Body: { items: [{ camera_id, quantity }] } (1-50 item, quantity 1-1000).

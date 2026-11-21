@@ -60,6 +60,7 @@ enum PayrollStatus {
 }
 
 enum PaymentStatuses {
+  DP
   PAID
   UNPAID
 }
@@ -220,7 +221,9 @@ model Order {
   created_at     DateTime        @default(now())
   address        String          @db.Text
   whatsapp       String
+  dp_amount      Int?
   instagram      String?
+  dp_paid_at     DateTime?
   order_items    OrderItem[]
   invoice        Invoice?
 

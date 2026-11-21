@@ -59,6 +59,7 @@ const FIELD_LINK_CLASS = `inline-flex items-center gap-1 rounded-sm underline de
 
 const PAYMENT_STATUS = {
   PAID: { label: "Lunas", tone: "blue", icon: FiCheckCircle },
+  DP: { label: "DP", tone: "violet", icon: FiCreditCard },
   UNPAID: { label: "Belum dibayar", tone: "violet", icon: FiClock },
   PENDING: { label: "Menunggu pembayaran", tone: "violet", icon: FiClock },
 };
@@ -337,7 +338,7 @@ function StatCard({ icon: Icon, label, value, hint, featured = false }) {
         </p>
         {hint && (
           <p
-            className={`mt-0.5 truncate text-xs ${
+            className={`mt-0.5 break-words text-xs ${
               featured ? "text-primary/80" : "text-second/50"
             }`}
           >
@@ -547,7 +548,34 @@ export default function InvoiceDetailPage() {
     icon: FiCreditCard,
   };
   const isPaid = invoice.payment_status === "PAID";
+  const isDp = !isRefund && invoice.payment_status === "DP";
+  const dpAmount = invoice.dp_amount ?? null;
+  const dpPaid = invoice.dp_paid === true;
+  const dpPaidAt = invoice.dp_paid_at ?? null;
+  const remainingAmount = invoice.remaining_amount ?? null;
+  const paymentLabel = isDp
+    ? dpPaid
+      ? "DP dibayar"
+      : "DP belum dibayar"
+    : payment.label;
+  const paymentTone = isDp ? (dpPaid ? "violet" : "red") : payment.tone;
 
+  let paymentHint = isRefund
+    ? "Belum ada pengembalian dana"
+    : "Belum ada pembayaran";
+  if (isPaid && invoice.paid_at) {
+    paymentHint = `${isRefund ? "Dikembalikan" : "Dibayar"} ${formatDate(invoice.paid_at)}`;
+  } else if (isDp) {
+    const dpText = dpAmount !== null ? `DP ${formatCurrency(dpAmount)}` : "DP";
+    const remainingText =
+      remainingAmount !== null
+        ? `, sisa ${formatCurrency(remainingAmount)}`
+        : "";
+
+    paymentHint = dpPaid
+      ? `${dpText} dibayar${dpPaidAt ? ` ${formatDate(dpPaidAt)}` : ""}${remainingText}`
+      : `${dpText} belum dibayar${remainingText}`;
+  }
   const totalQuantity = items.reduce(
     (sum, item) => sum + (Number(item.quantity) || 0),
     0,
@@ -627,8 +655,8 @@ export default function InvoiceDetailPage() {
                 {isFinal ? "Final" : "Belum final"}
               </Badge>
 
-              <Badge tone={payment.tone} icon={payment.icon}>
-                {payment.label}
+              <Badge tone={paymentTone} icon={payment.icon}>
+                {paymentLabel}
               </Badge>
 
               {invoice.type && (
@@ -777,16 +805,10 @@ export default function InvoiceDetailPage() {
         />
 
         <StatCard
-          icon={isPaid ? FiCheckCircle : FiClock}
+          icon={isPaid || (isDp && dpPaid) ? FiCheckCircle : FiClock}
           label={isRefund ? "Status pengembalian" : "Status pembayaran"}
-          value={payment.label}
-          hint={
-            isPaid && invoice.paid_at
-              ? `${isRefund ? "Dikembalikan" : "Dibayar"} ${formatDate(invoice.paid_at)}`
-              : isRefund
-                ? "Belum ada pengembalian dana"
-                : "Belum ada pembayaran"
-          }
+          value={paymentLabel}
+          hint={paymentHint}
         />
 
         <StatCard
@@ -1082,6 +1104,25 @@ export default function InvoiceDetailPage() {
                   {formatCurrency(invoice.total_amount)}
                 </dd>
               </div>
+              {!isRefund && dpAmount !== null && (
+                <>
+                  <SummaryRow
+                    label={dpPaid ? "DP dibayar" : "DP belum dibayar"}
+                    value={money(dpAmount)}
+                  />
+                  {dpPaid && dpPaidAt && (
+                    <SummaryRow
+                      label="DP dibayar pada"
+                      value={formatDate(dpPaidAt)}
+                    />
+                  )}
+                  <SummaryRow
+                    label="Sisa pembayaran"
+                    value={money(remainingAmount)}
+                    valueClassName="font-bold"
+                  />
+                </>
+              )}
             </dl>
           </DetailSection>
 

@@ -59,7 +59,11 @@ function useDebouncedValue(value, delay = SEARCH_DEBOUNCE_MS) {
 function formatNumber(value = 0) {
   return new Intl.NumberFormat("id-ID").format(Number(value) || 0);
 }
-
+const PAYMENT_LABEL = {
+  PAID: "Lunas",
+  DP: "DP",
+  UNPAID: "Belum dibayar",
+};
 function formatCurrency(value) {
   const amount = Number(value);
 
@@ -390,6 +394,8 @@ export default function InvoicesPage() {
                     {/* Status pembayaran */}
                     {invoice.payment_status === "PAID" ? (
                       <Tag tone="strong">Lunas</Tag>
+                    ) : invoice.payment_status === "DP" ? (
+                      <Tag tone="soft">DP</Tag>
                     ) : (
                       <Tag tone="outline">Belum dibayar</Tag>
                     )}
@@ -414,14 +420,11 @@ export default function InvoicesPage() {
                   </InfoRow>
 
                   <InfoRow icon={FiCreditCard} label="Pembayaran">
-                    {invoice.payment_status === "PAID"
-                      ? "Lunas"
-                      : "Belum dibayar"}
+                    {PAYMENT_LABEL[invoice.payment_status] ?? "Belum dibayar"}
                     {invoice.payment_method
                       ? ` · ${invoice.payment_method}`
                       : ""}
                   </InfoRow>
-
                   {invoice.ship && (
                     <InfoRow icon={FiTruck} label="Pengiriman">
                       {invoice.ship}

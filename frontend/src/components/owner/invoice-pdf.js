@@ -6,19 +6,19 @@ import {
   formatDate,
 } from "./invoice-formatters.js";
 
-/* Palet: merah marun tua #3a0718 dan marun #6c1b30.
+/* Palet: merah tua #760a16 dan merah terang #d02f1c.
    Abu-abu adalah hitam dengan opasitas, sama seperti text-second/60 di web. */
 const PDF_COLORS = {
-  dark: [58, 7, 24], // #3a0718
-  accent: [108, 27, 48], // #6c1b30
+  dark: [118, 10, 22], // #760a16
+  accent: [208, 47, 28], // #d02f1c
   text: [0, 0, 0],
   muted: [102, 102, 102],
   faint: [153, 153, 153],
-  line: [232, 225, 228],
+  line: [232, 226, 225],
   border: [217, 217, 217],
-  tint: [250, 241, 244], // latar panel (marun sangat muda)
-  zebra: [250, 245, 247], // baris selang-seling tabel
-  onDark: [240, 218, 225], // teks sekunder di atas latar marun tua
+  tint: [252, 241, 240], // latar panel (merah sangat muda)
+  zebra: [251, 246, 245], // baris selang-seling tabel
+  onDark: [255, 226, 222], // teks sekunder di atas latar merah tua
   white: [255, 255, 255],
   green: [21, 128, 61],
 };
@@ -177,7 +177,7 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
     return doc.splitTextToSize(String(text), maxWidth);
   }
 
-  /* Gradient horizontal: marun tua di kiri, marun lebih terang di kanan. */
+  /* Gradient horizontal: merah tua di kiri, merah terang di kanan. */
   function gradientRect(x, yy, w, h) {
     const steps = Math.max(2, Math.ceil(w / 0.8));
     const stepW = w / steps;
@@ -249,16 +249,45 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
 
   /* ---------- Data turunan ---------- */
   const isRefund = invoice.type === "REFUND";
-
   const isPaid = invoice.payment_status === "PAID";
+  const isDp = !isRefund && invoice.payment_status === "DP";
+
+  const dpAmount =
+    !isRefund && invoice.dp_amount !== null && invoice.dp_amount !== undefined
+      ? Number(invoice.dp_amount)
+      : null;
+  // Order lunas dianggap DP-nya sudah diterima.
+  const dpReceived = invoice.dp_paid === true || isPaid;
+  const dpPaidAt = invoice.dp_paid_at ?? null;
+  const totalAmount = Number(invoice.total_amount) || 0;
+
+  // Sisa setelah DP dibayar, dihitung sendiri (bukan dari remaining_amount)
+  const remainingAfterDp =
+    dpAmount !== null ? Math.max(0, totalAmount - dpAmount) : null;
+
+  // Sisa tagihan saat ini: kalau DP sudah diterima, pakai nilai backend
+  const remainingAmount = dpReceived
+    ? (invoice.remaining_amount ?? remainingAfterDp)
+    : remainingAfterDp;
+  const isDpBill = isDp && !dpReceived; // invoice tagihan DP
+
   const statusLabel = isRefund
     ? isPaid
       ? "SUDAH DIKEMBALIKAN"
       : "BELUM DIKEMBALIKAN"
     : isPaid
       ? "LUNAS"
-      : "BELUM DIBAYAR";
-  const statusColor = isPaid ? C.green : C.accent;
+      : isDp
+        ? dpReceived
+          ? "DP DIBAYAR"
+          : "DP BELUM DIBAYAR"
+        : "BELUM DIBAYAR";
+  const statusColor = isPaid ? C.green : isDp && dpReceived ? C.dark : C.accent;
+  const docTitle = isRefund
+    ? "NOTA REFUND"
+    : isDpBill
+      ? "TAGIHAN DP"
+      : "INVOICE";
 
   // Diskon produk: selisih harga coret dan harga jual, dikali jumlah unit.
   const lineItems = invoice.items ?? [];
@@ -340,8 +369,8 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
     });
   }
 
-  put(isRefund ? "NOTA REFUND" : "INVOICE", contentRight, 19, {
-    size: isRefund ? 17 : 24,
+  put(docTitle, contentRight, 19, {
+    size: docTitle === "INVOICE" ? 24 : 17,
     bold: true,
     color: C.white,
     align: "right",
@@ -389,6 +418,9 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
             formatDate(invoice.paid_at),
           ],
         ]
+      : []),
+    ...(dpAmount !== null && dpReceived && dpPaidAt
+      ? [["Tanggal DP dibayar", formatDate(dpPaidAt)]]
       : []),
     ["Metode pembayaran", displayValue(invoice.payment_method)],
     ["Pengiriman", displayValue(invoice.ship)],
@@ -612,10 +644,28 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
         ["Diskon pelanggan", discountText(invoice.customer_discount)],
       ];
 
+  const dpRows =
+    dpAmount !== null
+      ? [
+          {
+            label: dpReceived ? "DP dibayar" : "DP yang harus dibayar",
+            value: formatCurrency(dpAmount),
+            highlight: !dpReceived,
+          },
+          {
+            label: dpReceived ? "Sisa pembayaran" : "Sisa setelah DP",
+            value: formatCurrency(remainingAmount),
+            highlight: dpReceived,
+          },
+        ]
+      : [];
+  const dpBlockH = dpRows.length > 0 ? dpRows.length * 5.4 + 1 : 0;
+
   const rowStep = 5.4;
   const totalBarH = 10;
-  // Tinggi kolom kanan: baris ringkasan + bar total + ucapan di bawahnya.
-  const summaryH = 3.5 + summaryRows.length * rowStep - 1 + totalBarH + 15;
+  // Tinggi kolom kanan: baris ringkasan + bar total + baris DP + ucapan.
+  const summaryH =
+    3.5 + summaryRows.length * rowStep - 1 + totalBarH + dpBlockH + 15;
 
   y += 5;
   ensure(summaryH);
@@ -650,7 +700,29 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
   });
 
   /* ---------- Ucapan di bawah Grand Total ---------- */
-  const thanksY = totalY + totalBarH + 6;
+
+  /* ---------- DP dan sisa pembayaran (di bawah Grand Total) ---------- */
+  const dpHighlightColor = dpReceived ? C.dark : C.accent;
+
+  dpRows.forEach((row, index) => {
+    const rowY = totalY + totalBarH + 5 + index * rowStep;
+
+    put(row.label, rightColX, rowY, {
+      size: 8,
+      bold: row.highlight,
+      color: row.highlight ? dpHighlightColor : C.muted,
+    });
+    put(row.value, contentRight, rowY, {
+      size: 8,
+      bold: true,
+      color: row.highlight ? dpHighlightColor : C.text,
+      align: "right",
+    });
+    hLine(rowY + 1.9, C.line, rightColX, contentRight);
+  });
+
+  /* ---------- Ucapan di bawah Grand Total ---------- */
+  const thanksY = totalY + totalBarH + dpBlockH + 6;
 
   put("Thank you for shopping", contentRight, thanksY, {
     size: 11,
@@ -659,7 +731,7 @@ export async function downloadInvoicePdf(invoice, { logoUrl = "" } = {}) {
     align: "right",
   });
 
-  put("Have fun every day", contentRight, thanksY + 4.8, {
+  put("Selamat & sukses untuk karyamu", contentRight, thanksY + 4.8, {
     size: 8.5,
     color: C.muted,
     align: "right",

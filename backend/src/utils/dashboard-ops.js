@@ -1,6 +1,7 @@
 import { prisma } from "../lib/database.js";
 import { getDashboardValidation } from "../validation/owner/dashboard-validation.js";
 import { validate } from "../validation/validation.js";
+import { isDpPaid } from "./payment-status.js";
 
 const LIST_SIZE = 3;
 const TOP_PRODUCTS_SIZE = 5;
@@ -38,6 +39,8 @@ const INVOICE_ROW_INCLUDE = {
     select: {
       type: true,
       payment_status: true,
+      dp_amount: true,
+      dp_paid_at: true,
       order_items: { select: { camera_price: true, quantity: true } },
     },
   },
@@ -48,6 +51,8 @@ const toInvoiceRow = ({ order, terms_and_condition: _terms, ...invoice }) => ({
   ...invoice,
   type: order.type,
   payment_status: order.payment_status,
+  dp_amount: order.dp_amount ?? null,
+  dp_paid: isDpPaid(order),
   subtotal: order.order_items.reduce(
     (sum, item) => sum + item.camera_price * item.quantity,
     0,
@@ -103,7 +108,10 @@ export const createDashboardOps = ({ isOwner }) => {
     const bestSellingWhere = { ...ACTIVE, best_selling: true };
     const promoWhere = { ...ACTIVE, promo: true };
     const lowStockWhere = { ...ACTIVE, stock: { lte: LOW_STOCK_THRESHOLD } };
-    const unpaidWhere = { order: { ...SALE, payment_status: "UNPAID" } };
+    // Belum lunas = UNPAID atau baru bayar DP
+    const unpaidWhere = {
+      order: { ...SALE, payment_status: { in: ["UNPAID", "DP"] } },
+    };
 
     // Order lunas per hari (WIB) bulan ini, menurut tanggal lunas. Pendapatan
     // bersih = penjualan lunas dikurangi refund lunas (dihitung di buildTrend).
@@ -151,7 +159,8 @@ export const createDashboardOps = ({ isOwner }) => {
       LIMIT ${TOP_PRODUCTS_SIZE}
     `;
 
-    // Satu transaksi: semua angka dibaca lewat satu koneksi
+    // Semua query dijalankan paralel (bukan satu transaksi berurutan) supaya
+    // tidak kena timeout transaksi 5 detik. Dashboard ini read-only.
     const [
       totalCameras,
       outOfStock,
@@ -173,7 +182,7 @@ export const createDashboardOps = ({ isOwner }) => {
       // Hanya owner: refund yang belum dikembalikan (kewajiban yang menggantung,
       // tidak dibatasi bulan). Untuk admin elemen ini tidak ada (undefined).
       unpaidRefund,
-    ] = await prisma.$transaction([
+    ] = await Promise.all([
       prisma.camera.count({ where: ACTIVE }),
       prisma.camera.count({ where: { ...ACTIVE, stock: 0 } }),
 

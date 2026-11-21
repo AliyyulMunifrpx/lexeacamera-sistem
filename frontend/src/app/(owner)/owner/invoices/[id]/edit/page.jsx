@@ -730,7 +730,7 @@ export default function EditInvoicePage() {
   async function handleSubmit(event) {
     event.preventDefault();
     if (invoice?.is_final) {
-      notify.error("Invoice sudah final dan tidak bisa diedit lagi.");
+      notify.error("Jatah edit invoice untuk status ini sudah habis.");
       return;
     }
     if (!confirmedFinalization) {
@@ -744,7 +744,7 @@ export default function EditInvoicePage() {
     try {
       await updateMutation.mutateAsync({ id, payload });
       notify.success(
-        "Invoice berhasil diperbarui dan sekarang berstatus final.",
+        "Invoice berhasil diperbarui. Jatah edit untuk status ini habis.",
       );
       router.replace(`/owner/invoices/${id}`);
     } catch (error) {
@@ -854,7 +854,9 @@ export default function EditInvoicePage() {
           </h1>
           <p className="text-pretty text-sm text-second/60">
             Invoice {invoice.no_invoice} sudah dikunci dan tidak dapat diedit
-            lagi.
+            lagi untuk status pembayaran saat ini. Jatah edit terbuka lagi (1
+            kali) setiap status pembayaran order diubah, misalnya dari DP ke
+            lunas.
           </p>
           <Link
             href={`/owner/invoices/${id}`}
@@ -921,8 +923,9 @@ export default function EditInvoicePage() {
               Edit <span className="text-grad">invoice</span>
             </h1>
             <p className="mt-2 text-pretty text-sm text-second/60">
-              Invoice {invoice.no_invoice} hanya dapat diedit satu kali. Setelah
-              disimpan, invoice otomatis final dan terkunci.
+              Invoice {invoice.no_invoice} dapat diedit satu kali untuk status
+              pembayaran saat ini. Setelah disimpan, invoice terkunci sampai
+              status pembayaran order diubah.
             </p>
           </div>
         </div>
@@ -1372,7 +1375,7 @@ export default function EditInvoicePage() {
           {/* Konfirmasi final */}
           <FormSection
             title="Konfirmasi finalisasi"
-            description="Invoice hanya dapat diedit satu kali. Setelah disimpan, invoice otomatis final dan terkunci."
+            description="Invoice dapat diedit satu kali per status pembayaran. Setelah disimpan, invoice terkunci sampai status pembayaran order diubah."
           >
             <ToggleCard
               name="confirmed_finalization"
@@ -1382,7 +1385,7 @@ export default function EditInvoicePage() {
               }
               disabled={isSaving}
               title="Saya memahami invoice akan langsung terkunci"
-              description="Setelah disimpan, jatah edit habis dan status invoice otomatis menjadi final. Pastikan seluruh data sudah benar."
+              description="Setelah disimpan, jatah edit untuk status ini habis. Pastikan seluruh data sudah benar."
             />
           </FormSection>
         </div>

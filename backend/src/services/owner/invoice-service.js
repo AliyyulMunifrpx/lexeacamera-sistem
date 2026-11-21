@@ -3,8 +3,8 @@ import { prisma } from "../../lib/database.js";
 import { setPaymentStatus } from "../../utils/payment-status.js";
 import { createInvoiceOps } from "../../utils/invoice-ops.js";
 import { toOwnerInvoiceResponse } from "../../utils/order-invoice.js";
-import { validate } from "../../validation/validation.js";
 import { ownerDeleteInvoiceValidation } from "../../validation/owner/invoice-validation.js";
+import { validate } from "../../validation/validation.js";
 
 const ops = createInvoiceOps({
   toResponse: toOwnerInvoiceResponse,
@@ -12,8 +12,8 @@ const ops = createInvoiceOps({
 });
 
 // CLEAN: hanya invoice yang dihapus, order, stok, dan laporan tidak berubah.
-// VOID: order ikut dihapus. Order lunas dibatalkan dulu (stok kembali), lalu
-// dihapus. Order yang sudah punya refund ditolak.
+// VOID: order ikut dihapus. Order DP atau lunas dibatalkan dulu (stok kembali),
+// lalu dihapus. Order yang sudah punya refund ditolak.
 const deleteInvoice = async (request) => {
   const req = validate(ownerDeleteInvoiceValidation, request);
 
@@ -65,9 +65,9 @@ const deleteInvoice = async (request) => {
         throw new ResponseError(409, "ORDER_HAS_REFUNDS");
       }
 
-      const wasPaid = order.payment_status === "PAID";
+      const wasHeld = order.payment_status !== "UNPAID";
 
-      if (wasPaid) {
+      if (wasHeld) {
         await setPaymentStatus(tx, { orderId: order.id, status: "UNPAID" });
       }
 
@@ -77,7 +77,7 @@ const deleteInvoice = async (request) => {
         message: "INVOICE_DELETED",
         mode: "VOID",
         order_deleted: true,
-        stock_adjusted: wasPaid,
+        stock_adjusted: wasHeld,
       };
     },
     { timeout: 15000 },

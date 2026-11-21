@@ -57,15 +57,16 @@ const FOCUS_RING =
 const BTN_BASE =
   "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition touch-manipulation";
 const FIELD_LINK_CLASS = `inline-flex items-center gap-1 rounded-sm underline decoration-second/40 underline-offset-4 transition-colors hover:decoration-second ${FOCUS_RING}`;
-
 const PAYMENT_STATUS = {
   PAID: { label: "Lunas", tone: "blue", icon: FiCheckCircle },
+  DP: { label: "DP", tone: "violet", icon: FiCreditCard },
   UNPAID: { label: "Belum dibayar", tone: "violet", icon: FiClock },
   PENDING: { label: "Menunggu pembayaran", tone: "violet", icon: FiClock },
 };
 
 const PAYMENT_VALUE = {
   PAID: "PAID",
+  DP: "DP",
   UNPAID: "UNPAID",
 };
 
@@ -76,6 +77,12 @@ const PAYMENT_OPTIONS = [
     description: "Order sudah dibayar. Tanggal lunas dipakai oleh laporan.",
   },
   {
+    value: PAYMENT_VALUE.DP,
+    title: "DP",
+    description:
+      "Pelanggan baru membayar sebagian. Stok langsung ditahan dan sisa tagihan dihitung dari total dikurangi DP.",
+  },
+  {
     value: PAYMENT_VALUE.UNPAID,
     title: "Belum lunas",
     description: "Order belum dibayar. Tanggal lunas dikosongkan.",
@@ -84,6 +91,11 @@ const PAYMENT_OPTIONS = [
 
 const PAYMENT_KIND_INFO = {
   pay: { button: "Tandai lunas", success: "Order ditandai lunas." },
+  dp: { button: "Tandai DP", success: "Order ditandai DP." },
+  dp_correct: {
+    button: "Simpan nominal DP",
+    success: "Nominal DP diperbarui.",
+  },
   unpay: {
     button: "Tandai belum lunas",
     success: "Order ditandai belum lunas.",
@@ -93,7 +105,6 @@ const PAYMENT_KIND_INFO = {
     success: "Tanggal lunas diperbarui.",
   },
 };
-
 const TYPE_LABEL = {
   SALE: "Penjualan",
 };
@@ -103,6 +114,10 @@ function discountPerUnit(strike, price) {
   const s = Number(strike);
   const p = Number(price);
   return Number.isFinite(s) && Number.isFinite(p) && s > p ? s - p : 0;
+}
+function formatThousands(value) {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 }
 
 function money(value) {
@@ -221,17 +236,14 @@ function getOrderPayment(invoice) {
   const orderId = invoice?.order_id ?? invoice?.order?.id ?? null;
   const status = invoice?.payment_status ?? invoice?.order?.payment_status;
   const paidAt = invoice?.paid_at ?? invoice?.order?.paid_at ?? null;
+  const dpAmount = invoice?.dp_amount ?? invoice?.order?.dp_amount ?? null;
 
-  if (
-    !orderId ||
-    (status !== PAYMENT_VALUE.PAID && status !== PAYMENT_VALUE.UNPAID)
-  ) {
+  if (!orderId || !Object.values(PAYMENT_VALUE).includes(status)) {
     return null;
   }
 
-  return { orderId, status, paidAt };
+  return { orderId, status, paidAt, dpAmount };
 }
-
 /* Kode error PATCH /admin/orders/:id/payment-status -> pesan Indonesia */
 function describePaymentError(error) {
   const data = error?.response?.data;
@@ -257,6 +269,10 @@ function describePaymentError(error) {
       return "Tanggal lunas tidak boleh sebelum order dibuat.";
     case "ORDER_NOT_FOUND":
       return "Order tidak ditemukan atau sudah dihapus.";
+    case "DP_AMOUNT_OUT_OF_RANGE":
+      return data?.total_amount != null
+        ? `Nominal DP harus lebih dari 0 dan kurang dari total invoice (${formatCurrency(data.total_amount)}).`
+        : "Nominal DP di luar rentang yang diizinkan.";
     default:
       return normalizeApiError(error).message;
   }
@@ -410,7 +426,7 @@ function StatCard({ icon: Icon, label, value, hint, featured = false }) {
         </p>
         {hint && (
           <p
-            className={`mt-0.5 truncate text-xs ${
+            className={`mt-0.5 break-words text-xs ${
               featured ? "text-primary/80" : "text-second/50"
             }`}
           >
@@ -477,26 +493,30 @@ function TermsContent({ text }) {
 }
 
 /* ---------- Status pembayaran order ---------- */
-
 function PaymentStatusSection({
   orderId,
   currentStatus,
   currentPaidAt,
+  currentDpAmount,
+  totalAmount,
   onUpdated,
 }) {
   const mutation = useUpdateOrderPaymentStatus();
   const isSaving = mutation.isPending;
 
   const savedPaidAt = toWibInput(currentPaidAt);
+  const savedDp = currentDpAmount == null ? "" : String(currentDpAmount);
 
   const [status, setStatus] = useState(currentStatus);
   const [paidAt, setPaidAt] = useState(savedPaidAt);
+  const [dpInput, setDpInput] = useState(savedDp);
 
   // Sinkronkan dengan data terbaru dari server (misalnya setelah disimpan).
   useEffect(() => {
     setStatus(currentStatus);
     setPaidAt(toWibInput(currentPaidAt));
-  }, [currentStatus, currentPaidAt]);
+    setDpInput(currentDpAmount == null ? "" : String(currentDpAmount));
+  }, [currentStatus, currentPaidAt, currentDpAmount]);
 
   let kind = null;
   if (status === PAYMENT_VALUE.PAID && currentStatus !== PAYMENT_VALUE.PAID) {
@@ -506,6 +526,13 @@ function PaymentStatusSection({
     currentStatus !== PAYMENT_VALUE.UNPAID
   ) {
     kind = "unpay";
+  } else if (
+    status === PAYMENT_VALUE.DP &&
+    currentStatus !== PAYMENT_VALUE.DP
+  ) {
+    kind = "dp";
+  } else if (status === PAYMENT_VALUE.DP && dpInput !== savedDp) {
+    kind = "dp_correct";
   } else if (
     status === PAYMENT_VALUE.PAID &&
     paidAt !== "" &&
@@ -521,6 +548,15 @@ function PaymentStatusSection({
       ? "Tanggal lunas tidak boleh di masa depan."
       : "";
 
+  const showDpField = status === PAYMENT_VALUE.DP;
+  const dpValue = Number(dpInput);
+  const dpMissing = showDpField && dpInput === "";
+  const dpError =
+    showDpField && dpInput !== "" && (dpValue < 1 || dpValue >= totalAmount)
+      ? `DP harus lebih dari 0 dan kurang dari total invoice (${formatCurrency(totalAmount)}).`
+      : "";
+
+  const canSubmit = Boolean(kind) && !paidAtError && !dpError && !dpMissing;
   const maxPaidAt = toWibInput(new Date().toISOString());
   const info = kind ? PAYMENT_KIND_INFO[kind] : null;
 
@@ -528,18 +564,29 @@ function PaymentStatusSection({
     event.preventDefault();
     if (!kind || isSaving) return;
 
-    if (paidAtError) {
-      notify.error(paidAtError);
+    if (paidAtError || dpError) {
+      notify.error(paidAtError || dpError);
+      return;
+    }
+    if (dpMissing) {
+      notify.error("Nominal DP wajib diisi.");
       return;
     }
 
-    const payload =
-      status === PAYMENT_VALUE.PAID
-        ? {
-            payment_status: PAYMENT_VALUE.PAID,
-            ...(paidAtIso ? { paid_at: paidAtIso } : {}),
-          }
-        : { payment_status: PAYMENT_VALUE.UNPAID };
+    let payload;
+    if (status === PAYMENT_VALUE.PAID) {
+      payload = {
+        payment_status: PAYMENT_VALUE.PAID,
+        ...(paidAtIso ? { paid_at: paidAtIso } : {}),
+      };
+    } else if (status === PAYMENT_VALUE.DP) {
+      payload = {
+        payment_status: PAYMENT_VALUE.DP,
+        dp_amount: Number(dpInput),
+      };
+    } else {
+      payload = { payment_status: PAYMENT_VALUE.UNPAID };
+    }
 
     try {
       await mutation.mutateAsync({ id: orderId, data: payload });
@@ -558,8 +605,8 @@ function PaymentStatusSection({
     >
       <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
         <p className="text-sm text-second/60">
-          Ubah status bayar order ini atau koreksi tanggal lunas. Bisa dilakukan
-          walau invoice sudah final.
+          Ubah status bayar order ini, koreksi nominal DP, atau koreksi tanggal
+          lunas. Bisa dilakukan walau invoice sudah final.
         </p>
 
         <fieldset className="flex flex-col gap-2">
@@ -594,6 +641,72 @@ function PaymentStatusSection({
             );
           })}
         </fieldset>
+
+        {showDpField && (
+          <div className="min-w-0">
+            <label
+              htmlFor="dp_amount"
+              className="mb-2 block text-sm font-semibold"
+            >
+              Nominal DP
+              <span className="ml-2 text-second2" aria-hidden="true">
+                *
+              </span>
+            </label>
+            <div className="flex">
+              <span
+                aria-hidden="true"
+                className="inline-flex shrink-0 items-center rounded-l-xl border border-r-0 border-second/30 bg-second/5 px-4 text-sm font-medium text-second/60"
+              >
+                Rp
+              </span>
+              <input
+                id="dp_amount"
+                name="dp_amount"
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                value={formatThousands(dpInput)}
+                onChange={(event) => {
+                  const digits = event.target.value
+                    .replace(/\D/g, "")
+                    .replace(/^0+(?=\d)/, "");
+                  if (digits.length <= 12) setDpInput(digits);
+                }}
+                placeholder="0"
+                maxLength={16}
+                disabled={isSaving}
+                aria-invalid={dpError ? true : undefined}
+                aria-describedby="dp_amount-desc"
+                className={`w-full min-w-0 rounded-xl rounded-l-none border bg-primary px-4 py-2 text-base tabular-nums text-second outline-none transition-colors focus:ring-4 disabled:cursor-not-allowed disabled:opacity-50 ${
+                  dpError
+                    ? "border-second2 focus:border-second2 focus:ring-second2/15"
+                    : "border-second/30 focus:border-second4 focus:ring-second4/15"
+                }`}
+              />
+            </div>
+            {dpError ? (
+              <p
+                id="dp_amount-desc"
+                role="alert"
+                className="mt-2 flex items-start gap-2 text-sm text-second2"
+              >
+                <FiAlertCircle
+                  size={16}
+                  className="mt-0.5 shrink-0"
+                  aria-hidden="true"
+                />
+                {dpError}
+              </p>
+            ) : (
+              <p id="dp_amount-desc" className="mt-2 text-sm text-second/60">
+                {dpInput !== ""
+                  ? `Sisa pembayaran: ${formatCurrency(totalAmount - dpValue)}.`
+                  : "Stok kamera dicek dan ditahan saat status diubah ke DP."}
+              </p>
+            )}
+          </div>
+        )}
 
         {showDateField && (
           <div className="min-w-0">
@@ -648,7 +761,7 @@ function PaymentStatusSection({
         <div className="flex flex-col gap-2 sm:flex-row">
           <PrimaryButton
             type="submit"
-            disabled={isSaving || !kind || Boolean(paidAtError)}
+            disabled={isSaving || !canSubmit}
             aria-busy={isSaving}
             className={`${BTN_BASE} w-full bg-grad text-primary shadow-lg shadow-second4/25 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto ${FOCUS_RING}`}
           >
@@ -673,7 +786,6 @@ function PaymentStatusSection({
     </DetailSection>
   );
 }
-
 /* ---------- Halaman ---------- */
 
 export default function InvoiceDetailPage() {
@@ -739,6 +851,13 @@ export default function InvoiceDetailPage() {
         setDeleteOpen(false);
         notify.error(
           "Invoice yang sudah lunas tidak bisa dihapus. Ubah status pembayaran ke belum lunas dulu di bagian Status pembayaran.",
+        );
+        return;
+      }
+      if (code === "ORDER_HAS_DP") {
+        setDeleteOpen(false);
+        notify.error(
+          "Invoice yang masih berstatus DP tidak bisa dihapus. Ubah status pembayaran ke belum lunas dulu di bagian Status pembayaran.",
         );
         return;
       }
@@ -824,8 +943,33 @@ export default function InvoiceDetailPage() {
     icon: FiCreditCard,
   };
   const isPaid = invoice.payment_status === "PAID";
+  const isDp = invoice.payment_status === "DP";
+  const dpAmount = invoice.dp_amount ?? null;
+  const dpPaid = invoice.dp_paid === true;
+  const dpPaidAt = invoice.dp_paid_at ?? null;
+  const remainingAmount = invoice.remaining_amount ?? null;
   const orderPayment = getOrderPayment(invoice);
+  const paymentLabel = isDp
+    ? dpPaid
+      ? "DP dibayar"
+      : "DP belum dibayar"
+    : payment.label;
+  const paymentTone = isDp ? (dpPaid ? "violet" : "red") : payment.tone;
 
+  let paymentHint = "Belum ada pembayaran";
+  if (isPaid && invoice.paid_at) {
+    paymentHint = `Dibayar ${formatDate(invoice.paid_at)}`;
+  } else if (isDp) {
+    const dpText = dpAmount !== null ? `DP ${formatCurrency(dpAmount)}` : "DP";
+    const remainingText =
+      remainingAmount !== null
+        ? `, sisa ${formatCurrency(remainingAmount)}`
+        : "";
+
+    paymentHint = dpPaid
+      ? `${dpText} dibayar${dpPaidAt ? ` ${formatDate(dpPaidAt)}` : ""}${remainingText}`
+      : `${dpText} belum dibayar${remainingText}`;
+  }
   const totalQuantity = items.reduce(
     (sum, item) => sum + (Number(item.quantity) || 0),
     0,
@@ -885,8 +1029,8 @@ export default function InvoiceDetailPage() {
                 {isFinal ? "Final" : "Belum final"}
               </Badge>
 
-              <Badge tone={payment.tone} icon={payment.icon}>
-                {payment.label}
+              <Badge tone={paymentTone} icon={payment.icon}>
+                {paymentLabel}
               </Badge>
 
               {invoice.type && (
@@ -1043,14 +1187,10 @@ export default function InvoiceDetailPage() {
         />
 
         <StatCard
-          icon={isPaid ? FiCheckCircle : FiClock}
+          icon={isPaid || (isDp && dpPaid) ? FiCheckCircle : FiClock}
           label="Status pembayaran"
-          value={payment.label}
-          hint={
-            isPaid && invoice.paid_at
-              ? `Dibayar ${formatDate(invoice.paid_at)}`
-              : "Belum ada pembayaran"
-          }
+          value={paymentLabel}
+          hint={paymentHint}
         />
 
         <StatCard
@@ -1314,6 +1454,25 @@ export default function InvoiceDetailPage() {
                   {formatCurrency(invoice.total_amount)}
                 </dd>
               </div>
+              {dpAmount !== null && (
+                <>
+                  <SummaryRow
+                    label={dpPaid ? "DP dibayar" : "DP belum dibayar"}
+                    value={money(dpAmount)}
+                  />
+                  {dpPaid && dpPaidAt && (
+                    <SummaryRow
+                      label="DP dibayar pada"
+                      value={formatDate(dpPaidAt)}
+                    />
+                  )}
+                  <SummaryRow
+                    label="Sisa pembayaran"
+                    value={money(remainingAmount)}
+                    valueClassName="font-bold"
+                  />
+                </>
+              )}
             </dl>
           </DetailSection>
 
@@ -1323,6 +1482,8 @@ export default function InvoiceDetailPage() {
               orderId={orderPayment.orderId}
               currentStatus={orderPayment.status}
               currentPaidAt={orderPayment.paidAt}
+              currentDpAmount={orderPayment.dpAmount}
+              totalAmount={Number(invoice.total_amount) || 0}
               onUpdated={() => refetch()}
             />
           )}

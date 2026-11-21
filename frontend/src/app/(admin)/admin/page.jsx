@@ -43,7 +43,14 @@ const CONDITION_LABEL = {
 
 const PAYMENT_STATUS_LABEL = {
   PAID: "Lunas",
+  DP: "Sudah DP",
   UNPAID: "Belum dibayar",
+};
+
+const PAYMENT_STATUS_TONE = {
+  PAID: "success",
+  DP: "pending",
+  UNPAID: "failure",
 };
 
 const LOW_STOCK_LIMIT = 3;
@@ -630,9 +637,18 @@ function CameraPanel({ dashboard }) {
 /* ------------------------------- Invoice list ----------------------------- */
 
 function InvoiceRow({ invoice }) {
-  const paymentLabel =
-    PAYMENT_STATUS_LABEL[invoice.payment_status] ?? invoice.payment_status;
-  const isPaid = invoice.payment_status === "PAID";
+  const status = invoice.payment_status;
+  const paymentLabel = PAYMENT_STATUS_LABEL[status] ?? status;
+  const paymentTone = PAYMENT_STATUS_TONE[status] ?? "failure";
+  const isPaid = status === "PAID";
+
+  const total = Number(invoice.total_amount) || 0;
+  const dpAmount = Number(invoice.dp_amount) || 0;
+  const hasDp = dpAmount > 0;
+  const dpPaid = Boolean(invoice.dp_paid);
+  /* Sisa tagihan hanya bermakna setelah DP benar-benar dibayar */
+  const remaining = Math.max(0, total - dpAmount);
+  const showRemaining = hasDp && dpPaid && !isPaid;
 
   return (
     <li>
@@ -661,15 +677,30 @@ function InvoiceRow({ invoice }) {
               {invoice.is_final ? "Final" : "Belum final"}
             </Tag>
 
-            <Tag tone={isPaid ? "success" : "failure"}>
+            <Tag tone={paymentTone}>
               <FiCreditCard size={12} aria-hidden="true" />
               {paymentLabel ?? "—"}
             </Tag>
           </div>
 
           <p className="text-base font-bold tabular-nums text-second">
-            {formatPrice(invoice.total_amount)}
+            {formatPrice(total)}
           </p>
+
+          {hasDp && (
+            <div className="flex flex-col gap-2 sm:items-end">
+              <p className="text-xs tabular-nums text-second/60">
+                DP {formatPrice(dpAmount)} ·{" "}
+                {dpPaid ? "sudah dibayar" : "belum dibayar"}
+              </p>
+
+              {showRemaining && (
+                <p className="text-xs font-semibold tabular-nums text-second">
+                  Sisa {formatPrice(remaining)}
+                </p>
+              )}
+            </div>
+          )}
 
           <p className="text-xs text-second/60">
             {formatNumber(invoice.item_count)} item
@@ -694,10 +725,11 @@ function InvoicePanel({ dashboard }) {
     },
     {
       key: "unpaid",
-      label: "Belum dibayar",
-      description: "Invoice yang pembayarannya belum diterima.",
+      label: "Belum lunas",
+      description:
+        "Invoice yang belum dilunasi, termasuk yang baru membayar DP.",
       result: dashboard.unpaid_invoices,
-      empty: "Tidak ada invoice yang belum dibayar.",
+      empty: "Tidak ada invoice yang belum lunas.",
       icon: FiAlertCircle,
     },
   ];
@@ -708,7 +740,7 @@ function InvoicePanel({ dashboard }) {
   return (
     <Panel
       title="Invoice"
-      description="Pantau status pembayaran dan invoice yang menunggu tindakan."
+      description="Pantau status pembayaran, DP, dan invoice yang menunggu tindakan."
     >
       <Tabs
         label="Daftar invoice"
@@ -863,7 +895,7 @@ export default function AdminDashboardPage() {
       tone: statusTone(invoices.pending, "pending"),
     },
     {
-      title: "Invoice belum dibayar",
+      title: "Invoice belum lunas",
       value: formatNumber(invoices.unpaid),
       icon: FiAlertCircle,
       tone: statusTone(invoices.unpaid, "failure"),
@@ -895,7 +927,7 @@ export default function AdminDashboardPage() {
           icon={FiFileText}
           title="Invoice hari ini"
           value={formatNumber(invoices.today)}
-          hint={`${formatNumber(invoices.total)} invoice penjualan · ${formatNumber(invoices.paid)} lunas · ${formatNumber(invoices.unpaid)} belum dibayar`}
+          hint={`${formatNumber(invoices.total)} invoice penjualan · ${formatNumber(invoices.paid)} lunas · ${formatNumber(invoices.unpaid)} belum lunas (termasuk DP)`}
         />
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
